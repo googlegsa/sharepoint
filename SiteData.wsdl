@@ -1,0 +1,1442 @@
+<?xml version="1.0" encoding="utf-8"?>
+<wsdl:definitions xmlns:soap="http://schemas.xmlsoap.org/wsdl/soap/" xmlns:tns="http://schemas.microsoft.com/sharepoint/soap/"
+xmlns:rs="urn:schemas-microsoft-com:rowset" xmlns:s="http://www.w3.org/2001/XMLSchema" xmlns:soap12="http://schemas.xmlsoap.org/wsdl/soap12/" targetNamespace="http://schemas.microsoft.com/sharepoint/soap/" xmlns:wsdl="http://schemas.xmlsoap.org/wsdl/">
+  <wsdl:types>
+    <s:schema elementFormDefault="qualified" targetNamespace="http://schemas.microsoft.com/sharepoint/soap/">
+      <s:element name="GetSiteAndWeb">
+        <s:complexType>
+          <s:sequence>
+            <s:element minOccurs="1" maxOccurs="1" name="strUrl" type="s:string" />
+          </s:sequence>
+        </s:complexType>
+      </s:element>
+      <s:element name="GetSiteAndWebResponse">
+        <s:complexType>
+          <s:sequence>
+            <s:element minOccurs="1" maxOccurs="1" name="GetSiteAndWebResult" type="s:unsignedInt" />
+            <s:element minOccurs="1" maxOccurs="1" name="strSite" type="s:string" />
+            <s:element minOccurs="1" maxOccurs="1" name="strWeb" type="s:string" />
+          </s:sequence>
+        </s:complexType>
+      </s:element>
+      <s:element name="GetSite">
+        <s:complexType />
+      </s:element>
+      <s:element name="GetSiteResponse">
+        <s:complexType>
+          <s:sequence>
+            <s:element minOccurs="1" maxOccurs="1" name="GetSiteResult" type="s:unsignedInt" />
+            <s:element minOccurs="1" maxOccurs="1" name="sSiteMetadata" type="tns:_sSiteMetadata" />
+            <s:element minOccurs="0" maxOccurs="1" name="vWebs" type="tns:ArrayOf_sWebWithTime" />
+            <s:element minOccurs="0" maxOccurs="1" name="strUsers" type="s:string" />
+            <s:element minOccurs="1" maxOccurs="1" name="strGroups" type="s:string" />
+            <s:element minOccurs="1" maxOccurs="1" name="vGroups" type="tns:ArrayOfString" />
+          </s:sequence>
+        </s:complexType>
+      </s:element>
+      <s:complexType name="_sSiteMetadata">
+        <s:sequence>
+          <s:element minOccurs="1" maxOccurs="1" name="LastModified" type="s:dateTime" />
+          <s:element minOccurs="1" maxOccurs="1" name="LastModifiedForceRecrawl" type="s:dateTime" />
+          <s:element minOccurs="1" maxOccurs="1" name="SmallSite" type="s:boolean" />
+          <s:element minOccurs="1" maxOccurs="1" name="PortalUrl" type="s:string" />
+          <s:element minOccurs="0" maxOccurs="1" name="UserProfileGUID" type="s:string" />
+          <s:element minOccurs="1" maxOccurs="1" name="ValidSecurityInfo" type="s:boolean" />
+        </s:sequence>
+      </s:complexType>
+      <s:complexType name="ArrayOf_sWebWithTime">
+        <s:sequence>
+          <s:element minOccurs="0" maxOccurs="unbounded" name="_sWebWithTime" type="tns:_sWebWithTime" />
+        </s:sequence>
+      </s:complexType>
+      <s:complexType name="_sWebWithTime">
+        <s:sequence>
+          <s:element minOccurs="1" maxOccurs="1" name="Url" type="s:string" />
+          <s:element minOccurs="1" maxOccurs="1" name="LastModified" type="s:dateTime" />
+        </s:sequence>
+      </s:complexType>
+      <s:complexType name="ArrayOfString">
+        <s:sequence>
+          <s:element minOccurs="0" maxOccurs="unbounded" name="string" nillable="true" type="s:string" />
+        </s:sequence>
+      </s:complexType>
+      <s:element name="GetWeb">
+        <s:complexType />
+      </s:element>
+      <s:element name="GetWebResponse">
+        <s:complexType>
+          <s:sequence>
+            <s:element minOccurs="1" maxOccurs="1" name="GetWebResult" type="s:unsignedInt" />
+            <s:element minOccurs="1" maxOccurs="1" name="sWebMetadata" type="tns:_sWebMetadata" />
+            <s:element minOccurs="1" maxOccurs="1" name="vWebs" type="tns:ArrayOf_sWebWithTime" />
+            <s:element minOccurs="1" maxOccurs="1" name="vLists" type="tns:ArrayOf_sListWithTime" />
+            <s:element minOccurs="0" maxOccurs="1" name="vFPUrls" type="tns:ArrayOf_sFPUrl" />
+            <s:element minOccurs="0" maxOccurs="1" name="strRoles" type="s:string" />
+            <s:element minOccurs="0" maxOccurs="1" name="vRolesUsers" type="tns:ArrayOfString" />
+            <s:element minOccurs="0" maxOccurs="1" name="vRolesGroups" type="tns:ArrayOfString" />
+          </s:sequence>
+        </s:complexType>
+      </s:element>
+      <s:complexType name="_sWebMetadata">
+        <s:sequence>
+          <s:element minOccurs="1" maxOccurs="1" name="WebID" type="s:string" />
+          <s:element minOccurs="1" maxOccurs="1" name="Title" type="s:string" />
+          <s:element minOccurs="1" maxOccurs="1" name="Description" type="s:string" />
+          <s:element minOccurs="1" maxOccurs="1" name="Author" type="s:string" />
+          <s:element minOccurs="1" maxOccurs="1" name="Language" type="s:unsignedInt" />
+          <s:element minOccurs="1" maxOccurs="1" name="LastModified" type="s:dateTime" />
+          <s:element minOccurs="1" maxOccurs="1" name="LastModifiedForceRecrawl" type="s:dateTime" />
+          <s:element minOccurs="0" maxOccurs="1" name="NoIndex" type="s:string" />
+          <s:element minOccurs="1" maxOccurs="1" name="ValidSecurityInfo" type="s:boolean" />
+          <s:element minOccurs="1" maxOccurs="1" name="InheritedSecurity" type="s:boolean" />
+          <s:element minOccurs="1" maxOccurs="1" name="AllowAnonymousAccess" type="s:boolean" />
+          <s:element minOccurs="1" maxOccurs="1" name="AnonymousViewListItems" type="s:boolean" />
+          <s:element minOccurs="1" maxOccurs="1" name="Permissions" type="s:string" />
+          <s:element minOccurs="1" maxOccurs="1" name="ExternalSecurity" type="s:boolean" />
+          <s:element minOccurs="0" maxOccurs="1" name="CategoryId" type="s:string" />
+          <s:element minOccurs="0" maxOccurs="1" name="CategoryName" type="s:string" />
+          <s:element minOccurs="0" maxOccurs="1" name="CategoryIdPath" type="s:string" />
+          <s:element minOccurs="1" maxOccurs="1" name="IsBucketWeb" type="s:boolean" />
+          <s:element minOccurs="1" maxOccurs="1" name="UsedInAutocat" type="s:boolean" />
+          <s:element minOccurs="0" maxOccurs="1" name="CategoryBucketID" type="s:string" />
+        </s:sequence>
+      </s:complexType>
+      <s:complexType name="ArrayOf_sListWithTime">
+        <s:sequence>
+          <s:element minOccurs="0" maxOccurs="unbounded" name="_sListWithTime" type="tns:_sListWithTime" />
+        </s:sequence>
+      </s:complexType>
+      <s:complexType name="_sListWithTime">
+        <s:sequence>
+          <s:element minOccurs="1" maxOccurs="1" name="InternalName" type="s:string" />
+          <s:element minOccurs="1" maxOccurs="1" name="LastModified" type="s:dateTime" />
+          <s:element minOccurs="1" maxOccurs="1" name="IsEmpty" type="s:boolean" />
+        </s:sequence>
+      </s:complexType>
+      <s:complexType name="ArrayOf_sFPUrl">
+        <s:sequence>
+          <s:element minOccurs="0" maxOccurs="unbounded" name="_sFPUrl" type="tns:_sFPUrl" />
+        </s:sequence>
+      </s:complexType>
+      <s:complexType name="_sFPUrl">
+        <s:sequence>
+          <s:element minOccurs="1" maxOccurs="1" name="Url" type="s:string" />
+          <s:element minOccurs="1" maxOccurs="1" name="LastModified" type="s:dateTime" />
+          <s:element minOccurs="1" maxOccurs="1" name="IsFolder" type="s:boolean" />
+        </s:sequence>
+      </s:complexType>
+      <s:element name="GetList">
+        <s:complexType>
+          <s:sequence>
+            <s:element minOccurs="1" maxOccurs="1" name="strListName" type="s:string" />
+          </s:sequence>
+        </s:complexType>
+      </s:element>
+      <s:element name="GetListResponse">
+        <s:complexType>
+          <s:sequence>
+            <s:element minOccurs="1" maxOccurs="1" name="GetListResult" type="s:unsignedInt" />
+            <s:element minOccurs="1" maxOccurs="1" name="sListMetadata" type="tns:_sListMetadata" />
+            <s:element minOccurs="1" maxOccurs="1" name="vProperties" type="tns:ArrayOf_sProperty" />
+          </s:sequence>
+        </s:complexType>
+      </s:element>
+      <s:complexType name="_sListMetadata">
+        <s:sequence>
+          <s:element minOccurs="1" maxOccurs="1" name="Title" type="s:string" />
+          <s:element minOccurs="1" maxOccurs="1" name="Description" type="s:string" />
+          <s:element minOccurs="1" maxOccurs="1" name="BaseType" type="tns:ListBaseType" />
+          <s:element minOccurs="1" maxOccurs="1" name="BaseTemplate" type="tns:ListBaseTemplate" />
+          <s:element minOccurs="1" maxOccurs="1" name="DefaultViewUrl" type="s:string" />
+          <s:element minOccurs="1" maxOccurs="1" name="LastModified" type="s:dateTime" />
+          <s:element minOccurs="1" maxOccurs="1" name="LastModifiedForceRecrawl" type="s:dateTime" />
+          <s:element minOccurs="1" maxOccurs="1" name="Author" type="s:string" />
+          <s:element minOccurs="1" maxOccurs="1" name="ValidSecurityInfo" type="s:boolean" />
+          <s:element minOccurs="1" maxOccurs="1" name="InheritedSecurity" type="s:boolean" />
+          <s:element minOccurs="1" maxOccurs="1" name="AllowAnonymousAccess" type="s:boolean" />
+          <s:element minOccurs="1" maxOccurs="1" name="AnonymousViewListItems" type="s:boolean" />
+          <s:element minOccurs="1" maxOccurs="1" name="ReadSecurity" type="s:int" />
+          <s:element minOccurs="0" maxOccurs="1" name="Permissions" type="s:string" />
+        </s:sequence>
+      </s:complexType>
+      <s:simpleType name="ListBaseType">
+        <s:restriction base="s:string">
+          <s:enumeration value="UnspecifiedBaseType"/>
+          <s:enumeration value="GenericList"/>
+          <s:enumeration value="DocumentLibrary"/>
+          <s:enumeration value="Unused"/>
+          <s:enumeration value="DiscussionBoard"/>
+          <s:enumeration value="Survey"/>
+          <s:enumeration value="Issue"/>
+        </s:restriction>
+      </s:simpleType>
+      <s:simpleType name="ListBaseTemplate" >
+        <s:restriction base="s:string">
+        <s:enumeration value="InvalidType"/>
+        <s:enumeration value="GenericList"/>
+        <s:enumeration value="DocumentLibrary"/>
+        <s:enumeration value="Survey"/>
+        <s:enumeration value="Links"/>
+        <s:enumeration value="Announcements"/>
+        <s:enumeration value="Contacts"/>
+        <s:enumeration value="Events"/>
+        <s:enumeration value="Tasks"/>
+        <s:enumeration value="DiscussionBoard"/>
+        <s:enumeration value="PictureLibrary"/>
+        <s:enumeration value="DataSources"/>
+        <s:enumeration value="WebTemplateCatalog"/>
+        <s:enumeration value="UserInformation"/>
+        <s:enumeration value="WebPartCatalog"/>
+        <s:enumeration value="ListTemplateCatalog"/>
+        <s:enumeration value="XMLForm"/>
+        <s:enumeration value="MasterPageCatalog"/>
+        <s:enumeration value="NoCodeWorkflows"/>
+        <s:enumeration value="WorkflowProcess"/>
+        <s:enumeration value="WebPageLibrary"/>
+        <s:enumeration value="CustomGrid"/>
+        <s:enumeration value="DataConnectionLibrary"/>
+        <s:enumeration value="WorkflowHistory"/>
+        <s:enumeration value="GanttTasks"/>
+        <s:enumeration value="Meetings"/>
+        <s:enumeration value="Agenda"/>
+        <s:enumeration value="MeetingUser"/>
+        <s:enumeration value="Decision"/>
+        <s:enumeration value="MeetingObjective"/>
+        <s:enumeration value="TextBox"/>
+        <s:enumeration value="ThingsToBring"/>
+        <s:enumeration value="HomePageLibrary"/>
+        <s:enumeration value="Posts"/>
+        <s:enumeration value="Comments"/>
+        <s:enumeration value="Categories"/>
+        <s:enumeration value="IssueTracking"/>
+        <s:enumeration value="AdminTasks"/>
+        </s:restriction>
+      </s:simpleType>
+      <s:complexType name="ArrayOf_sProperty">
+        <s:sequence>
+          <s:element minOccurs="0" maxOccurs="unbounded" name="_sProperty" type="tns:_sProperty" />
+        </s:sequence>
+      </s:complexType>
+      <s:complexType name="_sProperty">
+        <s:sequence>
+          <s:element minOccurs="1" maxOccurs="1" name="Name" type="s:string" />
+          <s:element minOccurs="1" maxOccurs="1" name="Title" type="s:string" />
+          <s:element minOccurs="1" maxOccurs="1" name="Type" type="s:string" />
+        </s:sequence>
+      </s:complexType>
+      <s:element name="GetListItems">
+        <s:complexType>
+          <s:sequence>
+            <s:element minOccurs="0" maxOccurs="1" name="strListName" type="s:string" />
+            <s:element minOccurs="0" maxOccurs="1" name="strQuery" type="s:string" />
+            <s:element minOccurs="0" maxOccurs="1" name="strViewFields" type="s:string" />
+            <s:element minOccurs="1" maxOccurs="1" name="uRowLimit" type="s:unsignedInt" />
+          </s:sequence>
+        </s:complexType>
+      </s:element>
+      <s:element name="GetListItemsResponse">
+        <s:complexType>
+          <s:sequence>
+            <s:element minOccurs="1" maxOccurs="1" name="GetListItemsResult" type="s:string" />
+          </s:sequence>
+        </s:complexType>
+      </s:element>
+      <s:element name="EnumerateFolder">
+        <s:complexType>
+          <s:sequence>
+            <s:element minOccurs="1" maxOccurs="1" name="strFolderUrl" type="s:string" />
+          </s:sequence>
+        </s:complexType>
+      </s:element>
+      <s:element name="EnumerateFolderResponse">
+        <s:complexType>
+          <s:sequence>
+            <s:element minOccurs="1" maxOccurs="1" name="EnumerateFolderResult" type="s:unsignedInt" />
+            <s:element minOccurs="0" maxOccurs="1" name="vUrls" type="tns:ArrayOf_sFPUrl" />
+          </s:sequence>
+        </s:complexType>
+      </s:element>
+      <s:element name="GetAttachments">
+        <s:complexType>
+          <s:sequence>
+            <s:element minOccurs="1" maxOccurs="1" name="strListName" type="s:string" />
+            <s:element minOccurs="1" maxOccurs="1" name="strItemId" type="s:string" />
+          </s:sequence>
+        </s:complexType>
+      </s:element>
+      <s:element name="GetAttachmentsResponse">
+        <s:complexType>
+          <s:sequence>
+            <s:element minOccurs="1" maxOccurs="1" name="GetAttachmentsResult" type="s:unsignedInt" />
+            <s:element minOccurs="0" maxOccurs="1" name="vAttachments" type="tns:ArrayOfString" />
+          </s:sequence>
+        </s:complexType>
+      </s:element>
+      <s:element name="GetURLSegments">
+        <s:complexType>
+          <s:sequence>
+            <s:element minOccurs="1" maxOccurs="1" name="strURL" type="s:string" />
+          </s:sequence>
+        </s:complexType>
+      </s:element>
+      <s:element name="GetURLSegmentsResponse">
+        <s:complexType>
+          <s:sequence>
+            <s:element minOccurs="1" maxOccurs="1" name="GetURLSegmentsResult" type="s:boolean" />
+            <s:element minOccurs="0" maxOccurs="1" name="strWebID" type="s:string" />
+            <s:element minOccurs="0" maxOccurs="1" name="strBucketID" type="s:string" />
+            <s:element minOccurs="0" maxOccurs="1" name="strListID" type="s:string" />
+            <s:element minOccurs="0" maxOccurs="1" name="strItemID" type="s:string" />
+          </s:sequence>
+        </s:complexType>
+      </s:element>
+      <s:element name="GetListCollection">
+        <s:complexType />
+      </s:element>
+      <s:element name="GetListCollectionResponse">
+        <s:complexType>
+          <s:sequence>
+            <s:element minOccurs="1" maxOccurs="1" name="GetListCollectionResult" type="s:unsignedInt" />
+            <s:element minOccurs="1" maxOccurs="1" name="vLists" type="tns:ArrayOf_sList" />
+          </s:sequence>
+        </s:complexType>
+      </s:element>
+      <s:complexType name="ArrayOf_sList">
+        <s:sequence>
+          <s:element minOccurs="0" maxOccurs="unbounded" name="_sList" type="tns:_sList" />
+        </s:sequence>
+      </s:complexType>
+      <s:complexType name="_sList">
+        <s:sequence>
+          <s:element minOccurs="1" maxOccurs="1" name="InternalName" type="s:string" />
+          <s:element minOccurs="1" maxOccurs="1" name="Title" type="s:string" />
+          <s:element minOccurs="1" maxOccurs="1" name="Description" type="s:string" />
+          <s:element minOccurs="1" maxOccurs="1" name="BaseType"
+                     type="tns:ListBaseType" />
+          <s:element minOccurs="1" maxOccurs="1" name="BaseTemplate"
+                     type="tns:ListBaseTemplate" />
+          <s:element minOccurs="1" maxOccurs="1" name="DefaultViewUrl" type="s:string" />
+          <s:element minOccurs="1" maxOccurs="1" name="LastModified" type="s:string" />
+          <s:element minOccurs="0" maxOccurs="1" name="PermId" type="s:string" />
+          <s:element minOccurs="1" maxOccurs="1" name="InheritedSecurity"
+                     type="s:boolean" />
+          <s:element minOccurs="1" maxOccurs="1" name="AllowAnonymousAccess"
+                     type="s:boolean" />
+          <s:element minOccurs="1" maxOccurs="1" name="AnonymousViewListItems"
+                     type="s:boolean" />
+          <s:element minOccurs="1" maxOccurs="1" name="ReadSecurity" type="s:int" />
+        </s:sequence>
+      </s:complexType>
+
+      <s:element name="GetContent">
+        <s:complexType>
+          <s:sequence>
+            <s:element minOccurs="1" maxOccurs="1" name="objectType" type="tns:ObjectType" />
+            <s:element minOccurs="0" maxOccurs="1" name="objectId" type="s:string" />
+            <s:element minOccurs="0" maxOccurs="1" name="folderUrl" type="s:string" />
+            <s:element minOccurs="0" maxOccurs="1" name="itemId" type="s:string" />
+            <s:element minOccurs="1" maxOccurs="1" name="retrieveChildItems" type="s:boolean" />
+            <s:element minOccurs="1" maxOccurs="1" name="securityOnly" type="s:boolean" />
+            <s:element minOccurs="0" maxOccurs="1" name="lastItemIdOnPage" type="s:string" />
+          </s:sequence>
+        </s:complexType>
+      </s:element>
+      <s:simpleType name="ObjectType">
+        <s:restriction base="s:string">
+          <s:enumeration value="VirtualServer" />
+          <s:enumeration value="ContentDatabase" />
+          <s:enumeration value="SiteCollection" />
+          <s:enumeration value="Site" />
+          <s:enumeration value="List" />
+          <s:enumeration value="Folder" />
+          <s:enumeration value="ListItem" />
+          <s:enumeration value="ListItemAttachments" />
+        </s:restriction>
+      </s:simpleType>
+      <s:element name="GetContentResponse">
+        <s:complexType>
+          <s:sequence>
+            <s:element minOccurs="1" maxOccurs="1" name="GetContentResult" type="s:string" />
+            <s:element minOccurs="0" maxOccurs="1" name="lastItemIdOnPage" type="s:string" />
+          </s:sequence>
+        </s:complexType>
+      </s:element>
+      <s:element name="GetSiteUrl">
+        <s:complexType>
+          <s:sequence>
+            <s:element minOccurs="1" maxOccurs="1" name="Url" type="s:string" />
+          </s:sequence>
+        </s:complexType>
+      </s:element>
+      <s:element name="GetSiteUrlResponse">
+        <s:complexType>
+          <s:sequence>
+            <s:element minOccurs="1" maxOccurs="1" name="GetSiteUrlResult" type="s:unsignedInt" />
+            <s:element minOccurs="1" maxOccurs="1" name="siteUrl" type="s:string" />
+            <s:element minOccurs="1" maxOccurs="1" name="siteId" type="s:string" />
+          </s:sequence>
+        </s:complexType>
+      </s:element>
+      <s:element name="GetChanges">
+        <s:complexType>
+          <s:sequence>
+            <s:element minOccurs="0" maxOccurs="1" name="objectType" type="tns:ObjectType" />
+            <s:element minOccurs="0" maxOccurs="1" name="contentDatabaseId" type="s:string" />
+            <s:element minOccurs="1" maxOccurs="1" name="LastChangeId" type="s:string" />
+            <s:element minOccurs="0" maxOccurs="1" name="CurrentChangeId" type="s:string" />
+            <s:element minOccurs="0" maxOccurs="1" name="Timeout" type="s:int" />
+          </s:sequence>
+        </s:complexType>
+      </s:element>
+      <s:element name="GetChangesResponse">
+        <s:complexType>
+          <s:sequence>
+            <s:element minOccurs="1" maxOccurs="1" name="GetChangesResult" type="s:string" />
+            <s:element minOccurs="1" maxOccurs="1" name="LastChangeId" type="s:string" />
+            <s:element minOccurs="1" maxOccurs="1" name="CurrentChangeId" type="s:string" />
+            <s:element minOccurs="1" maxOccurs="1" name="moreChanges" type="s:boolean" />
+          </s:sequence>
+        </s:complexType>
+      </s:element>
+      <s:complexType name="ACL">
+        <s:sequence>
+          <s:element name="permissions" type="tns:permissionsForACL"/>
+        </s:sequence>
+      </s:complexType>
+      <s:complexType name="ContentDatabaseMetadata">
+        <s:attribute name="ChangeId" type="s:string" use="required"/>
+        <s:attribute name="ID" type="s:string" use="required"/>
+      </s:complexType>
+      <s:complexType name="Field">
+        <s:attribute name="Name" type="s:string" use="required"/>
+        <s:attribute name="Type" type="s:string" use="required"/>
+        <s:attribute name="TypeAsString" type="s:string" use="optional"/>
+        <s:attribute name="Title" type="s:string" use="required"/>
+        <s:attribute name="IsSurveyQuestion" type="tns:TrueFalseType" use="optional"/>
+        <s:attribute name="ID" type="s:string" use="optional"/>
+        <s:attribute name="SourceId" type="s:string" use="optional"/>
+        <s:attribute name="Indexed" type="s:boolean" use="optional"/>
+      </s:complexType>
+      <s:complexType name="GroupDescription">
+        <s:simpleContent>
+          <s:extension base="s:string">
+            <s:attribute name="ID" type="s:int" use="required"/>
+            <s:attribute name="Name" type="s:string" use="required"/>
+            <s:attribute name="Description" type="s:string" use="required"/>
+            <s:attribute name="OwnerID" type="s:int" use="required"/>
+            <s:attribute name="OwnerIsUser" type="tns:TrueFalseType" use="required"/>
+          </s:extension>
+        </s:simpleContent>
+      </s:complexType>
+<s:complexType name='GroupMembership'>
+  <s:sequence>
+    <s:element name='Group' maxOccurs='unbounded'>
+      <s:complexType>
+        <s:sequence>
+          <s:element name='Group' type='tns:GroupDescription'/>
+          <s:element name='Users' type='tns:Users'/>
+        </s:sequence>
+      </s:complexType>
+    </s:element>
+  </s:sequence>
+</s:complexType>
+      <s:complexType name="Groups">
+        <s:sequence>
+          <s:element minOccurs="0" maxOccurs="unbounded" name="Group" 
+           type="tns:GroupDescription"/>
+        </s:sequence>
+      </s:complexType>
+      <s:complexType name="ListMetadata">
+        <s:attribute name="ID" type="s:string" use="required"/>
+        <s:attribute name="Title" type="s:string" use="required"/>
+        <s:attribute name="Description" type="s:string" use="required"/>
+        <s:attribute name="DefaultViewUrl" type="s:string" use="required"/>
+        <s:attribute name="DefaultViewItemUrl" type="s:string" use="required"/>
+        <s:attribute name="DefaultTitle" type="s:string" use="required"/>
+        <s:attribute name="ScopeID" type="s:string"/>
+        <s:attribute name="RootFolder" type="s:string" use="required"/>
+        <s:attribute name="ReadSecurity" type="s:int" use="required"/>
+        <s:attribute name="NoIndex" type="tns:TrueFalseType" use="required"/>
+        <s:attribute name="BaseType" type="tns:ListBaseType" use="required"/>
+        <s:attribute name="BaseTemplate" type="tns:ListBaseTemplate" use="required"/>
+        <s:attribute name="Author" type="s:string" use="required"/>
+        <s:attribute name="AnonymousViewListItems" type="tns:TrueFalseType" use="required"/>
+        <s:attribute name="AnonymousPermMask" type="s:unsignedLong" use="required"/>
+        <s:attribute name="AnonymousPermMaskRaw" type="s:unsignedLong" use="optional"/>
+        <s:attribute name="AllowAnonymousAccess" type="tns:TrueFalseType" use="required"/>
+        <s:attribute name="LastModified" type="s:string" use="required"/>
+        <s:attribute name="ItemCount" type="s:int" use="required"/>
+        <s:attribute name="CRC" type="s:unsignedInt" use="required"/>
+      </s:complexType>
+      <s:complexType name="permission">
+        <s:attribute name="memberid" type="s:int" use="required"/>
+        <s:attribute name="mask" type="s:unsignedLong" use="required"/>
+      </s:complexType>
+      <s:complexType name="SPSiteMetadata">
+        <s:attribute name="SiteSubscriptionId" type="s:string"/>
+        <s:attribute name="URL" type="s:string" use="required"/>
+        <s:attribute name="ID" type="s:string" use="required"/>
+        <s:attribute name="LastModified" type="s:string" use="required"/>
+        <s:attribute name="PortalURL" type="s:string" use="required"/>
+        <s:attribute name="UserProfileGUID" type="s:string" use="required"/>
+        <s:attribute name="RootWebId" type="s:string" use="required"/>
+        <s:attribute name="ChangeId" type="s:string" use="required"/>
+        <s:attribute name="ContentDatabaseId" type="s:string" use="required" />
+      </s:complexType>
+      <s:complexType name="SPWebAppMetadata">
+        <s:attribute name="ID" type="s:string" use="optional"/>
+        <s:attribute name="Version" type="s:string" use="optional"/>
+        <s:attribute name="URL" type="s:string" use="required"/>
+        <s:attribute name="URLZone" type="s:string" use="optional"/>
+        <s:attribute name="URLIsHostHeader" type="tns:TrueFalseType" use="optional"/>
+      </s:complexType>
+      <s:complexType name="Users">
+        <s:sequence>
+          <s:element minOccurs="0" maxOccurs="unbounded" name="User" type="tns:UserDescription"/>
+        </s:sequence>
+      </s:complexType>
+      <s:complexType name="View">
+        <s:attribute name="URL" type="s:string" use="required"/>
+        <s:attribute name="Title" type="s:string" use="required"/>
+        <s:attribute name="ID" type="s:string" use="required"/>
+        <s:attribute name="AllowedInRoot" type="tns:TrueFalseType" use="optional"/>
+      </s:complexType>
+      <s:complexType name="WebMetadata">
+        <s:attribute name="URL" type="s:string" use="required"/>
+        <s:attribute name="LastModified" type="s:string" use="required"/>
+        <s:attribute name="Created" type="s:string" use="required"/>
+        <s:attribute name="ID" type="s:string" use="required"/>
+        <s:attribute name="Title" type="s:string" use="required"/>
+        <s:attribute name="Description" type="s:string" use="required"/>
+        <s:attribute name="LogoURL" type="s:string"/>
+        <s:attribute name="LogoDescription" type="s:string"/>
+        <s:attribute name="Author" type="s:string" use="required"/>
+        <s:attribute name="Language" type="s:unsignedShort" use="required"/>
+        <s:attribute name="CRC" type="s:unsignedInt" use="required"/>
+        <s:attribute name="NoIndex" type="s:string" use="required"/>
+        <s:attribute name="UseFormsForDisplay" type="tns:TrueFalseType" use="optional"/>
+        <s:attribute name="DefaultHomePage" type="s:string" use="required"/>
+        <s:attribute name="DefaultHomePageListId" type="s:string" use="optional"/>
+        <s:attribute name="DefaultHomePageItemId" type="s:integer" use="optional"/>
+        <s:attribute name="ExternalSecurity" type="tns:TrueFalseType" use="required"/>
+        <s:attribute name="ScopeID" type="s:string"/>
+        <s:attribute name="AllowAnonymousAccess" type="tns:TrueFalseType" use="required"/>
+        <s:attribute name="AnonymousViewListItems" type="tns:TrueFalseType" use="required"/>
+        <s:attribute name="AnonymousPermMask" type="s:unsignedLong" use="required"/>
+      </s:complexType>
+      <s:complexType name="Webs">
+        <s:sequence>
+          <s:element minOccurs="0" maxOccurs="unbounded" name="Web">
+            <s:complexType>
+              <s:attribute name="URL" type="s:string" use="required"/>
+              <s:attribute name="ID" type="s:string" use="required"/>
+              <s:attribute name="LastModified" type="s:string" use="required"/>
+            </s:complexType>
+          </s:element>
+        </s:sequence>
+      </s:complexType>
+      <s:element name="SPContentDatabase">
+       <s:complexType>
+        <s:sequence>
+          <s:element name="ContentDatabase">
+            <s:complexType>
+              <s:sequence>
+                <s:element name="Metadata" type="tns:ContentDatabaseMetadata"/>
+              </s:sequence>
+            </s:complexType>
+          </s:element>
+          <s:element ref="tns:SPSite" minOccurs="0" maxOccurs="unbounded"/>
+        </s:sequence>
+        <s:attribute name="ItemCount" type="s:int" use="required"/>
+        <s:attribute name="Change" type="s:string" use="required"/>
+       </s:complexType>
+      </s:element>
+      <s:element name="SPSite">
+       <s:complexType>
+        <s:sequence>
+       <s:element name="Messages" >
+         <s:complexType>
+           <s:sequence>
+             <s:element name="Message" type="tns:Message" minOccurs="0" maxOccurs="unbounded" />
+           </s:sequence>
+         </s:complexType>
+       </s:element>
+          <s:element name="Site" minOccurs="0">
+            <s:complexType>
+              <s:sequence>
+                <s:element name="Metadata" type="tns:SPSiteMetadata"/>
+                <s:element name="Groups" type="tns:GroupMembership"/>
+              </s:sequence>
+            </s:complexType>
+          </s:element>
+          <s:element ref="tns:SPWeb" minOccurs="0" maxOccurs="unbounded"/>
+        </s:sequence>
+        <s:attribute name="ItemCount" type="s:int" use="required"/>
+        <s:attribute name="Change" type="s:string" use="required"/>
+        <s:attribute name="UpdateSecurity" type="tns:TrueFalseType" use="optional"/>
+        <s:attribute name="Id" type="s:string" use="optional"/>
+        <s:attribute name="ParentId" type="s:string" use="optional"/>
+        <s:attribute name="InternalUrl" type="s:string" use="optional"/>
+        <s:attribute name="DisplayUrl" type="s:string" use="optional"/>
+        <s:attribute name="CRC" type="s:int" use="optional"/>
+        <s:attribute name="ServerUrl" type="s:string" use="optional"/>
+        <s:attribute name="SequenceNumber" type="s:string" use="optional"/>
+        <s:attribute name="PresentInFarm" type="tns:TrueFalseType" use="optional"/>
+       </s:complexType>
+      </s:element>
+   <s:complexType name="Message">
+      <s:sequence>
+        <s:element name="Exception" minOccurs="1" maxOccurs="1" type="s:string" >
+        </s:element>
+        <s:element name="ChangeInfo" minOccurs="1" maxOccurs="1">
+         <s:complexType>
+          <s:attribute name="SiteId" type="s:string" use="required" />
+          <s:attribute name="WebId" type="s:string" use="optional" />
+          <s:attribute name="ListId" type="s:string" use="optional" />
+          <s:attribute name="AlertId" type="s:string" use="optional" />
+          <s:attribute name="Id" type="s:string" use="optional" />
+          <s:attribute name="FieldId" type="s:string" use="optional" />
+          <s:attribute name="Url" type="s:string" use="optional" />
+          <s:attribute name="DocId" type="s:string" use="optional" />
+          <s:attribute name="UserId" type="s:string" use="optional" />
+          <s:attribute name="Activate" type="s:boolean" use="optional" />
+          <s:attribute name="IsSiteAdminChange" type="s:boolean" use="optional" />
+         </s:complexType>
+        </s:element>
+      </s:sequence>
+      <s:attribute name="ChangeToken" type="s:string" use="required" />
+      <s:attribute name="ChangeObject" type="tns:ChangeObject" use="required" />
+      <s:attribute name="ChangeType" type="tns:ChangeType" use="required" />
+    </s:complexType>
+    <s:element name="SPView">
+      <s:complexType>
+        <s:attribute name="ItemCount" type="s:int" use="required"/>
+        <s:attribute name="Change" type="s:string" use="required"/>
+        <s:attribute name="Id" type="s:string" use="optional"/>
+        <s:attribute name="ServerUrl" type="s:anyURI" use="optional"/>
+        <s:attribute name="DisplayUrl" type="s:string" use="optional"/>
+        <s:attribute name="ParentId" type="s:string" use="optional"/>
+        <s:attribute name="UpdateSecurity" type="tns:TrueFalseType" use="optional"/>
+        <s:attribute name="InternalUrl" type="s:string" use="optional"/>
+        <s:attribute name="CRC" type="s:int" use="optional"/>
+        <s:attribute name="SequenceNumber" type="s:string" use="optional"/>
+      </s:complexType>
+     </s:element>
+     <s:element name="SPWeb">
+       <s:complexType>
+        <s:sequence>
+          <s:element name="Web">
+            <s:complexType>
+              <s:sequence>
+                <s:element name="Metadata" minOccurs="0" type="tns:WebMetadata"/>
+                <s:element name="Users" minOccurs="0" type="tns:Users"/>
+                <s:element name="ACL" minOccurs="0" type="tns:ACL"/>
+                <s:element name="Webs" minOccurs="0" type="tns:Webs"/>
+                <s:element name="Lists" minOccurs="0" type="tns:Lists"/>
+              </s:sequence>
+            </s:complexType>
+          </s:element>
+          <s:choice maxOccurs="unbounded">
+            <s:element ref="tns:SPFolder"/>
+            <s:element ref="tns:SPList"/>
+            <s:element ref="tns:SPFile"/>
+          </s:choice>
+        </s:sequence>
+        <s:attribute name="ItemCount" type="s:int" use="required"/>
+        <s:attribute name="Change" type="s:string" use="required"/>
+        <s:attribute name="UpdateSecurity" type="tns:TrueFalseType" use="optional"/>
+        <s:attribute name="Id" type="s:string" use="optional"/>
+        <s:attribute name="ParentId" type="s:string" use="optional"/>
+        <s:attribute name="InternalUrl" type="s:string" use="optional"/>
+        <s:attribute name="DisplayUrl" type="s:string" use="optional"/>
+        <s:attribute name="CRC" type="s:int" use="optional"/>
+        <s:attribute name="ServerUrl" type="s:string" use="optional"/>
+        <s:attribute name="SequenceNumber" type="s:string" use="optional"/>
+      </s:complexType>
+    </s:element>
+      <s:element name="ContentDatabase">
+        <s:complexType>
+          <s:sequence>
+            <s:element name="Metadata" type="tns:ContentDatabaseMetadata" minOccurs="1" maxOccurs="1"/>
+            <s:element name="Sites" type="tns:Sites" minOccurs="0" maxOccurs="1"/>
+          </s:sequence>
+        </s:complexType>
+      </s:element>
+      <s:element name="FPFolder" type="tns:FolderData"/>
+      <s:element name="Item">
+        <s:complexType>
+          <s:sequence>
+            <s:element maxOccurs="unbounded" name="Attachment">
+              <s:complexType>
+                <s:attribute name="URL" type="s:string" use="required"/>
+              </s:complexType>
+            </s:element>
+          </s:sequence>
+          <s:attribute name="Count" type="s:unsignedInt" use="required"/>
+        </s:complexType>
+      </s:element>
+      <s:element name="List" type="tns:List"/>
+      <s:element name="Site">
+        <s:complexType>
+          <s:sequence>
+            <s:element name="Metadata" type="tns:SPSiteMetadata" minOccurs="1" maxOccurs="1"/>
+            <s:element name="Groups" type="tns:GroupMembership" minOccurs="1" maxOccurs="1"/>
+            <s:element name="Web" type="tns:Web" minOccurs="0" maxOccurs="1"/>
+          </s:sequence>
+        </s:complexType>
+      </s:element>
+      <s:element name="VirtualServer">
+        <s:complexType>
+          <s:sequence>
+            <s:element name="Metadata" type="tns:SPWebAppMetadata" minOccurs="1" maxOccurs="1"/>
+            <s:element name="ContentDatabases" type="tns:ContentDatabases" minOccurs="0" maxOccurs="1"/>
+            <s:element name="Policies" type="tns:Policies" minOccurs="0" maxOccurs="1"/>
+            <s:element name="Servers" minOccurs="0">
+              <s:complexType>
+                <s:sequence>
+                  <s:element name="Server" minOccurs="0" maxOccurs="unbounded">
+                    <s:complexType>
+                      <s:attribute name="URL" type="s:string"/>
+                    </s:complexType>  
+                  </s:element>
+                </s:sequence>
+              </s:complexType>
+            </s:element>
+          </s:sequence>
+        </s:complexType>
+      </s:element>
+      <s:element name="Folder" type="tns:ItemData"/>
+      <s:complexType name="Web">
+          <s:sequence>
+            <s:element name="Metadata" type="tns:WebMetadata" minOccurs="1" maxOccurs="1"/>
+            <s:element name="Users" type="tns:Users" minOccurs="1" maxOccurs="1"/>
+            <s:element name="ACL" type="tns:ACL" minOccurs="1" maxOccurs="1"/>
+            <s:element name="Webs" type="tns:Webs" minOccurs="1" maxOccurs="1"/>
+            <s:element name="Lists" type="tns:Lists" minOccurs="1" maxOccurs="1"/>
+            <s:element name="FPFolder" type="tns:FolderData" minOccurs="0" maxOccurs="1"/>
+          </s:sequence>
+      </s:complexType>
+      <s:complexType name="ContentDatabases">
+        <s:sequence>
+          <s:element maxOccurs="unbounded" name="ContentDatabase">
+            <s:complexType>
+              <s:attribute name="ID" type="s:string" use="required"/>
+            </s:complexType>
+          </s:element>
+        </s:sequence>
+      </s:complexType>
+      <s:complexType name="Files">
+        <s:sequence>
+          <s:element name="File" minOccurs="0" maxOccurs="unbounded">
+            <s:complexType>
+              <s:attribute name="URL" type="s:string" use="required"/>
+              <s:attribute name="ID" type="s:string" use="required"/>
+              <s:attribute name="LastModified" type="s:string" use="required"/>
+            </s:complexType>
+          </s:element>
+        </s:sequence>
+      </s:complexType>
+      <s:complexType name="FolderData">
+        <s:sequence>
+          <s:element name="Folders" type="tns:Folders" minOccurs="0" maxOccurs="unbounded"/>
+          <s:element name="Files" type="tns:Files" minOccurs="0" maxOccurs="unbounded"/>
+        </s:sequence>
+      </s:complexType>
+      <s:complexType name="Folders">
+        <s:sequence>
+          <s:element name="Folder" minOccurs="0" maxOccurs="unbounded">
+            <s:complexType>
+              <s:attribute name="URL" type="s:string" use="required"/>
+              <s:attribute name="ID" type="s:string" use="required"/>
+              <s:attribute name="LastModified" type="s:string" use="required"/>
+            </s:complexType>
+          </s:element>
+        </s:sequence>
+      </s:complexType>
+      <s:complexType name="ItemData">
+        <s:sequence>
+          <s:element name="Metadata" type="tns:Metadata"/>
+          <s:element name="xml" type="tns:xml"/>
+        </s:sequence>
+      </s:complexType>
+      <s:complexType name="xml">
+        <s:sequence>
+          <s:any minOccurs="0" maxOccurs="unbounded"/>
+        </s:sequence>
+      </s:complexType>
+      <s:complexType name="Policies">
+        <s:sequence>
+          <s:element maxOccurs="unbounded" name="PolicyUser" type="tns:PolicyUser"/>
+        </s:sequence>
+        <s:attribute name="AnonymousGrantMask" type="s:unsignedLong" use="required"/>
+        <s:attribute name="AnonymousDenyMask" type="s:unsignedLong" use="required"/>
+      </s:complexType>
+      <s:complexType name="PolicyUser">
+        <s:attribute name="LoginName" type="s:string" use="required"/>
+        <s:attribute name="Sid" type="s:string" use="required"/>
+        <s:attribute name="GrantMask" type="s:unsignedLong" use="required"/>
+        <s:attribute name="DenyMask" type="s:unsignedLong" use="required"/>
+        <s:attribute name="BinaryIdentifier" type="s:string" use="optional" />
+        <s:attribute name="BinaryIdentifierType" type="s:string" use="optional" />
+      </s:complexType>
+      <s:complexType name="Sites">
+        <s:sequence>
+          <s:element maxOccurs="unbounded" name="Site">
+            <s:complexType>
+              <s:attribute name="URL" type="s:string" use="required"/>
+              <s:attribute name="ID" type="s:string" use="required"/>
+            </s:complexType>
+          </s:element>
+        </s:sequence>
+      </s:complexType>
+      <s:element name="GetChangesEx">
+        <s:complexType>
+          <s:sequence>
+            <s:element minOccurs="1" maxOccurs="1" name="version" type="s:int"/>
+            <s:element minOccurs="1" maxOccurs="1" name="xmlInput" type="s:string"/>
+          </s:sequence>
+        </s:complexType>
+      </s:element>
+      <s:element name="GetChangesExRequest">
+        <s:complexType>
+          <s:sequence>
+            <s:element minOccurs="1" maxOccurs="1" name="ObjectType" type="tns:ObjectType"/>
+            <s:element minOccurs="1" maxOccurs="1" name="ContentDatabaseId" type="s:string"/>
+            <s:element minOccurs="1" maxOccurs="1" name="StartChangeId" type="s:string"/>
+            <s:element minOccurs="0" maxOccurs="1" name="EndChangeId" type="s:string"/>
+      <s:element minOccurs="0" maxOccurs="1" name="IgnoreSecurityIfInherit" type="s:boolean" />
+      <s:element minOccurs="0" maxOccurs="1" name="GetMetadata" type="s:boolean" />
+      <s:element minOccurs="0" maxOccurs="1" name="RequestLoad" type="s:int" />
+          </s:sequence>
+        </s:complexType>
+      </s:element>
+      <s:element name="GetChangesExResponse">
+        <s:complexType>
+          <s:sequence>
+            <s:element minOccurs="1" maxOccurs="1" name="GetChangesExResult" 
+             type="s:string" />
+          </s:sequence>
+        </s:complexType>
+      </s:element>
+      <s:complexType name="Permissions">
+        <s:sequence>
+          <s:element name="Permission" type="tns:ListPermission" maxOccurs="unbounded"/>
+        </s:sequence>
+      </s:complexType>
+      <s:complexType name="ListPermission">
+        <s:attribute name="MemberID" type="s:int" use="required"/>
+        <s:attribute name="Mask" type="s:unsignedLong" use="required"/>
+        <s:attribute name="MemberIsUser" type="tns:TrueFalseType" use="required"/>
+        <s:attribute name="MemberGlobal" type="tns:TrueFalseType" use="required"/>
+        <s:attribute name="UserLogin" type="s:string"/>
+        <s:attribute name="GroupName" type="s:string"/>
+      </s:complexType>
+      <s:element name="Groups" type="tns:Groups"/>
+      <s:element name="Users" type="tns:Users"/>
+      <s:element name="Permissions">
+        <s:complexType>
+          <s:sequence>
+            <s:element maxOccurs="unbounded" name="Permission">
+              <s:complexType>
+                <s:attribute name="MemberID" type="s:int" use="required"/>
+                <s:attribute name="Mask" type="s:int" use="required"/>
+                <s:attribute name="MemberIsUser" type="tns:TrueFalseType" use="required"/>
+                <s:attribute name="MemberGlobal" type="tns:TrueFalseType" use="required"/>
+                <s:attribute name="RoleName" type="s:string" use="required"/>
+              </s:complexType>
+            </s:element>
+          </s:sequence>
+        </s:complexType>
+      </s:element>
+      <s:element name="Roles">
+        <s:complexType>
+          <s:sequence>
+            <s:element minOccurs="0" maxOccurs="unbounded" name="Role">
+              <s:complexType>
+                <s:attribute name="ID" type="s:unsignedInt" use="required"/>
+                <s:attribute name="Name" type="s:string" use="required"/>
+                <s:attribute name="Description" type="s:string" use="required"/>
+                <s:attribute name="Order" type="s:unsignedInt" use="required"/>
+                <s:attribute name="Hidden" type="tns:TrueFalseType" use="required"/>
+                <s:attribute name="Type" type="s:string" use="required"/>
+                <s:attribute name="BasePermissions" type="s:string" use="required"/>
+              </s:complexType>
+            </s:element>
+          </s:sequence>
+        </s:complexType>
+      </s:element>
+      <s:simpleType name="TrueFalseType">
+        <s:restriction base="s:string">
+        <s:enumeration value="True"/>
+        <s:enumeration value="False"/>
+        </s:restriction>
+      </s:simpleType>
+<s:simpleType name="ChangeType"  >
+        <s:restriction base="s:string">
+          <s:enumeration value="NoChange"/>
+          <s:enumeration value="Add"/>
+          <s:enumeration value="Update"/>
+          <s:enumeration value="Delete"/>
+          <s:enumeration value="Rename"/>
+          <s:enumeration value="MoveAway"/>
+          <s:enumeration value="MoveInto"/>
+          <s:enumeration value="Restore"/>
+          <s:enumeration value="RoleAdd"/>
+          <s:enumeration value="RoleDelete"/>
+          <s:enumeration value="RoleUpdate"/>
+          <s:enumeration value="AssignmentAdd"/>
+          <s:enumeration value="AssignmentDelete"/>
+          <s:enumeration value="MemberAdd"/>
+          <s:enumeration value="MemberDelete"/>
+          <s:enumeration value="SystemUpdate"/>
+          <s:enumeration value="Navigation"/>
+        </s:restriction>
+      </s:simpleType>
+
+      <s:simpleType name="ChangeObject"  >
+        <s:restriction base="s:string">
+          <s:enumeration value="Microsoft.SharePoint.SPChangeItem"/>
+          <s:enumeration value="Microsoft.SharePoint.SPChangeSite"/>
+          <s:enumeration value="Microsoft.SharePoint.SPChangeWeb"/>
+          <s:enumeration value="Microsoft.SharePoint.SPChangeList"/>
+          <s:enumeration value="Microsoft.SharePoint.SPChangeFile"/>
+          <s:enumeration value="Microsoft.SharePoint.SPChangeFolder"/>
+          <s:enumeration value="Microsoft.SharePoint.SPChangeAlert"/>
+          <s:enumeration value="Microsoft.SharePoint.SPChangeUser"/>
+          <s:enumeration value="Microsoft.SharePoint.SPChangeGroup"/>
+          <s:enumeration value="Microsoft.SharePoint.SPChangeContentType"/>
+          <s:enumeration value="Microsoft.SharePoint.SPChangeField"/>
+          <s:enumeration value="Microsoft.SharePoint.SPChangeSecurityPolicy"/>
+          <s:enumeration value="Microsoft.SharePoint.SPChangeView"/>
+        </s:restriction>
+      </s:simpleType>
+
+      <s:complexType name="Metadata">
+        <s:sequence>
+          <s:element name="scope">
+            <s:complexType>
+              <s:sequence>
+                <s:element name="permissions" type="tns:permissionsForACL" />
+              </s:sequence>
+              <s:attribute name="id" type="s:string" use="required" />
+            </s:complexType>
+          </s:element>
+        </s:sequence>
+      </s:complexType>
+
+      <s:complexType name='permissionsForACL'>
+        <s:sequence >
+          <s:element name='permission' type='tns:permission' maxOccurs='unbounded' />
+        </s:sequence>
+      </s:complexType>
+
+      <s:complexType name='UserDescription'>
+        <s:attribute name='Sid' type='s:string' use='required'/>
+        <s:attribute name='Name' type='s:string' use='required' />
+        <s:attribute name='LoginName' type='s:string' use='required' />
+        <s:attribute name='IsDomainGroup' type= 'tns:TrueFalseType' 
+         use='required'/>
+        <s:attribute name='Email' type='s:string' use='optional'/>
+        <s:attribute name='Notes' type='s:string' use='required' />
+        <s:attribute name='ID' type='s:int' use='required' />
+        <s:attribute name='IsSiteAdmin' type= 'tns:TrueFalseType' use='required'/>
+      </s:complexType>
+
+      <s:complexType name="Lists">
+        <s:sequence>
+          <s:element maxOccurs="unbounded" name="List" >
+            <s:complexType>
+              <s:attribute name="ID" type="s:string" use="required" />
+              <s:attribute name="LastModified" type="s:string" use="required" />
+              <s:attribute name="DefaultViewUrl" type="s:string" use="required" />
+            </s:complexType>
+          </s:element>
+        </s:sequence>
+      </s:complexType>
+
+      <s:element name='SPFile'>
+        <s:complexType>
+          <s:attribute name='ItemCount' type='s:int' use='required'/>
+          <s:attribute name='Change' type='s:string' use='required'/>
+          <s:attribute name="UpdateSecurity" type="tns:TrueFalseType" />
+          <s:attribute name="Id" type="s:string" />
+          <s:attribute name="ParentId" type="s:string" />
+          <s:attribute name="InternalUrl" type="s:string" />
+          <s:attribute name="DisplayUrl" type="s:string" />
+          <s:attribute name="Url" type="s:string" />
+          <s:attribute name="CRC" type="s:int" />
+          <s:attribute name="ServerUrl" type="s:string" />
+          <s:attribute name="SequenceNumber" type="s:string"/>
+        </s:complexType>
+      </s:element>
+
+      <s:element name='SPFolder'>
+        <s:complexType>
+          <s:attribute name='ItemCount' type='s:int' use='required'/>
+          <s:attribute name='Change' type='s:string' use='required'/>
+          <s:attribute name="UpdateSecurity" type="tns:TrueFalseType" />
+          <s:attribute name="Id" type="s:string" />
+          <s:attribute name="ParentId" type="s:string" />
+          <s:attribute name="InternalUrl" type="s:string" />
+          <s:attribute name="DisplayUrl" type="s:string" />
+          <s:attribute name="Url" type="s:string" />
+          <s:attribute name="CRC" type="s:int" />
+          <s:attribute name="ServerUrl" type="s:string" />
+          <s:attribute name="SequenceNumber" type="s:string"/>
+        </s:complexType>
+      </s:element>
+
+      <s:element name='SPList'>
+        <s:complexType>
+          <s:sequence >
+            <s:element ref='tns:List' minOccurs='0' />
+            <s:choice minOccurs='0' maxOccurs='unbounded'>
+              <s:element ref='tns:SPView' minOccurs='0' maxOccurs='unbounded'/>
+              <s:element ref='tns:SPListItem' minOccurs='0' maxOccurs='unbounded'/>
+            </s:choice>
+          </s:sequence>
+          <s:attribute name='ItemCount' type='s:int' use='required'/>
+          <s:attribute name='Change' type='s:string' use='required'/>
+          <s:attribute name="UpdateSecurity" type="tns:TrueFalseType" />
+          <s:attribute name="Id" type="s:string" />
+          <s:attribute name="ParentId" type="s:string" />
+          <s:attribute name="InternalUrl" type="s:string" />
+          <s:attribute name="DisplayUrl" type="s:string" />
+          <s:attribute name="CRC" type="s:int" />
+          <s:attribute name="ServerUrl" type="s:string" />
+          <s:attribute name="SequenceNumber" type="s:string" use="optional"/>
+        </s:complexType>
+      </s:element>
+
+      <s:complexType name="List">
+        <s:sequence>
+          <s:element name="Metadata" type="tns:ListMetadata"/>
+          <s:element name="ACL" type="tns:ACL" >
+
+          </s:element>
+          <s:element name="Views" type="tns:Views"/>
+          <s:element name="Schema" type="tns:Schema"/>
+        </s:sequence>
+      </s:complexType>
+
+      <s:complexType name='Views'>
+        <s:sequence >
+          <s:element name='View' type='tns:View' maxOccurs='unbounded'/>
+        </s:sequence>
+      </s:complexType>
+
+      <s:complexType name='Schema'>
+        <s:sequence >
+          <s:element name='Field' type='tns:Field' maxOccurs='unbounded' />
+        </s:sequence>
+      </s:complexType>
+
+      <s:element name='SPListItem'>
+        <s:complexType>
+          <s:sequence>
+            <s:element name='ListItem' >
+              <s:complexType >
+                <s:sequence >
+                  <s:element name='row' type='s:string' />
+                  <s:element name='permissions' type='tns:permissionsForACL' />
+                </s:sequence>
+              </s:complexType>
+            </s:element>
+          </s:sequence>
+          <s:attribute name="Change" type="s:string" use="required"/>
+          <s:attribute name="ItemCount" type="s:int" use="required" />
+          <s:attribute name="UpdateSecurity" type="tns:TrueFalseType" 
+           use="optional" />
+          <s:attribute name="ServerUrl" type="s:anyURI" use="optional" />
+          <s:attribute name="ParentId" type="s:string" use="optional" />
+          <s:attribute name="InternalUrl" type="s:string" use="optional"/>
+          <s:attribute name="Id" type="s:string" use="optional" />
+          <s:attribute name="DisplayUrl" type="s:string" use="optional" />
+          <s:attribute name="CRC" type="s:unsignedInt" use="optional"/>
+          <s:attribute name="Url" type="s:int" use="optional" />
+          <s:attribute name="SequenceNumber" type="s:string" use="optional"/>
+        </s:complexType>
+      </s:element>
+    </s:schema>
+  </wsdl:types>
+  <wsdl:message name="GetSiteAndWebSoapIn">
+    <wsdl:part name="parameters" element="tns:GetSiteAndWeb" />
+  </wsdl:message>
+  <wsdl:message name="GetSiteAndWebSoapOut">
+    <wsdl:part name="parameters" element="tns:GetSiteAndWebResponse" />
+  </wsdl:message>
+  <wsdl:message name="GetSiteSoapIn">
+    <wsdl:part name="parameters" element="tns:GetSite" />
+  </wsdl:message>
+  <wsdl:message name="GetSiteSoapOut">
+    <wsdl:part name="parameters" element="tns:GetSiteResponse" />
+  </wsdl:message>
+  <wsdl:message name="GetWebSoapIn">
+    <wsdl:part name="parameters" element="tns:GetWeb" />
+  </wsdl:message>
+  <wsdl:message name="GetWebSoapOut">
+    <wsdl:part name="parameters" element="tns:GetWebResponse" />
+  </wsdl:message>
+  <wsdl:message name="GetListSoapIn">
+    <wsdl:part name="parameters" element="tns:GetList" />
+  </wsdl:message>
+  <wsdl:message name="GetListSoapOut">
+    <wsdl:part name="parameters" element="tns:GetListResponse" />
+  </wsdl:message>
+  <wsdl:message name="GetListItemsSoapIn">
+    <wsdl:part name="parameters" element="tns:GetListItems" />
+  </wsdl:message>
+  <wsdl:message name="GetListItemsSoapOut">
+    <wsdl:part name="parameters" element="tns:GetListItemsResponse" />
+  </wsdl:message>
+  <wsdl:message name="EnumerateFolderSoapIn">
+    <wsdl:part name="parameters" element="tns:EnumerateFolder" />
+  </wsdl:message>
+  <wsdl:message name="EnumerateFolderSoapOut">
+    <wsdl:part name="parameters" element="tns:EnumerateFolderResponse" />
+  </wsdl:message>
+  <wsdl:message name="GetAttachmentsSoapIn">
+    <wsdl:part name="parameters" element="tns:GetAttachments" />
+  </wsdl:message>
+  <wsdl:message name="GetAttachmentsSoapOut">
+    <wsdl:part name="parameters" element="tns:GetAttachmentsResponse" />
+  </wsdl:message>
+  <wsdl:message name="GetURLSegmentsSoapIn">
+    <wsdl:part name="parameters" element="tns:GetURLSegments" />
+  </wsdl:message>
+  <wsdl:message name="GetURLSegmentsSoapOut">
+    <wsdl:part name="parameters" element="tns:GetURLSegmentsResponse" />
+  </wsdl:message>
+  <wsdl:message name="GetListCollectionSoapIn">
+    <wsdl:part name="parameters" element="tns:GetListCollection" />
+  </wsdl:message>
+  <wsdl:message name="GetListCollectionSoapOut">
+    <wsdl:part name="parameters" element="tns:GetListCollectionResponse" />
+  </wsdl:message>
+  <wsdl:message name="GetContentSoapIn">
+    <wsdl:part name="parameters" element="tns:GetContent" />
+  </wsdl:message>
+  <wsdl:message name="GetContentSoapOut">
+    <wsdl:part name="parameters" element="tns:GetContentResponse" />
+  </wsdl:message>
+  <wsdl:message name="GetSiteUrlSoapIn">
+    <wsdl:part name="parameters" element="tns:GetSiteUrl" />
+  </wsdl:message>
+  <wsdl:message name="GetSiteUrlSoapOut">
+    <wsdl:part name="parameters" element="tns:GetSiteUrlResponse" />
+  </wsdl:message>
+  <wsdl:message name="GetChangesSoapIn">
+    <wsdl:part name="parameters" element="tns:GetChanges" />
+  </wsdl:message>
+  <wsdl:message name="GetChangesSoapOut">
+    <wsdl:part name="parameters" element="tns:GetChangesResponse" />
+  </wsdl:message>
+  <wsdl:message name="GetChangesExSoapIn">
+    <wsdl:part name="parameters" element="tns:GetChangesEx" />
+  </wsdl:message>
+  <wsdl:message name="GetChangesExSoapOut">
+    <wsdl:part name="parameters" element="tns:GetChangesExResponse" />
+  </wsdl:message>
+  <wsdl:portType name="SiteDataSoap">
+    <wsdl:operation name="GetSiteAndWeb">
+      <wsdl:input message="tns:GetSiteAndWebSoapIn" />
+      <wsdl:output message="tns:GetSiteAndWebSoapOut" />
+    </wsdl:operation>
+    <wsdl:operation name="GetSite">
+      <wsdl:input message="tns:GetSiteSoapIn" />
+      <wsdl:output message="tns:GetSiteSoapOut" />
+    </wsdl:operation>
+    <wsdl:operation name="GetWeb">
+      <wsdl:input message="tns:GetWebSoapIn" />
+      <wsdl:output message="tns:GetWebSoapOut" />
+    </wsdl:operation>
+    <wsdl:operation name="GetList">
+      <wsdl:input message="tns:GetListSoapIn" />
+      <wsdl:output message="tns:GetListSoapOut" />
+    </wsdl:operation>
+    <wsdl:operation name="GetListItems">
+      <wsdl:input message="tns:GetListItemsSoapIn" />
+      <wsdl:output message="tns:GetListItemsSoapOut" />
+    </wsdl:operation>
+    <wsdl:operation name="EnumerateFolder">
+      <wsdl:input message="tns:EnumerateFolderSoapIn" />
+      <wsdl:output message="tns:EnumerateFolderSoapOut" />
+    </wsdl:operation>
+    <wsdl:operation name="GetAttachments">
+      <wsdl:input message="tns:GetAttachmentsSoapIn" />
+      <wsdl:output message="tns:GetAttachmentsSoapOut" />
+    </wsdl:operation>
+    <wsdl:operation name="GetURLSegments">
+      <wsdl:input message="tns:GetURLSegmentsSoapIn" />
+      <wsdl:output message="tns:GetURLSegmentsSoapOut" />
+    </wsdl:operation>
+    <wsdl:operation name="GetListCollection">
+      <wsdl:input message="tns:GetListCollectionSoapIn" />
+      <wsdl:output message="tns:GetListCollectionSoapOut" />
+    </wsdl:operation>
+    <wsdl:operation name="GetContent">
+      <wsdl:input message="tns:GetContentSoapIn" />
+      <wsdl:output message="tns:GetContentSoapOut" />
+    </wsdl:operation>
+    <wsdl:operation name="GetSiteUrl">
+      <wsdl:input message="tns:GetSiteUrlSoapIn" />
+      <wsdl:output message="tns:GetSiteUrlSoapOut" />
+    </wsdl:operation>
+    <wsdl:operation name="GetChanges">
+      <wsdl:input message="tns:GetChangesSoapIn" />
+      <wsdl:output message="tns:GetChangesSoapOut" />
+    </wsdl:operation>
+      <wsdl:operation name="GetChangesEx">
+        <wsdl:input message="tns:GetChangesExSoapIn" />
+        <wsdl:output message="tns:GetChangesExSoapOut" />
+      </wsdl:operation>
+  </wsdl:portType>
+  <wsdl:binding name="SiteDataSoap" type="tns:SiteDataSoap">
+    <soap:binding transport="http://schemas.xmlsoap.org/soap/http" />
+    <wsdl:operation name="GetSiteAndWeb">
+      <soap:operation soapAction="http://schemas.microsoft.com/sharepoint/soap/GetSiteAndWeb" style="document" />
+      <wsdl:input>
+        <soap:body use="literal" />
+      </wsdl:input>
+      <wsdl:output>
+        <soap:body use="literal" />
+      </wsdl:output>
+    </wsdl:operation>
+    <wsdl:operation name="GetSite">
+      <soap:operation soapAction="http://schemas.microsoft.com/sharepoint/soap/GetSite" style="document" />
+      <wsdl:input>
+        <soap:body use="literal" />
+      </wsdl:input>
+      <wsdl:output>
+        <soap:body use="literal" />
+      </wsdl:output>
+    </wsdl:operation>
+    <wsdl:operation name="GetWeb">
+      <soap:operation soapAction="http://schemas.microsoft.com/sharepoint/soap/GetWeb" style="document" />
+      <wsdl:input>
+        <soap:body use="literal" />
+      </wsdl:input>
+      <wsdl:output>
+        <soap:body use="literal" />
+      </wsdl:output>
+    </wsdl:operation>
+    <wsdl:operation name="GetList">
+      <soap:operation soapAction="http://schemas.microsoft.com/sharepoint/soap/GetList" style="document" />
+      <wsdl:input>
+        <soap:body use="literal" />
+      </wsdl:input>
+      <wsdl:output>
+        <soap:body use="literal" />
+      </wsdl:output>
+    </wsdl:operation>
+    <wsdl:operation name="GetListItems">
+      <soap:operation soapAction="http://schemas.microsoft.com/sharepoint/soap/GetListItems" style="document" />
+      <wsdl:input>
+        <soap:body use="literal" />
+      </wsdl:input>
+      <wsdl:output>
+        <soap:body use="literal" />
+      </wsdl:output>
+    </wsdl:operation>
+    <wsdl:operation name="EnumerateFolder">
+      <soap:operation soapAction="http://schemas.microsoft.com/sharepoint/soap/EnumerateFolder" style="document" />
+      <wsdl:input>
+        <soap:body use="literal" />
+      </wsdl:input>
+      <wsdl:output>
+        <soap:body use="literal" />
+      </wsdl:output>
+    </wsdl:operation>
+    <wsdl:operation name="GetAttachments">
+      <soap:operation soapAction="http://schemas.microsoft.com/sharepoint/soap/GetAttachments" style="document" />
+      <wsdl:input>
+        <soap:body use="literal" />
+      </wsdl:input>
+      <wsdl:output>
+        <soap:body use="literal" />
+      </wsdl:output>
+    </wsdl:operation>
+    <wsdl:operation name="GetURLSegments">
+      <soap:operation soapAction="http://schemas.microsoft.com/sharepoint/soap/GetURLSegments" style="document" />
+      <wsdl:input>
+        <soap:body use="literal" />
+      </wsdl:input>
+      <wsdl:output>
+        <soap:body use="literal" />
+      </wsdl:output>
+    </wsdl:operation>
+    <wsdl:operation name="GetListCollection">
+      <soap:operation soapAction="http://schemas.microsoft.com/sharepoint/soap/GetListCollection" style="document" />
+      <wsdl:input>
+        <soap:body use="literal" />
+      </wsdl:input>
+      <wsdl:output>
+        <soap:body use="literal" />
+      </wsdl:output>
+    </wsdl:operation>
+    <wsdl:operation name="GetContent">
+      <soap:operation soapAction="http://schemas.microsoft.com/sharepoint/soap/GetContent" style="document" />
+      <wsdl:input>
+        <soap:body use="literal" />
+      </wsdl:input>
+      <wsdl:output>
+        <soap:body use="literal" />
+      </wsdl:output>
+    </wsdl:operation>
+    <wsdl:operation name="GetSiteUrl">
+      <soap:operation soapAction="http://schemas.microsoft.com/sharepoint/soap/GetSiteUrl" style="document" />
+      <wsdl:input>
+        <soap:body use="literal" />
+      </wsdl:input>
+      <wsdl:output>
+        <soap:body use="literal" />
+      </wsdl:output>
+    </wsdl:operation>
+    <wsdl:operation name="GetChanges">
+      <soap:operation soapAction="http://schemas.microsoft.com/sharepoint/soap/GetChanges" style="document" />
+      <wsdl:input>
+        <soap:body use="literal" />
+      </wsdl:input>
+      <wsdl:output>
+        <soap:body use="literal" />
+      </wsdl:output>
+    </wsdl:operation>
+    <wsdl:operation name="GetChangesEx">
+      <soap:operation soapAction="http://schemas.microsoft.com/sharepoint/soap/GetChangesEx" style="document" />
+      <wsdl:input>
+        <soap:body use="literal" />
+      </wsdl:input>
+      <wsdl:output>
+        <soap:body use="literal" />
+      </wsdl:output>
+    </wsdl:operation>
+  </wsdl:binding>
+  <wsdl:binding name="SiteDataSoap12" type="tns:SiteDataSoap">
+    <soap12:binding transport="http://schemas.xmlsoap.org/soap/http" />
+    <wsdl:operation name="GetSiteAndWeb">
+      <soap12:operation soapAction="http://schemas.microsoft.com/sharepoint/soap/GetSiteAndWeb" style="document" />
+      <wsdl:input>
+        <soap12:body use="literal" />
+      </wsdl:input>
+      <wsdl:output>
+        <soap12:body use="literal" />
+      </wsdl:output>
+    </wsdl:operation>
+    <wsdl:operation name="GetSite">
+      <soap12:operation soapAction="http://schemas.microsoft.com/sharepoint/soap/GetSite" style="document" />
+      <wsdl:input>
+        <soap12:body use="literal" />
+      </wsdl:input>
+      <wsdl:output>
+        <soap12:body use="literal" />
+      </wsdl:output>
+    </wsdl:operation>
+    <wsdl:operation name="GetWeb">
+      <soap12:operation soapAction="http://schemas.microsoft.com/sharepoint/soap/GetWeb" style="document" />
+      <wsdl:input>
+        <soap12:body use="literal" />
+      </wsdl:input>
+      <wsdl:output>
+        <soap12:body use="literal" />
+      </wsdl:output>
+    </wsdl:operation>
+    <wsdl:operation name="GetList">
+      <soap12:operation soapAction="http://schemas.microsoft.com/sharepoint/soap/GetList" style="document" />
+      <wsdl:input>
+        <soap12:body use="literal" />
+      </wsdl:input>
+      <wsdl:output>
+        <soap12:body use="literal" />
+      </wsdl:output>
+    </wsdl:operation>
+    <wsdl:operation name="GetListItems">
+      <soap12:operation soapAction="http://schemas.microsoft.com/sharepoint/soap/GetListItems" style="document" />
+      <wsdl:input>
+        <soap12:body use="literal" />
+      </wsdl:input>
+      <wsdl:output>
+        <soap12:body use="literal" />
+      </wsdl:output>
+    </wsdl:operation>
+    <wsdl:operation name="EnumerateFolder">
+      <soap12:operation soapAction="http://schemas.microsoft.com/sharepoint/soap/EnumerateFolder" style="document" />
+      <wsdl:input>
+        <soap12:body use="literal" />
+      </wsdl:input>
+      <wsdl:output>
+        <soap12:body use="literal" />
+      </wsdl:output>
+    </wsdl:operation>
+    <wsdl:operation name="GetAttachments">
+      <soap12:operation soapAction="http://schemas.microsoft.com/sharepoint/soap/GetAttachments" style="document" />
+      <wsdl:input>
+        <soap12:body use="literal" />
+      </wsdl:input>
+      <wsdl:output>
+        <soap12:body use="literal" />
+      </wsdl:output>
+    </wsdl:operation>
+    <wsdl:operation name="GetURLSegments">
+      <soap12:operation soapAction="http://schemas.microsoft.com/sharepoint/soap/GetURLSegments" style="document" />
+      <wsdl:input>
+        <soap12:body use="literal" />
+      </wsdl:input>
+      <wsdl:output>
+        <soap12:body use="literal" />
+      </wsdl:output>
+    </wsdl:operation>
+    <wsdl:operation name="GetListCollection">
+      <soap12:operation soapAction="http://schemas.microsoft.com/sharepoint/soap/GetListCollection" style="document" />
+      <wsdl:input>
+        <soap12:body use="literal" />
+      </wsdl:input>
+      <wsdl:output>
+        <soap12:body use="literal" />
+      </wsdl:output>
+    </wsdl:operation>
+    <wsdl:operation name="GetContent">
+      <soap12:operation soapAction="http://schemas.microsoft.com/sharepoint/soap/GetContent" style="document" />
+      <wsdl:input>
+        <soap12:body use="literal" />
+      </wsdl:input>
+      <wsdl:output>
+        <soap12:body use="literal" />
+      </wsdl:output>
+    </wsdl:operation>
+    <wsdl:operation name="GetSiteUrl">
+      <soap12:operation soapAction="http://schemas.microsoft.com/sharepoint/soap/GetSiteUrl" style="document" />
+      <wsdl:input>
+        <soap12:body use="literal" />
+      </wsdl:input>
+      <wsdl:output>
+        <soap12:body use="literal" />
+      </wsdl:output>
+    </wsdl:operation>
+    <wsdl:operation name="GetChanges">
+      <soap12:operation soapAction="http://schemas.microsoft.com/sharepoint/soap/GetChanges" style="document" />
+      <wsdl:input>
+        <soap12:body use="literal" />
+      </wsdl:input>
+      <wsdl:output>
+        <soap12:body use="literal" />
+      </wsdl:output>
+    </wsdl:operation>
+    <wsdl:operation name="GetChangesEx">
+      <soap12:operation soapAction="http://schemas.microsoft.com/sharepoint/soap/GetChangesEx" style="document" />
+      <wsdl:input>
+        <soap12:body use="literal" />
+      </wsdl:input>
+      <wsdl:output>
+        <soap12:body use="literal" />
+      </wsdl:output>
+    </wsdl:operation>
+  </wsdl:binding >
+  <wsdl:service name="SiteData">
+    <wsdl:port name="SiteDataSoap" binding="tns:SiteDataSoap">
+      <soap:address location="http://entpoint05/_vti_bin/SiteData.asmx" />
+    </wsdl:port>
+    <wsdl:port name="SiteDataSoap12" binding="tns:SiteDataSoap12">
+      <soap12:address location="http://entpoint05/_vti_bin/SiteData.asmx" />
+    </wsdl:port>
+  </wsdl:service>
+</wsdl:definitions>

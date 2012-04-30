@@ -1,0 +1,3 @@
+[submodule "lib/plexi"]
+	path = lib/plexi
+	url = https://code.google.com/p/plexi/

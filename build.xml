@@ -1,0 +1,270 @@
+<project name="plexi.sharepoint" default="build" basedir=".">
+  <description>SharePoint Adaptor</description>
+  <property name="src.dir" location="src"/>
+  <property name="test.dir" location="test"/>
+  <property name="test.class" value="*Test"/>
+  <property name="build.dir" location="build"/>
+  <property name="generate.dir" location="${build.dir}/generate-src"/>
+  <property name="build-generate.dir" location="${build.dir}/generate"/>
+  <property name="build-src.dir" location="${build.dir}/src"/>
+  <property name="build-test.dir" location="${build.dir}/test"/>
+  <property name="build-instrument.dir" location="${build.dir}/instrument"/>
+  <property name="adaptor.clone.dir" location="lib/plexi"/>
+  <!-- Used for checking if adaptor.jar has been changed. -->
+  <property name="adaptor.jar.default"
+    value="${adaptor.clone.dir}/build/dist/adaptor/adaptor-withlib.jar"/>
+  <property name="adaptor.jar" value="${adaptor.jar.default}"/>
+  <property name="dist.dir" location="dist"/>
+  <property name="resource.dir" location="resources"/>
+  <property name="lib.dir" location="lib"/>
+  <property name="junit.jar" location="${lib.dir}/junit-4.8.2.jar"/>
+  <property name="adaptor.args" value=""/>
+  <property name="cobertura.dir" value="${basedir}/../cobertura/"/>
+  <!-- Adaptor suffix for distribution files. Useful for placing version numbers
+       on our jars. -->
+  <property name="adaptor.suffix" value=""/>
+
+  <path id="adaptor.build.classpath">
+    <pathelement location="${adaptor.jar}"/>
+    <fileset dir="${lib.dir}">
+      <include name="adaptor-withlib.jar"/>
+      <include name="axis2-kernel-1.6.1.jar"/>
+      <include name="axis2-transport-http-1.6.1.jar"/>
+      <include name="axis2-adb-1.6.1.jar"/>
+      <include name="axiom-api-1.2.12.jar"/>
+      <include name="commons-httpclient-3.1.jar"/>
+    </fileset>
+  </path>
+
+  <path id="adaptor.run.classpath">
+    <path refid="adaptor.build.classpath"/>
+    <path refid="generate.classpath"/>
+    <fileset dir="${lib.dir}">
+      <include name="XmlSchema-1.4.7.jar"/>
+      <include name="commons-logging-1.1.1.jar"/>
+      <include name="neethi-3.0.1.jar"/>
+      <include name="mail-1.4.jar"/>
+      <include name="httpcore-4.0.jar"/>
+      <include name="commons-codec-1.3.jar"/>
+      <include name="axiom-impl-1.2.12.jar"/>
+      <include name="axis2-transport-local-1.6.1.jar"/>
+    </fileset>
+  </path>
+
+  <path id="generate.classpath">
+    <fileset dir="${lib.dir}">
+      <include name="axis2-kernel-1.6.1.jar"/>
+      <include name="axis2-adb-1.6.1.jar"/>
+      <include name="axiom-api-1.2.12.jar"/>
+      <include name="wsdl4j-1.6.2.jar"/>
+    </fileset>
+  </path>
+
+  <path id="axis-codegen.classpath">
+    <fileset dir="${lib.dir}">
+      <include name="axis2-ant-plugin-1.6.1.jar"/>
+      <include name="axis2-kernel-1.6.1.jar"/>
+      <include name="axis2-codegen-1.6.1.jar"/>
+      <include name="axis2-adb-1.6.1.jar"/>
+      <include name="axis2-adb-codegen-1.6.1.jar"/>
+      <include name="wsdl4j-1.6.2.jar"/>
+      <include name="neethi-3.0.1.jar"/>
+      <include name="XmlSchema-1.4.7.jar"/>
+      <include name="commons-logging-1.1.1.jar"/>
+      <include name="axiom-api-1.2.12.jar"/>
+      <include name="axiom-impl-1.2.12.jar"/>
+    </fileset>
+  </path>
+
+  <taskdef name="codegen" classname="org.apache.axis2.tool.ant.AntCodegenTask"
+    classpathref="axis-codegen.classpath"/>
+
+  <path id="cobertura.classpath">
+    <fileset dir="${cobertura.dir}" erroronmissingdir="false">
+      <include name="cobertura.jar"/>
+      <include name="lib/**/*.jar"/>
+    </fileset>
+  </path>
+
+  <target name="-check-instrument-uptodate">
+    <uptodate property="instrument.uptodate"
+      targetfile="${build-instrument.dir}/cobertura.ser">
+      <srcfiles dir="${build-src.dir}"/>
+    </uptodate>
+  </target>
+
+  <target name="build"
+    depends="-real-build,-check-instrument-uptodate,clean-instrument"
+    description="Build source"/>
+
+  <target name="-plexi-check-submodule">
+    <condition property="plexi.is-not-submodule">
+      <not>
+        <equals arg1="${adaptor.jar.default}" arg2="${adaptor.jar}"/>
+      </not>
+    </condition>
+    <condition property="tmp.plexi.valid-setup">
+      <or>
+        <isset property="plexi.is-not-submodule"/>
+        <available file="${adaptor.clone.dir}/.git"/>
+      </or>
+    </condition>
+    <fail unless="tmp.plexi.valid-setup">Invalid setup:
+No lib/plexi submodule and using default adaptor.jar property.
+
+You need to run "git submodule init; git submodule update" to initialize the
+lib/plexi submodule or add the the command line argument
+-Dadaptor.jar=path/to/adaptor-withlib.jar to point to the adaptor library.
+    </fail>
+  </target>
+
+  <target name="-plexi-test-uptodate" depends="-plexi-check-submodule">
+    <condition property="plexi.uptodate">
+      <or>
+        <isset property="plexi.is-not-submodule"/>
+        <uptodate targetfile="${adaptor.jar}">
+          <srcfiles dir="${adaptor.clone.dir}"
+            excludes=".git/** build/** dist/** **.swp"/>
+        </uptodate>
+      </or>
+    </condition>
+  </target>
+
+  <target name="-plexi-build" depends="-plexi-test-uptodate"
+    unless="plexi.uptodate">
+    <echo message="Detected Plexi changes. Re-packaging Plexi..."/>
+    <ant antfile="${adaptor.clone.dir}/build.xml" dir="${adaptor.clone.dir}"
+      target="package" inheritAll="false"/>
+  </target>
+
+  <target name="-generate-test-uptodate">
+    <uptodate property="generate.uptodate" srcfile="SiteData.wsdl"
+      targetfile="${generate.dir}/src/com/google/enterprise/adaptor/sharepoint/SiteDataStub.java">
+    </uptodate>
+  </target>
+
+  <target name="-generate" depends="-generate-test-uptodate"
+    unless="generate.uptodate">
+    <delete dir="${generate.dir}"/>
+    <delete dir="${build-generate.dir}"/>
+    <mkdir dir="${generate.dir}"/>
+    <mkdir dir="${build-generate.dir}"/>
+
+    <codegen wsdlfilename="SiteData.wsdl" databindingName="adb"
+      output="${generate.dir}" syncOnly="true"
+      packageName="com.google.enterprise.adaptor.sharepoint"/>
+
+    <javac srcdir="${generate.dir}/src" destdir="${build-generate.dir}"
+      debug="true" includeantruntime="false" encoding="utf-8">
+      <classpath refid="generate.classpath"/>
+    </javac>
+  </target>
+
+  <target name="-real-build" depends="-plexi-build,-generate">
+    <mkdir dir="${build-src.dir}"/>
+
+    <javac srcdir="${src.dir}" destdir="${build-src.dir}" debug="true"
+      includeantruntime="false" encoding="utf-8">
+      <compilerarg value="-Xlint:unchecked"/>
+      <classpath refid="adaptor.build.classpath"/>
+      <classpath location="${build-generate.dir}"/>
+    </javac>
+
+    <mkdir dir="${build-test.dir}"/>
+    <!-- Compile JUnit helper -->
+    <javac srcdir="${lib.dir}" destdir="${build-test.dir}" debug="true"
+      includeantruntime="true" encoding="utf-8">
+      <compilerarg value="-Xlint:unchecked"/>
+      <classpath location="${junit.jar}"/>
+      <include name="JUnitLogFixFormatter.java"/>
+    </javac>
+
+    <!-- Compile tests, excluding example tests. -->
+    <javac srcdir="${test.dir}" destdir="${build-test.dir}" debug="true"
+      includeantruntime="false" encoding="utf-8">
+      <compilerarg value="-Xlint:unchecked"/>
+      <classpath refid="adaptorlib.build.classpath"/>
+      <classpath location="${build-src.dir}"/>
+      <classpath location="${junit.jar}"/>
+    </javac>
+  </target>
+
+  <target name="dist" description="Generate distribution binaries"
+    depends="clean,test,package"/>
+
+  <target name="package" description="Generate binaries" depends="build">
+    <property name="dist.staging.dir" value="${build.dir}/dist/staging"/>
+
+    <delete dir="${build.dir}/dist"/>
+    <delete dir="${dist.dir}"/>
+
+    <mkdir dir="${build.dir}/dist"/>
+    <mkdir dir="${build.dir}/dist/staging"/>
+    <mkdir dir="${dist.dir}"/>
+  </target>
+
+  <target name="clean" description="Remove build output">
+    <delete dir="${build.dir}"/>
+    <delete dir="${dist.dir}"/>
+  </target>
+
+  <target name="run" depends="build" description="Run default adaptor">
+    <java classpath="${build-src.dir}" fork="true"
+      classname="com.google.enterprise.adaptor.sharepoint.SharePointAdaptor">
+      <classpath refid="adaptor.run.classpath"/>
+      <classpath location="${build-generate.dir}"/>
+      <sysproperty key="java.util.logging.config.file"
+        value="logging.properties"/>
+      <sysproperty key="javax.net.ssl.keyStore" file="keys.jks"/>
+      <sysproperty key="javax.net.ssl.keyStoreType" value="jks"/>
+      <sysproperty key="javax.net.ssl.keyStorePassword" value="changeit"/>
+      <sysproperty key="javax.net.ssl.trustStore" file="cacerts.jks"/>
+      <sysproperty key="javax.net.ssl.trustStoreType" value="jks"/>
+      <sysproperty key="javax.net.ssl.trustStorePassword" value="changeit"/>
+      <arg line="${adaptor.args}"/>
+    </java>
+  </target>
+
+  <target name="coverage" depends="instrument,test,coverage-report"
+    description="Run instrumented tests and generate coverage report"/>
+
+  <target name="test" depends="build" description="Run JUnit tests">
+    <junit printsummary="yes" haltonfailure="yes" forkmode="once" fork="true"
+      dir="${basedir}" maxmemory="512m">
+      <sysproperty key="net.sourceforge.cobertura.datafile"
+        file="${build-instrument.dir}/cobertura.ser"/>
+      <classpath refid="adaptor.run.classpath"/>
+      <classpath refid="cobertura.classpath"/>
+      <classpath location="${junit.jar}"/>
+      <classpath location="${build-instrument.dir}"/>
+      <classpath location="${build-src.dir}"/>
+      <classpath location="${build-test.dir}"/>
+      <formatter type="plain" usefile="false"/>
+      <formatter classname="JUnitLogFixFormatter" usefile="false"/>
+      <batchtest>
+        <fileset dir="${test.dir}">
+          <include name="**/${test.class}.java"/>
+        </fileset>
+      </batchtest>
+    </junit>
+  </target>
+
+  <target name="instrument" depends="build" description="Instrument classes">
+    <taskdef classpathref="cobertura.classpath" resource="tasks.properties"/>
+    <cobertura-instrument datafile="${build-instrument.dir}/cobertura.ser"
+      todir="${build-instrument.dir}">
+      <fileset dir="${build-src.dir}"/>
+    </cobertura-instrument>
+  </target>
+
+  <target name="clean-instrument" unless="instrument.uptodate"
+    description="Delete instrumented classes">
+    <delete dir="${build-instrument.dir}"/>
+  </target>
+
+  <target name="coverage-report" description="Generates code coverage report">
+    <taskdef classpathref="cobertura.classpath" resource="tasks.properties"/>
+    <cobertura-report datafile="${build-instrument.dir}/cobertura.ser"
+      srcdir="${src.dir}" destdir="${build.dir}/coverage"/>
+  </target>
+</project>
