@@ -183,7 +183,7 @@ lib/plexi submodule or add the the command line argument
     <javac srcdir="${test.dir}" destdir="${build-test.dir}" debug="true"
       includeantruntime="false" encoding="utf-8">
       <compilerarg value="-Xlint:unchecked"/>
-      <classpath refid="adaptorlib.build.classpath"/>
+      <classpath refid="adaptor.build.classpath"/>
       <classpath location="${build-src.dir}"/>
       <classpath location="${junit.jar}"/>
     </javac>
