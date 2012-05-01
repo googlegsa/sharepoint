@@ -31,7 +31,7 @@ import org.apache.axis2.transport.http.HttpTransportProperties;
 import org.apache.commons.httpclient.HttpClient;
 import org.apache.commons.httpclient.HttpStatus;
 import org.apache.commons.httpclient.Credentials;
-import org.apache.commons.httpclient.UsernamePasswordCredentials;
+import org.apache.commons.httpclient.NTCredentials;
 import org.apache.commons.httpclient.auth.AuthScope;
 import org.apache.commons.httpclient.methods.GetMethod;
 
@@ -52,18 +52,16 @@ public class SharePointAdaptor extends AbstractAdaptor {
       = new ConcurrentSkipListMap<String, SiteDataClient>();
   private final XMLInputFactory xmlInputFactory = XMLInputFactory.newFactory();
   private final DocId virtualServerDocId = new DocId("");
+  private final HttpClient httpClient = new HttpClient();
   private AdaptorContext context;
-
-  // Configuration-provided values.
   private String virtualServer;
-  private String username;
-  private String password;
 
   @Override
   public void initConfig(Config config) {
     config.addKey("sharepoint.server", null);
     config.addKey("sharepoint.username", null);
     config.addKey("sharepoint.password", null);
+    config.addKey("sharepoint.domain", "");
   }
 
   @Override
@@ -71,8 +69,13 @@ public class SharePointAdaptor extends AbstractAdaptor {
     this.context = context;
     Config config = context.getConfig();
     virtualServer = config.getValue("sharepoint.server");
-    username = config.getValue("sharepoint.username");
-    password = config.getValue("sharepoint.password");
+    String username = config.getValue("sharepoint.username");
+    String password = config.getValue("sharepoint.password");
+    String domain = config.getValue("sharepoint.domain");
+
+    Credentials creds = new NTCredentials(username, password,
+        config.getServerHostname(), domain);
+    httpClient.getState().setCredentials(AuthScope.ANY, creds);
   }
 
   @Override
@@ -138,14 +141,8 @@ public class SharePointAdaptor extends AbstractAdaptor {
       }
       this.siteUrl = site;
       this.stub = new SiteDataStub(site + "_vti_bin/SiteData.asmx");
-      HttpTransportProperties.Authenticator auth
-          = new HttpTransportProperties.Authenticator();
-      auth.setUsername(username);
-      auth.setPassword(password);
-      auth.setPreemptiveAuthentication(true);
       Options options = stub._getServiceClient().getOptions();
-      options.setProperty(HTTPConstants.AUTHENTICATE, auth);
-      options.setProperty(HTTPConstants.REUSE_HTTP_CLIENT, true);
+      options.setProperty(HTTPConstants.CACHED_HTTP_CLIENT, httpClient);
     }
 
     private void getDocContent(Request request, Response response)
@@ -338,17 +335,12 @@ public class SharePointAdaptor extends AbstractAdaptor {
     private void getListItemDocContent(Request request, Response response,
         String listId, String itemId) throws Exception {
       //SiteDataStub.ItemData i = getContentItem(listId, itemId);
-      HttpClient client = new HttpClient();
-      client.getParams().setAuthenticationPreemptive(true);
-      Credentials creds
-          = new UsernamePasswordCredentials(username, password);
-      client.getState().setCredentials(AuthScope.ANY, creds);
       String url = request.getDocId().getUniqueId();
       String[] parts = url.split("/", 4);
       url = parts[0] + "/" + parts[1] + "/" + parts[2] + "/" +
           new URI(null, null, parts[3], null).toASCIIString();
       GetMethod method = new GetMethod(url);
-      int statusCode = client.executeMethod(method);
+      int statusCode = httpClient.executeMethod(method);
       if (statusCode != HttpStatus.SC_OK) {
         throw new RuntimeException("Got status code: " + statusCode);
       }
