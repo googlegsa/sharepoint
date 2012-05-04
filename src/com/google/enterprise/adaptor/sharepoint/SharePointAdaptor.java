@@ -65,7 +65,7 @@ public class SharePointAdaptor extends AbstractAdaptor {
   }
 
   @Override
-  public void init(AdaptorContext context) {
+  public void init(AdaptorContext context) throws Exception {
     this.context = context;
     Config config = context.getConfig();
     virtualServer = config.getValue("sharepoint.server");
@@ -89,6 +89,10 @@ public class SharePointAdaptor extends AbstractAdaptor {
       } else {
         SiteDataClient client
             = virtualServerClient.getClientForUrl(id.getUniqueId());
+        if (client == null) {
+          response.respondNotFound();
+          return;
+        }
         client.getDocContent(request, response);
       }
     } catch (RuntimeException ex) {
@@ -369,10 +373,19 @@ public class SharePointAdaptor extends AbstractAdaptor {
     }
 
     private SiteDataClient getClientForUrl(String url) throws Exception {
-      SiteDataStub.GetSiteUrl request = new SiteDataStub.GetSiteUrl();
-      request.setUrl(url);
-      SiteDataStub.GetSiteUrlResponse response = stub.getSiteUrl(request);
-      return getSiteDataClient(response.getSiteUrl());
+      SiteDataStub.GetSiteAndWeb request = new SiteDataStub.GetSiteAndWeb();
+      request.setStrUrl(url);
+      SiteDataStub.GetSiteAndWebResponse response = stub.getSiteAndWeb(request);
+      if (DEBUG) {
+        System.out.println("GetSiteAndWeb");
+        System.out.println("Result: " + response.getGetSiteAndWebResult());
+        System.out.println("Site: " + response.getStrSite());
+        System.out.println("Web: " + response.getStrWeb());
+      }
+      if (response.getGetSiteAndWebResult().longValue() != 0) {
+        return null;
+      }
+      return getSiteDataClient(response.getStrWeb());
     }
 
     private SiteDataStub.ContentDatabase getContentContentDatabase(String id)
