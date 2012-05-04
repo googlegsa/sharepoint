@@ -14,6 +14,7 @@
 
 package com.google.enterprise.adaptor.sharepoint;
 
+import com.google.common.collect.Lists;
 import com.google.enterprise.adaptor.AbstractAdaptor;
 import com.google.enterprise.adaptor.AdaptorContext;
 import com.google.enterprise.adaptor.Config;
@@ -24,8 +25,12 @@ import com.google.enterprise.adaptor.IOHelper;
 import com.google.enterprise.adaptor.Request;
 import com.google.enterprise.adaptor.Response;
 
+import org.apache.axiom.om.OMContainer;
+import org.apache.axiom.om.OMElement;
+import org.apache.axiom.om.OMNode;
 import org.apache.axis2.AxisFault;
 import org.apache.axis2.client.Options;
+import org.apache.axis2.databinding.types.UnsignedInt;
 import org.apache.axis2.transport.http.HTTPConstants;
 import org.apache.axis2.transport.http.HttpTransportProperties;
 import org.apache.commons.httpclient.HttpClient;
@@ -39,9 +44,10 @@ import java.io.*;
 import java.net.URI;
 import java.net.URISyntaxException;
 import java.nio.charset.Charset;
-import java.util.Arrays;
+import java.util.*;
 import java.util.concurrent.*;
 
+import javax.xml.namespace.QName;
 import javax.xml.stream.XMLInputFactory;
 import javax.xml.stream.XMLStreamReader;
 
@@ -50,6 +56,16 @@ import javax.xml.stream.XMLStreamReader;
  */
 public class SharePointAdaptor extends AbstractAdaptor {
   private static final Charset CHARSET = Charset.forName("UTF-8");
+  private static final QName DATA_ELEMENT
+      = new QName("urn:schemas-microsoft-com:rowset", "data");
+  private static final QName ROW_ELEMENT = new QName("#RowsetSchema", "row");
+  private static final QName OWS_FSOBJTYPE_ATTRIBUTE
+      = new QName("ows_FSObjType");
+  private static final QName OWS_TITLE_ATTRIBUTE = new QName("ows_Title");
+  private static final QName OWS_SERVERURL_ATTRIBUTE
+      = new QName("ows_ServerUrl");
+  private static final QName OWS_CONTENTTYPE_ATTRIBUTE
+      = new QName("ows_ContentType");
 
   private final ConcurrentMap<String, SiteDataClient> clients
       = new ConcurrentSkipListMap<String, SiteDataClient>();
@@ -159,6 +175,15 @@ public class SharePointAdaptor extends AbstractAdaptor {
       urlRequest.setStrURL(request.getDocId().getUniqueId());
       SiteDataStub.GetURLSegmentsResponse urlResponse
           = stub.getURLSegments(urlRequest);
+      if (DEBUG) {
+        System.out.println("getURLSegmentsResponse");
+        System.out.println("Result: "
+            + urlResponse.getGetURLSegmentsResult());
+        System.out.println("webid: " + urlResponse.getStrWebID());
+        System.out.println("itemid: " + urlResponse.getStrItemID());
+        System.out.println("listid: " + urlResponse.getStrListID());
+        System.out.println("bucketid: " + urlResponse.getStrBucketID());
+      }
       if (!urlResponse.getGetURLSegmentsResult()) {
         response.respondNotFound();
         return;
@@ -194,7 +219,7 @@ public class SharePointAdaptor extends AbstractAdaptor {
       System.out.println(response.getGetChangesResult());
     }
 
-    private String encodeUrl(String url) {
+    private DocId encodeDocId(String url) {
       if (url.toLowerCase().startsWith("https://")
           || url.toLowerCase().startsWith("http://")) {
         // Leave as-is.
@@ -206,7 +231,11 @@ public class SharePointAdaptor extends AbstractAdaptor {
         String[] parts = siteUrl.split("/", 4);
         url = parts[0] + "//" + parts[2] + url;
       }
-      URI uri = context.getDocIdEncoder().encodeDocId(new DocId(url));
+      return new DocId(url);
+    }
+
+    private String encodeUrl(String url) {
+      URI uri = context.getDocIdEncoder().encodeDocId(encodeDocId(url));
       return uri.toASCIIString();
     }
 
@@ -276,7 +305,29 @@ public class SharePointAdaptor extends AbstractAdaptor {
         writer.write("</ul>");
       }
       if (w.getFPFolder() != null) {
-        getFolderDataDocContent(writer, w.getFPFolder());
+        SiteDataStub.FolderData f = w.getFPFolder();
+        if (f.getFolders() != null) {
+          writer.write("<p>Folders</p><ul>");
+          for (SiteDataStub.Folders folders : f.getFolders()) {
+            if (folders.getFolder() != null) {
+              for (SiteDataStub.Folder_type0 folder : folders.getFolder()) {
+                writer.write(liUrl(folder.getURL()));
+              }
+            }
+          }
+          writer.write("</ul>");
+        }
+        if (f.getFiles() != null) {
+          writer.write("<p>Files</p><ul>");
+          for (SiteDataStub.Files files : f.getFiles()) {
+            if (files.getFile() != null) {
+              for (SiteDataStub.File_type0 file : files.getFile()) {
+                writer.write(liUrl(file.getURL()));
+              }
+            }
+          }
+          writer.write("</ul>");
+        }
       }
       writer.write("</body></html>");
       writer.flush();
@@ -285,77 +336,105 @@ public class SharePointAdaptor extends AbstractAdaptor {
     private void getListDocContent(Request request, Response response,
         String id) throws Exception {
       SiteDataStub.List l = getContentList(id);
+      processFolder(id, "", response);
+    }
+
+    private void processFolder(String listGuid, String folderPath,
+        Response response) throws Exception {
       response.setContentType("text/html");
       Writer writer
           = new OutputStreamWriter(response.getOutputStream(), CHARSET);
       writer.write("<!DOCTYPE html>\n"
           + "<html><head>"
-          + "<title>List " + l.getMetadata().getTitle() + "</title>"
+          + "<title>Folder " + folderPath + "</title>"
           + "</head>"
           + "<body>"
-          + "<h1>List " + l.getMetadata().getTitle() + "</h1>");
-      if ("DocumentLibrary".equals(l.getMetadata().getBaseType().getValue())) {
-        SiteDataStub.FPFolder f
-            = getContentFolder(l.getMetadata().getRootFolder());
-        getFolderDataDocContent(writer, f.getFPFolder());
-      } else {
-        writer.write("<p>List Items</p><ul>");
-        for (int i = 0; i < l.getMetadata().getItemCount(); i++) {
-          // TODO: determine URLs to provide.
-        }
-        writer.write("</ul>");
+          + "<h1>Folder " + folderPath + "</h1>");
+      SiteDataStub.Folder folder = getContentFolder(listGuid, folderPath);
+      SiteDataStub.Xml xml = folder.getFolder().getXml();
+
+      OMElement data = getFirstChildWithName(xml, DATA_ELEMENT);
+      writer.write("<p>List items</p><ul>");
+      for (OMElement row : getChildrenWithName(data, ROW_ELEMENT)) {
+        String rowUrl = row.getAttributeValue(OWS_SERVERURL_ATTRIBUTE);
+        String rowTitle = row.getAttributeValue(OWS_TITLE_ATTRIBUTE);
+        // TODO(ejona): Fix raw string concatenation.
+        writer.write("<li><a href=\"" + encodeUrl(rowUrl) + "\">" + rowTitle
+            + "</a></li>");
       }
+      writer.write("</ul>");
+
       writer.write("</body></html>");
       writer.flush();
     }
 
-    private void getFolderDataDocContent(Writer writer,
-        SiteDataStub.FolderData f) throws IOException {
-      if (f.getFolders() != null) {
-        writer.write("<p>Folders</p><ul>");
-        for (SiteDataStub.Folders folders : f.getFolders()) {
-          if (folders.getFolder() != null) {
-            for (SiteDataStub.Folder_type0 folder : folders.getFolder()) {
-              writer.write(liUrl(folder.getURL()));
-            }
-          }
+    private OMElement getFirstChildWithName(SiteDataStub.Xml xml, QName name) {
+      for (OMElement child : xml.getExtraElement()) {
+        if (child.getQName().equals(name)) {
+          return child;
         }
-        writer.write("</ul>");
       }
-      if (f.getFiles() != null) {
-        writer.write("<p>Files</p><ul>");
-        for (SiteDataStub.Files files : f.getFiles()) {
-          if (files.getFile() != null) {
-            for (SiteDataStub.File_type0 file : files.getFile()) {
-              writer.write(liUrl(file.getURL()));
-            }
-          }
-        }
-        writer.write("</ul>");
-      }
+      return null;
     }
 
-    private void recurseFile(String id, String url, String prefix)
-        throws Exception {
-      System.out.println(prefix + "File: " + url);
-      prefix += "  ";
-      System.out.println(prefix + "ID=" + id);
+    private List<OMElement> getChildrenWithName(OMElement ele, QName name) {
+      @SuppressWarnings("unchecked")
+      Iterator<OMElement> children = ele.getChildrenWithName(ROW_ELEMENT);
+      return Lists.newArrayList(children);
     }
 
     private void getListItemDocContent(Request request, Response response,
         String listId, String itemId) throws Exception {
-      //SiteDataStub.ItemData i = getContentItem(listId, itemId);
-      String url = request.getDocId().getUniqueId();
-      String[] parts = url.split("/", 4);
-      url = parts[0] + "/" + parts[1] + "/" + parts[2] + "/" +
-          new URI(null, null, parts[3], null).toASCIIString();
-      GetMethod method = new GetMethod(url);
-      int statusCode = httpClient.executeMethod(method);
-      if (statusCode != HttpStatus.SC_OK) {
-        throw new RuntimeException("Got status code: " + statusCode);
+      SiteDataStub.ItemData i = getContentItem(listId, itemId);
+      SiteDataStub.Xml xml = i.getXml();
+
+      OMElement data = getFirstChildWithName(xml, DATA_ELEMENT);
+      OMElement row = getChildrenWithName(data, ROW_ELEMENT).get(0);
+      // This should be in the form of "1234;#0". We want to extract the 0.
+      String type =
+          row.getAttributeValue(OWS_FSOBJTYPE_ATTRIBUTE).split(";#", 2)[1];
+      boolean isFolder = "1".equals(type);
+      String title = row.getAttributeValue(OWS_TITLE_ATTRIBUTE);
+      if (title == null) {
+        title = "Unknown title";
       }
-      InputStream is = method.getResponseBodyAsStream();
-      IOHelper.copyStream(is, response.getOutputStream());
+      String serverUrl = row.getAttributeValue(OWS_SERVERURL_ATTRIBUTE);
+
+      if (isFolder) {
+        SiteDataStub.List l = getContentList(listId);
+        String root
+            = encodeDocId(l.getMetadata().getRootFolder()).getUniqueId();
+        System.out.println("serverUrl: " + serverUrl);
+        String folder = encodeDocId(serverUrl).getUniqueId();
+        if (!folder.startsWith(root)) {
+          throw new AssertionError();
+        }
+        System.out.println("folder: " + folder);
+        processFolder(listId, folder.substring(root.length()), response);
+        return;
+      }
+      String contentType = row.getAttributeValue(OWS_CONTENTTYPE_ATTRIBUTE);
+      // TODO(ejona): This is likely unreliable. Investigate a better way.
+      if ("Document".equals(contentType)) {
+        // This is a file, so display its contents.
+        String url = request.getDocId().getUniqueId();
+        String[] parts = url.split("/", 4);
+        url = parts[0] + "/" + parts[1] + "/" + parts[2] + "/" +
+            new URI(null, null, parts[3], null).toASCIIString();
+        GetMethod method = new GetMethod(url);
+        int statusCode = httpClient.executeMethod(method);
+        if (statusCode != HttpStatus.SC_OK) {
+          throw new RuntimeException("Got status code: " + statusCode);
+        }
+        InputStream is = method.getResponseBodyAsStream();
+        IOHelper.copyStream(is, response.getOutputStream());
+      } else {
+        // Some list item.
+        Writer writer
+            = new OutputStreamWriter(response.getOutputStream(), CHARSET);
+        // TODO(ejona): Handle this case.
+        writer.write("TODO: ListItem");
+      }
     }
 
     private SiteDataStub.VirtualServer getContentVirtualServer()
@@ -439,7 +518,7 @@ public class SharePointAdaptor extends AbstractAdaptor {
     private SiteDataStub.List getContentList(String id) throws Exception {
       SiteDataStub.GetContent request = new SiteDataStub.GetContent();
       request.setObjectType(SiteDataStub.ObjectType.List);
-      request.setRetrieveChildItems(true);
+      request.setRetrieveChildItems(false);
       request.setSecurityOnly(false);
       request.setObjectId(id);
       SiteDataStub.GetContentResponse response = stub.getContent(request);
@@ -478,13 +557,15 @@ public class SharePointAdaptor extends AbstractAdaptor {
       return SiteDataStub.ItemData.Factory.parse(reader);
     }
 
-    private SiteDataStub.FPFolder getContentFolder(String url)
+    private SiteDataStub.Folder getContentFolder(String guid, String url)
         throws Exception {
       SiteDataStub.GetContent request = new SiteDataStub.GetContent();
       request.setObjectType(SiteDataStub.ObjectType.Folder);
       request.setRetrieveChildItems(true);
       request.setSecurityOnly(false);
       request.setFolderUrl(url);
+      request.setObjectId(guid);
+      request.setLastItemIdOnPage("");
       SiteDataStub.GetContentResponse response = stub.getContent(request);
       if (DEBUG) {
         System.out.println("                            Folder (Specific)");
@@ -492,10 +573,10 @@ public class SharePointAdaptor extends AbstractAdaptor {
         System.out.println(response.getGetContentResult());
       }
       String xml = response.getGetContentResult();
-      xml = xml.replace("<FPFolder>", "<FPFolder xmlns='" + XMLNS + "'>");
+      xml = xml.replace("<Folder>", "<Folder xmlns='" + XMLNS + "'>");
       XMLStreamReader reader = xmlInputFactory.createXMLStreamReader(
           new StringReader(xml));
-      return SiteDataStub.FPFolder.Factory.parse(reader);
+      return SiteDataStub.Folder.Factory.parse(reader);
     }
   }
 }
