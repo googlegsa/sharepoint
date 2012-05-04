@@ -38,6 +38,7 @@ import org.apache.commons.httpclient.methods.GetMethod;
 import java.io.*;
 import java.net.URI;
 import java.net.URISyntaxException;
+import java.nio.charset.Charset;
 import java.util.Arrays;
 import java.util.concurrent.*;
 
@@ -48,6 +49,8 @@ import javax.xml.stream.XMLStreamReader;
  * SharePoint Adaptor for the GSA.
  */
 public class SharePointAdaptor extends AbstractAdaptor {
+  private static final Charset CHARSET = Charset.forName("UTF-8");
+
   private final ConcurrentMap<String, SiteDataClient> clients
       = new ConcurrentSkipListMap<String, SiteDataClient>();
   private final XMLInputFactory xmlInputFactory = XMLInputFactory.newFactory();
@@ -216,7 +219,8 @@ public class SharePointAdaptor extends AbstractAdaptor {
         throws Exception {
       SiteDataStub.VirtualServer vs = getContentVirtualServer();
       response.setContentType("text/html");
-      Writer writer = new OutputStreamWriter(response.getOutputStream());
+      Writer writer
+          = new OutputStreamWriter(response.getOutputStream(), CHARSET);
       writer.write("<!DOCTYPE html>\n"
           + "<html><head>"
           + "<title>VirtualServer " + vs.getMetadata().getURL() + "</title>"
@@ -246,7 +250,8 @@ public class SharePointAdaptor extends AbstractAdaptor {
         String id) throws Exception {
       SiteDataStub.Web w = getContentWeb(id);
       response.setContentType("text/html");
-      Writer writer = new OutputStreamWriter(response.getOutputStream());
+      Writer writer
+          = new OutputStreamWriter(response.getOutputStream(), CHARSET);
       writer.write("<!DOCTYPE html>\n"
           + "<html><head>"
           + "<title>Site " + w.getMetadata().getTitle() + "</title>"
@@ -281,7 +286,8 @@ public class SharePointAdaptor extends AbstractAdaptor {
         String id) throws Exception {
       SiteDataStub.List l = getContentList(id);
       response.setContentType("text/html");
-      Writer writer = new OutputStreamWriter(response.getOutputStream());
+      Writer writer
+          = new OutputStreamWriter(response.getOutputStream(), CHARSET);
       writer.write("<!DOCTYPE html>\n"
           + "<html><head>"
           + "<title>List " + l.getMetadata().getTitle() + "</title>"
