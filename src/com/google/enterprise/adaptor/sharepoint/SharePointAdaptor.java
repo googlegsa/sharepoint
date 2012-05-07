@@ -25,6 +25,7 @@ import com.google.enterprise.adaptor.IOHelper;
 import com.google.enterprise.adaptor.Request;
 import com.google.enterprise.adaptor.Response;
 
+import org.apache.axiom.om.OMAttribute;
 import org.apache.axiom.om.OMContainer;
 import org.apache.axiom.om.OMElement;
 import org.apache.axiom.om.OMNode;
@@ -47,6 +48,7 @@ import java.nio.charset.Charset;
 import java.util.*;
 import java.util.concurrent.*;
 import java.util.logging.*;
+import java.util.regex.Pattern;
 
 import javax.xml.namespace.QName;
 import javax.xml.stream.XMLInputFactory;
@@ -69,6 +71,8 @@ public class SharePointAdaptor extends AbstractAdaptor {
       = new QName("ows_ContentType");
   private static final QName OWS_ATTACHMENTS_ATTRIBUTE
       = new QName("ows_Attachments");
+  private static final Pattern ALTERNATIVE_VALUE_PATTERN
+      = Pattern.compile("^\\d+;#");
 
   private static final Logger log
       = Logger.getLogger(SharePointAdaptor.class.getName());
@@ -428,6 +432,40 @@ public class SharePointAdaptor extends AbstractAdaptor {
       return Lists.newArrayList(children);
     }
 
+    private List<OMAttribute> getAllAttributes(OMElement ele) {
+      @SuppressWarnings("unchecked")
+      Iterator<OMAttribute> attributes = ele.getAllAttributes();
+      return Lists.newArrayList(attributes);
+    }
+
+    private void addMetadata(Response response, String name, String value) {
+      if (name.startsWith("ows_")) {
+        name = name.substring("ows_".length());
+      }
+      if (ALTERNATIVE_VALUE_PATTERN.matcher(value).find()) {
+        // This is a lookup field. We need to take alternative values only.
+        // Ignore the integer part. 314;#pi;#42;#the answer
+        String[] parts = value.split(";#");
+        for (int i = 1; i < parts.length; i += 2) {
+          if (parts[i].isEmpty()) {
+            continue;
+          }
+          response.addMetadata(name, parts[i]);
+        }
+      } else if (value.startsWith(";#") && value.endsWith(";#")) {
+        // This is a multi-choice field. Values will be in the form:
+        // ;#value1;#value2;#
+        for (String part : value.split(";#")) {
+          if (part.isEmpty()) {
+            continue;
+          }
+          response.addMetadata(name, part);
+        }
+      } else {
+        response.addMetadata(name, value);
+      }
+    }
+
     private void getListItemDocContent(Request request, Response response,
         String listId, String itemId) throws Exception {
       log.entering("SiteDataClient", "getListItemDocContent",
@@ -446,6 +484,11 @@ public class SharePointAdaptor extends AbstractAdaptor {
         title = "Unknown title";
       }
       String serverUrl = row.getAttributeValue(OWS_SERVERURL_ATTRIBUTE);
+
+      for (OMAttribute attribute : getAllAttributes(row)) {
+        addMetadata(response, attribute.getLocalName(),
+            attribute.getAttributeValue());
+      }
 
       if (isFolder) {
         SiteDataStub.List l = getContentList(listId);
