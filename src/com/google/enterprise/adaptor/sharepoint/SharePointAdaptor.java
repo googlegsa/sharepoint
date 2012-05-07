@@ -67,6 +67,8 @@ public class SharePointAdaptor extends AbstractAdaptor {
       = new QName("ows_ServerUrl");
   private static final QName OWS_CONTENTTYPE_ATTRIBUTE
       = new QName("ows_ContentType");
+  private static final QName OWS_ATTACHMENTS_ATTRIBUTE
+      = new QName("ows_Attachments");
 
   private static final Logger log
       = Logger.getLogger(SharePointAdaptor.class.getName());
@@ -187,16 +189,15 @@ public class SharePointAdaptor extends AbstractAdaptor {
         throws Exception {
       log.entering("SiteDataClient", "getDocContent",
           new Object[] {request, response});
-      SiteDataStub.GetURLSegments urlRequest
-          = new SiteDataStub.GetURLSegments();
-      urlRequest.setStrURL(request.getDocId().getUniqueId());
+      String url = request.getDocId().getUniqueId();
+      if (getAttachmentDocContent(request, response)) {
+        // Success, it was an attachment.
+        log.exiting("SiteDataClient", "getDocContent");
+        return;
+      }
+
       SiteDataStub.GetURLSegmentsResponse urlResponse
-          = stub.getURLSegments(urlRequest);
-      log.log(Level.FINE, "GetURLSegments: Result={0}, StrWebID={1}, "
-          + "StrItemID={2}, StrListID={3}, StrBucketID={4}",
-          new Object[] {urlResponse.getGetURLSegmentsResult(),
-            urlResponse.getStrWebID(), urlResponse.getStrListID(),
-            urlResponse.getStrItemID(), urlResponse.getStrBucketID()});
+          = getUrlSegments(request.getDocId().getUniqueId());
       if (!urlResponse.getGetURLSegmentsResult()) {
         log.log(Level.FINE, "responding not found");
         response.respondNotFound();
@@ -253,6 +254,14 @@ public class SharePointAdaptor extends AbstractAdaptor {
       DocId docId = new DocId(url);
       log.exiting("SiteDataClient", "encodeDocId", docId);
       return docId;
+    }
+
+    private String encodeUrl(DocId docId) {
+      log.entering("SiteDataClient", "encodeUrl", docId);
+      URI uri = context.getDocIdEncoder().encodeDocId(docId);
+      String encoded = uri.toASCIIString();
+      log.exiting("SiteDataClient", "encodeUrl", encoded);
+      return encoded;
     }
 
     private String encodeUrl(String url) {
@@ -467,12 +476,107 @@ public class SharePointAdaptor extends AbstractAdaptor {
         IOHelper.copyStream(is, response.getOutputStream());
       } else {
         // Some list item.
+        response.setContentType("text/html");
         Writer writer
             = new OutputStreamWriter(response.getOutputStream(), CHARSET);
-        // TODO(ejona): Handle this case.
-        writer.write("TODO: ListItem");
+        writer.write("<!DOCTYPE html>\n"
+            + "<html><head>"
+            + "<title>List Item " + title + "</title>"
+            + "</head>"
+            + "<body>"
+            + "<h1>List Item " + title + "</h1>");
+        String strAttachments
+            = row.getAttributeValue(OWS_ATTACHMENTS_ATTRIBUTE);
+        int attachments = strAttachments == null
+            ? 0 : Integer.parseInt(strAttachments);
+        if (attachments > 0) {
+          writer.write("<p>Attachments</p><ul>");
+          SiteDataStub.Item item
+              = getContentListItemAttachments(listId, itemId);
+          if (item.getAttachment() != null) {
+            for (SiteDataStub.Attachment_type0 attachment
+                : item.getAttachment()) {
+              writer.write(liUrl(attachment.getURL()));
+            }
+          }
+          writer.write("</ul>");
+        }
+        writer.write("</body></html>");
+        writer.flush();
       }
       log.exiting("SiteDataClient", "getListItemDocContent");
+    }
+
+    private boolean getAttachmentDocContent(Request request, Response response)
+        throws Exception {
+      log.entering("SiteDataClient", "getAttachmentDocContent", new Object[] {
+          request, response});
+      String url = request.getDocId().getUniqueId();
+      if (!url.contains("/Attachments/")) {
+        log.fine("Not an attachment: does not contain /Attachments/");
+        log.exiting("SiteDataClient", "getAttachmentDocContent", false);
+        return false;
+      }
+      String[] parts = url.split("/Attachments/", 2);
+      String listUrl = parts[0] + "/AllItems.aspx";
+      parts = parts[1].split("/", 2);
+      if (parts.length != 2) {
+        log.fine("Could not separate attachment file name and list item id");
+        log.exiting("SiteDataClient", "getAttachmentDocContent", false);
+        return false;
+      }
+      String itemId = parts[0];
+      log.log(Level.FINE, "Detected possible attachment: "
+          + "listUrl={0}, itemId={1}", new Object[] {listUrl, itemId});
+      SiteDataStub.GetURLSegmentsResponse urlResponse = getUrlSegments(listUrl);
+      if (!urlResponse.getGetURLSegmentsResult()) {
+        log.fine("Could not get list id from list url");
+        log.exiting("SiteDataClient", "getAttachmentDocContent", false);
+        return false;
+      }
+      String listId = urlResponse.getStrListID();
+      if (listId == null) {
+        log.fine("List URL does not point to a list");
+        log.exiting("SiteDataClient", "getAttachmentDocContent", false);
+        return false;
+      }
+      SiteDataStub.Item item = getContentListItemAttachments(listId, itemId);
+      boolean verifiedIsAttachment = false;
+      if (item.getAttachment() != null) {
+        for (SiteDataStub.Attachment_type0 attachment : item.getAttachment()) {
+          if (url.equals(attachment.getURL())) {
+            verifiedIsAttachment = true;
+            break;
+          }
+        }
+      }
+      if (verifiedIsAttachment) {
+        log.fine("Suspected attachment verified as being a real attachment. "
+            + "Proceeding to provide content.");
+      } else {
+        log.fine("Suspected attachment not listed in item's attachment list");
+        log.exiting("SiteDataClient", "getAttachmentDocContent", false);
+        return false;
+      }
+      // Because SP is silly, the path of the URI is unencoded, but the rest of
+      // the URI is correct. Thus, we split up the path from the host, and then
+      // turn them into URIs separately, and then turn everything into a
+      // properly-escaped string.
+      parts = url.split("/", 4);
+      String host = parts[0] + "/" + parts[1] + "/" + parts[2] + "/";
+      // host must be properly-encoded already.
+      URI hostUri = URI.create(host);
+      URI pathUri = new URI(null, null, parts[3], null);
+      url = hostUri.resolve(pathUri).toASCIIString();
+      GetMethod method = new GetMethod(url);
+      int statusCode = httpClient.executeMethod(method);
+      if (statusCode != HttpStatus.SC_OK) {
+        throw new IOException("Got status code: " + statusCode);
+      }
+      InputStream is = method.getResponseBodyAsStream();
+      IOHelper.copyStream(is, response.getOutputStream());
+      log.exiting("SiteDataClient", "getAttachmentDocContent", true);
+      return true;
     }
 
     private SiteDataStub.VirtualServer getContentVirtualServer()
@@ -512,6 +616,23 @@ public class SharePointAdaptor extends AbstractAdaptor {
       SiteDataClient client = getSiteDataClient(response.getStrWeb());
       log.exiting("SiteDataClient", "getClientForUrl", client);
       return client;
+    }
+
+    private SiteDataStub.GetURLSegmentsResponse getUrlSegments(String url)
+        throws Exception {
+      log.entering("SiteDataClient", "getUrlSegments", url);
+      SiteDataStub.GetURLSegments urlRequest
+          = new SiteDataStub.GetURLSegments();
+      urlRequest.setStrURL(url);
+      SiteDataStub.GetURLSegmentsResponse urlResponse
+          = stub.getURLSegments(urlRequest);
+      log.log(Level.FINE, "GetURLSegments: Result={0}, StrWebID={1}, "
+          + "StrItemID={2}, StrListID={3}, StrBucketID={4}",
+          new Object[] {urlResponse.getGetURLSegmentsResult(),
+            urlResponse.getStrWebID(), urlResponse.getStrListID(),
+            urlResponse.getStrItemID(), urlResponse.getStrBucketID()});
+      log.exiting("SiteDataClient", "getUrlSegments", urlResponse);
+      return urlResponse;
     }
 
     private SiteDataStub.ContentDatabase getContentContentDatabase(String id)
@@ -625,6 +746,30 @@ public class SharePointAdaptor extends AbstractAdaptor {
       SiteDataStub.Folder folder = SiteDataStub.Folder.Factory.parse(reader);
       log.exiting("SiteDataClient", "getContentFolder", folder);
       return folder;
+    }
+
+    private SiteDataStub.Item getContentListItemAttachments(String listId,
+        String itemId) throws Exception {
+      log.entering("SiteDataClient", "getContentListItemAttachments",
+          new Object[] {listId, itemId});
+      SiteDataStub.GetContent request = new SiteDataStub.GetContent();
+      request.setObjectType(SiteDataStub.ObjectType.ListItemAttachments);
+      request.setRetrieveChildItems(true);
+      request.setSecurityOnly(false);
+      request.setObjectId(listId);
+      request.setFolderUrl("");
+      request.setItemId(itemId);
+      SiteDataStub.GetContentResponse response = stub.getContent(request);
+      log.log(Level.FINE, "GetContent(ListItemAttachments): Result={0}, "
+          + "LastItemIdOnPage={1}", new Object[] {
+          response.getGetContentResult(), response.getLastItemIdOnPage()});
+      String xml = response.getGetContentResult();
+      xml = xml.replace("<Item ", "<Item xmlns='" + XMLNS + "' ");
+      XMLStreamReader reader = xmlInputFactory.createXMLStreamReader(
+          new StringReader(xml));
+      SiteDataStub.Item item = SiteDataStub.Item.Factory.parse(reader);
+      log.exiting("SiteDataClient", "getContentListItemAttachments", item);
+      return item;
     }
   }
 }
