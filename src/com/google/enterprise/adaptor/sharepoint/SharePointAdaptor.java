@@ -722,7 +722,6 @@ public class SharePointAdaptor extends AbstractAdaptor {
       log.log(Level.FINE, "GetContent(Site): Result={0}, LastItemIdOnPage={1}",
           new Object[] {response.getGetContentResult(),
           response.getLastItemIdOnPage()});
-      stub.getContent(request);
       String xml = response.getGetContentResult();
       xml = xml.replace("<Web>", "<Web xmlns='" + XMLNS + "'>");
       XMLStreamReader reader = xmlInputFactory.createXMLStreamReader(
