@@ -34,9 +34,10 @@ import org.apache.axis2.client.Options;
 import org.apache.axis2.databinding.types.UnsignedInt;
 import org.apache.axis2.transport.http.HTTPConstants;
 import org.apache.axis2.transport.http.HttpTransportProperties;
+import org.apache.commons.httpclient.Credentials;
 import org.apache.commons.httpclient.HttpClient;
 import org.apache.commons.httpclient.HttpStatus;
-import org.apache.commons.httpclient.Credentials;
+import org.apache.commons.httpclient.MultiThreadedHttpConnectionManager;
 import org.apache.commons.httpclient.NTCredentials;
 import org.apache.commons.httpclient.auth.AuthScope;
 import org.apache.commons.httpclient.methods.GetMethod;
@@ -81,7 +82,8 @@ public class SharePointAdaptor extends AbstractAdaptor {
       = new ConcurrentSkipListMap<String, SiteDataClient>();
   private final XMLInputFactory xmlInputFactory = XMLInputFactory.newFactory();
   private final DocId virtualServerDocId = new DocId("");
-  private final HttpClient httpClient = new HttpClient();
+  private MultiThreadedHttpConnectionManager httpManager;
+  private HttpClient httpClient;
   private AdaptorContext context;
   private String virtualServer;
 
@@ -107,9 +109,17 @@ public class SharePointAdaptor extends AbstractAdaptor {
     log.log(Level.CONFIG, "Password: {0}", password);
     log.log(Level.CONFIG, "Domain: {0}", domain);
 
+    httpManager = new MultiThreadedHttpConnectionManager();
+    httpClient = new HttpClient(httpManager);
+
     Credentials creds = new NTCredentials(username, password,
         config.getServerHostname(), domain);
     httpClient.getState().setCredentials(AuthScope.ANY, creds);
+  }
+
+  @Override
+  public void destroy() {
+    httpManager.shutdown();
   }
 
   @Override
