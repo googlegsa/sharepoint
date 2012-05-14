@@ -213,8 +213,14 @@ public class SharePointAdaptor extends AbstractAdaptor {
       SiteDataStub.GetURLSegmentsResponse urlResponse
           = getUrlSegments(request.getDocId().getUniqueId());
       if (!urlResponse.getGetURLSegmentsResult()) {
-        log.log(Level.FINE, "responding not found");
-        response.respondNotFound();
+        // It may still be an aspx page.
+        if (request.getDocId().getUniqueId().toLowerCase(Locale.ENGLISH)
+            .endsWith(".aspx")) {
+          getAspxDocContent(request, response);
+        } else {
+          log.log(Level.FINE, "responding not found");
+          response.respondNotFound();
+        }
         log.exiting("SiteDataClient", "getDocContent");
         return;
       }
@@ -476,6 +482,42 @@ public class SharePointAdaptor extends AbstractAdaptor {
       }
     }
 
+    private void getAspxDocContent(Request request, Response response)
+        throws Exception {
+      log.entering("SiteDataClient", "getAspxDocContent",
+          new Object[] {request, response});
+      getFileDocContent(request, response);
+      log.exiting("SiteDataClient", "getAspxDocContent");
+    }
+
+    /**
+     * Blindly retrieve contents of DocId as if it were a file's URL. To prevent
+     * security issues, this should only be used after the DocId has been
+     * verified to be a valid document on the SharePoint instance. In addition,
+     * ACLs and other metadata and security measures should be set before making
+     * this call.
+     */
+    private void getFileDocContent(Request request, Response response)
+        throws Exception {
+      log.entering("SiteDataClient", "getFileDocContent",
+          new Object[] {request, response});
+      String url = request.getDocId().getUniqueId();
+      String[] parts = url.split("/", 4);
+      url = parts[0] + "/" + parts[1] + "/" + parts[2] + "/" +
+          new URI(null, null, parts[3], null).toASCIIString();
+      GetMethod method = new GetMethod(url);
+      int statusCode = httpClient.executeMethod(method);
+      if (statusCode != HttpStatus.SC_OK) {
+        IOException ioe = new IOException("Got status code: " + statusCode);
+        log.throwing("SiteDataClient", "getFileDocContent", ioe);
+        throw ioe;
+      }
+      InputStream is = method.getResponseBodyAsStream();
+      IOHelper.copyStream(is, response.getOutputStream());
+      method.releaseConnection();
+      log.exiting("SiteDataClient", "getFileDocContent");
+    }
+
     private void getListItemDocContent(Request request, Response response,
         String listId, String itemId) throws Exception {
       log.entering("SiteDataClient", "getListItemDocContent",
@@ -516,17 +558,7 @@ public class SharePointAdaptor extends AbstractAdaptor {
       // TODO(ejona): This is likely unreliable. Investigate a better way.
       if ("Document".equals(contentType)) {
         // This is a file, so display its contents.
-        String url = request.getDocId().getUniqueId();
-        String[] parts = url.split("/", 4);
-        url = parts[0] + "/" + parts[1] + "/" + parts[2] + "/" +
-            new URI(null, null, parts[3], null).toASCIIString();
-        GetMethod method = new GetMethod(url);
-        int statusCode = httpClient.executeMethod(method);
-        if (statusCode != HttpStatus.SC_OK) {
-          throw new IOException("Got status code: " + statusCode);
-        }
-        InputStream is = method.getResponseBodyAsStream();
-        IOHelper.copyStream(is, response.getOutputStream());
+        getFileDocContent(request, response);
       } else {
         // Some list item.
         response.setContentType("text/html");
