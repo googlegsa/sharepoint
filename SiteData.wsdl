@@ -481,7 +481,7 @@ xmlns:rs="urn:schemas-microsoft-com:rowset" xmlns:s="http://www.w3.org/2001/XMLS
         <s:attribute name="UserProfileGUID" type="s:string" use="required"/>
         <s:attribute name="RootWebId" type="s:string" use="required"/>
         <s:attribute name="ChangeId" type="s:string" use="required"/>
-        <s:attribute name="ContentDatabaseId" type="s:string" use="required" />
+        <s:attribute name="ContentDatabaseId" type="s:string" use="optional" />
       </s:complexType>
       <s:complexType name="SPWebAppMetadata">
         <s:attribute name="ID" type="s:string" use="optional"/>
@@ -557,7 +557,7 @@ xmlns:rs="urn:schemas-microsoft-com:rowset" xmlns:s="http://www.w3.org/2001/XMLS
        <s:element name="Messages" >
          <s:complexType>
            <s:sequence>
-             <s:element name="Message" type="tns:Message" minOccurs="0" maxOccurs="unbounded" />
+             <s:element name="Message" type="tns:xml" minOccurs="0" maxOccurs="unbounded" />
            </s:sequence>
          </s:complexType>
        </s:element>
@@ -944,7 +944,7 @@ xmlns:rs="urn:schemas-microsoft-com:rowset" xmlns:s="http://www.w3.org/2001/XMLS
 
       <s:complexType name="Lists">
         <s:sequence>
-          <s:element maxOccurs="unbounded" name="List" >
+          <s:element minOccurs="0" maxOccurs="unbounded" name="List" >
             <s:complexType>
               <s:attribute name="ID" type="s:string" use="required" />
               <s:attribute name="LastModified" type="s:string" use="required" />
@@ -991,8 +991,8 @@ xmlns:rs="urn:schemas-microsoft-com:rowset" xmlns:s="http://www.w3.org/2001/XMLS
           <s:sequence >
             <s:element ref='tns:List' minOccurs='0' />
             <s:choice minOccurs='0' maxOccurs='unbounded'>
-              <s:element ref='tns:SPView' minOccurs='0' maxOccurs='unbounded'/>
-              <s:element ref='tns:SPListItem' minOccurs='0' maxOccurs='unbounded'/>
+              <s:element ref='tns:SPView'/>
+              <s:element ref='tns:SPListItem'/>
             </s:choice>
           </s:sequence>
           <s:attribute name='ItemCount' type='s:int' use='required'/>
@@ -1037,7 +1037,7 @@ xmlns:rs="urn:schemas-microsoft-com:rowset" xmlns:s="http://www.w3.org/2001/XMLS
             <s:element name='ListItem' >
               <s:complexType >
                 <s:sequence >
-                  <s:element name='row' type='s:string' />
+                  <s:any/><!-- z:row -->
                   <s:element name='permissions' type='tns:permissionsForACL' />
                 </s:sequence>
               </s:complexType>
@@ -1053,7 +1053,7 @@ xmlns:rs="urn:schemas-microsoft-com:rowset" xmlns:s="http://www.w3.org/2001/XMLS
           <s:attribute name="Id" type="s:string" use="optional" />
           <s:attribute name="DisplayUrl" type="s:string" use="optional" />
           <s:attribute name="CRC" type="s:unsignedInt" use="optional"/>
-          <s:attribute name="Url" type="s:int" use="optional" />
+          <s:attribute name="Url" type="s:string" use="optional" />
           <s:attribute name="SequenceNumber" type="s:string" use="optional"/>
         </s:complexType>
       </s:element>

@@ -22,6 +22,7 @@ import com.google.enterprise.adaptor.DocId;
 import com.google.enterprise.adaptor.DocIdEncoder;
 import com.google.enterprise.adaptor.DocIdPusher;
 import com.google.enterprise.adaptor.IOHelper;
+import com.google.enterprise.adaptor.PollingIncrementalAdaptor;
 import com.google.enterprise.adaptor.Request;
 import com.google.enterprise.adaptor.Response;
 
@@ -58,7 +59,8 @@ import javax.xml.stream.XMLStreamReader;
 /**
  * SharePoint Adaptor for the GSA.
  */
-public class SharePointAdaptor extends AbstractAdaptor {
+public class SharePointAdaptor extends AbstractAdaptor
+    implements PollingIncrementalAdaptor {
   private static final Charset CHARSET = Charset.forName("UTF-8");
   private static final QName DATA_ELEMENT
       = new QName("urn:schemas-microsoft-com:rowset", "data");
@@ -86,6 +88,8 @@ public class SharePointAdaptor extends AbstractAdaptor {
   private HttpClient httpClient;
   private AdaptorContext context;
   private String virtualServer;
+  private final ConcurrentSkipListMap<String, String> contentDatabaseChangeId
+      = new ConcurrentSkipListMap<String, String>();
 
   @Override
   public void initConfig(Config config) {
@@ -115,6 +119,11 @@ public class SharePointAdaptor extends AbstractAdaptor {
     Credentials creds = new NTCredentials(username, password,
         config.getServerHostname(), domain);
     httpClient.getState().setCredentials(AuthScope.ANY, creds);
+
+    if (false) {
+      contentDatabaseChangeId.put("{4fb7dea1-2912-4927-9eda-1ea2f0977cf8}",
+          "1;0;4fb7dea1-2912-4927-9eda-1ea2f0977cf8;634717634720100000;597");
+    }
   }
 
   @Override
@@ -151,7 +160,7 @@ public class SharePointAdaptor extends AbstractAdaptor {
       throw ex;
     } catch (Exception ex) {
       IOException ioe = new IOException(ex);
-      log.throwing("SharePointAdaptor", "getDocContent", ex);
+      log.throwing("SharePointAdaptor", "getDocContent", ioe);
       throw ioe;
     }
     log.exiting("SharePointAdaptor", "getDocContent");
@@ -162,6 +171,71 @@ public class SharePointAdaptor extends AbstractAdaptor {
     log.entering("SharePointAdaptor", "getDocIds", pusher);
     pusher.pushDocIds(Arrays.asList(virtualServerDocId));
     log.exiting("SharePointAdaptor", "getDocIds");
+  }
+
+  @Override
+  public void getModifiedDocIds(DocIdPusher pusher)
+      throws InterruptedException, IOException {
+    log.entering("SharePointAdaptor", "getModifiedDocIds", pusher);
+    try {
+      SiteDataClient client = getSiteDataClient(virtualServer);
+      SiteDataStub.VirtualServer vs = client.getContentVirtualServer();
+      Set<String> discoveredContentDatabases = new HashSet<String>();
+      if (vs.getContentDatabases() != null) {
+        for (SiteDataStub.ContentDatabase_type0 cd_t0
+            : vs.getContentDatabases().getContentDatabase()) {
+          discoveredContentDatabases.add(cd_t0.getID());
+        }
+      }
+      Set<String> knownContentDatabases
+          = new HashSet<String>(contentDatabaseChangeId.keySet());
+      Set<String> removedContentDatabases
+          = new HashSet<String>(knownContentDatabases);
+      removedContentDatabases.removeAll(discoveredContentDatabases);
+      Set<String> newContentDatabases
+          = new HashSet<String>(discoveredContentDatabases);
+      newContentDatabases.removeAll(knownContentDatabases);
+      Set<String> updatedContentDatabases
+          = new HashSet<String>(knownContentDatabases);
+      updatedContentDatabases.retainAll(discoveredContentDatabases);
+      if (!removedContentDatabases.isEmpty()
+          || !newContentDatabases.isEmpty()) {
+        DocIdPusher.Record record
+            = new DocIdPusher.Record.Builder(virtualServerDocId)
+            .setCrawlImmediately(true).build();
+        pusher.pushRecords(Collections.singleton(record));
+      }
+      for (String contentDatabase : removedContentDatabases) {
+        contentDatabaseChangeId.remove(contentDatabase);
+      }
+      for (String contentDatabase : newContentDatabases) {
+        SiteDataStub.ContentDatabase cd
+            = client.getContentContentDatabase(contentDatabase);
+        String changeId = cd.getMetadata().getChangeId();
+        contentDatabaseChangeId.put(contentDatabase, changeId);
+      }
+      for (String contentDatabase : updatedContentDatabases) {
+        String changeId = contentDatabaseChangeId.get(contentDatabase);
+        if (changeId == null) {
+          // The item was removed from contentDatabaseChangeId, so apparently
+          // this database is gone.
+          continue;
+        }
+        changeId = client.getModifiedDocIds(contentDatabase, changeId, pusher);
+        contentDatabaseChangeId.put(contentDatabase, changeId);
+      }
+    } catch (RuntimeException ex) {
+      log.throwing("SharePointAdaptor", "getModifiedDocIds", ex);
+      throw ex;
+    } catch (IOException ex) {
+      log.throwing("SharePointAdaptor", "getModifiedDocIds", ex);
+      throw ex;
+    } catch (Exception ex) {
+      IOException ioe = new IOException(ex);
+      log.throwing("SharePointAdaptor", "getModifiedDocIds", ioe);
+      throw ioe;
+    }
+    log.exiting("SharePointAdaptor", "getModifiedDocIds", pusher);
   }
 
   private SiteDataClient getSiteDataClient(String site) throws AxisFault {
@@ -239,23 +313,6 @@ public class SharePointAdaptor extends AbstractAdaptor {
         getSiteDocContent(request, response, urlResponse.getStrWebID());
       }
       log.exiting("SiteDataClient", "getDocContent");
-    }
-
-    public void callChangesContentDatabase() throws Exception {
-      log.entering("SiteDataClient", "callChangesContentDatabase");
-      SiteDataStub.GetChanges request = new SiteDataStub.GetChanges();
-      request.setObjectType(SiteDataStub.ObjectType.ContentDatabase);
-      request.setContentDatabaseId("{4fb7dea1-2912-4927-9eda-1ea2f0977cf8}");
-      request.setLastChangeId(
-          "1;0;4fb7dea1-2912-4927-9eda-1ea2f0977cf8;634704678460030000;261");
-      //request.setCurrentChangeId("");
-      request.setTimeout(2);
-      SiteDataStub.GetChangesResponse response = stub.getChanges(request);
-      log.log(Level.FINE, "GetChanges: Result={0}, MoreChanges={1}, "
-          + "CurrentChangeId={2}, LastChangeId={3}", new Object[] {
-            response.getGetChangesResult(), response.getMoreChanges(),
-            response.getCurrentChangeId(), response.getLastChangeId()});
-      log.exiting("SiteDataClient", "callChangesContentDatabase");
     }
 
     private DocId encodeDocId(String url) {
@@ -664,6 +721,141 @@ public class SharePointAdaptor extends AbstractAdaptor {
       return true;
     }
 
+    /**
+     * @return new change id
+     */
+    private String getModifiedDocIds(String contentDatabase,
+        String lastChangeId, DocIdPusher pusher) throws Exception {
+      log.entering("SiteDataClient", "getModifiedDocIds",
+          new Object[] {contentDatabase, lastChangeId, pusher});
+      SiteDataStub.SPContentDatabase changes
+          = getChangesContentDatabase(contentDatabase, lastChangeId);
+      List<DocId> docIds = new ArrayList<DocId>();
+      getModifiedDocIdsContentDatabase(changes, docIds);
+      List<DocIdPusher.Record> records
+        = new ArrayList<DocIdPusher.Record>(docIds.size());
+      DocIdPusher.Record.Builder builder
+          = new DocIdPusher.Record.Builder(new DocId("fake"))
+          .setCrawlImmediately(true);
+      for (DocId docId : docIds) {
+        records.add(builder.setDocId(docId).build());
+      }
+      pusher.pushRecords(records);
+      lastChangeId = changes.getContentDatabase().getMetadata().getChangeId();
+      log.exiting("SiteDataClient", "getModifiedDocIds", lastChangeId);
+      return lastChangeId;
+    }
+
+    private void getModifiedDocIdsContentDatabase(
+        SiteDataStub.SPContentDatabase changes, List<DocId> docIds) {
+      log.entering("SiteDataClient", "getModifiedDocIdsContentDatabase",
+          new Object[] {changes, docIds});
+      if (!"Unchanged".equals(changes.getChange())) {
+        docIds.add(virtualServerDocId);
+      }
+      if (changes.getSPSite() != null) {
+        for (SiteDataStub.SPSite_type0 site : changes.getSPSite()) {
+          getModifiedDocIdsSite(site, docIds);
+        }
+      }
+      log.exiting("SiteDataClient", "getModifiedDocIdsContentDatabase");
+    }
+
+    private void getModifiedDocIdsSite(SiteDataStub.SPSite_type0 changes,
+        List<DocId> docIds) {
+      log.entering("SiteDataClient", "getModifiedDocIdsSite",
+          new Object[] {changes, docIds});
+      if (!"Unchanged".equals(changes.getChange())
+          && !"Delete".equals(changes.getChange())) {
+        docIds.add(new DocId(changes.getSite().getMetadata().getURL()));
+      }
+      if (changes.getSPWeb() != null) {
+        for (SiteDataStub.SPWeb_type0 web : changes.getSPWeb()) {
+          getModifiedDocIdsWeb(web, docIds);
+        }
+      }
+      log.exiting("SiteDataClient", "getModifiedDocIdsSite");
+    }
+
+    private void getModifiedDocIdsWeb(SiteDataStub.SPWeb_type0 changes,
+        List<DocId> docIds) {
+      log.entering("SiteDataClient", "getModifiedDocIdsWeb",
+          new Object[] {changes, docIds});
+      if (!"Unchanged".equals(changes.getChange())
+          && !"Delete".equals(changes.getChange())) {
+        docIds.add(new DocId(changes.getWeb().getMetadata().getURL()));
+      }
+      if (changes.getSPWebChoice_type1() != null) {
+        for (SiteDataStub.SPWebChoice_type1 choice
+            : changes.getSPWebChoice_type1()) {
+          if (choice.getSPFolder() != null) {
+            getModifiedDocIdsFolder(choice.getSPFolder(), docIds);
+          }
+          if (choice.getSPList() != null) {
+            getModifiedDocIdsList(choice.getSPList(), docIds);
+          }
+          if (choice.getSPFile() != null) {
+            getModifiedDocIdsFile(choice.getSPFile(), docIds);
+          }
+        }
+      }
+      log.exiting("SiteDataClient", "getModifiedDocIdsWeb");
+    }
+
+    private void getModifiedDocIdsFolder(SiteDataStub.SPFolder_type0 changes,
+        List<DocId> docIds) {
+      log.entering("SiteDataClient", "getModifiedDocIdsFolder",
+          new Object[] {changes, docIds});
+      if (!"Unchanged".equals(changes.getChange())
+          && !"Delete".equals(changes.getChange())) {
+        docIds.add(encodeDocId(changes.getDisplayUrl()));
+      }
+      log.exiting("SiteDataClient", "getModifiedDocIdsFolder");
+    }
+
+    private void getModifiedDocIdsList(SiteDataStub.SPList_type0 changes,
+        List<DocId> docIds) {
+      log.entering("SiteDataClient", "getModifiedDocIdsList",
+          new Object[] {changes, docIds});
+      if (!"Unchanged".equals(changes.getChange())
+          && !"Delete".equals(changes.getChange())) {
+        docIds.add(encodeDocId(changes.getDisplayUrl()));
+      }
+      if (changes.getSPListChoice_type0() != null) {
+        for (SiteDataStub.SPListChoice_type0 choice
+            : changes.getSPListChoice_type0()) {
+          // Ignore view change detection.
+
+          if (choice.getSPListItem() != null) {
+            getModifiedDocIdsListItem(choice.getSPListItem(), docIds);
+          }
+        }
+      }
+      log.exiting("SiteDataClient", "getModifiedDocIdsList");
+    }
+
+    private void getModifiedDocIdsListItem(
+        SiteDataStub.SPListItem_type0 changes, List<DocId> docIds) {
+      log.entering("SiteDataClient", "getModifiedDocIdsListItem",
+          new Object[] {changes, docIds});
+      if (!"Unchanged".equals(changes.getChange())
+          && !"Delete".equals(changes.getChange())) {
+        docIds.add(encodeDocId(changes.getDisplayUrl()));
+      }
+      log.exiting("SiteDataClient", "getModifiedDocIdsListItem");
+    }
+
+    private void getModifiedDocIdsFile(SiteDataStub.SPFile_type0 changes,
+        List<DocId> docIds) {
+      log.entering("SiteDataClient", "getModifiedDocIdsFile",
+          new Object[] {changes, docIds});
+      if (!"Unchanged".equals(changes.getChange())
+          && !"Delete".equals(changes.getChange())) {
+        docIds.add(encodeDocId(changes.getDisplayUrl()));
+      }
+      log.exiting("SiteDataClient", "getModifiedDocIdsFile");
+    }
+
     private SiteDataStub.VirtualServer getContentVirtualServer()
         throws Exception {
       log.entering("SiteDataClient", "getContentVirtualServer");
@@ -674,7 +866,7 @@ public class SharePointAdaptor extends AbstractAdaptor {
       SiteDataStub.GetContentResponse response = stub.getContent(request);
       log.log(Level.FINE, "GetContent(VirtualServer): Result={0}, "
           + "LastItemIdOnPage={1}", new Object[] {
-          response.getLastItemIdOnPage(), response.getGetContentResult()});
+          response.getGetContentResult(), response.getLastItemIdOnPage()});
       String xml = response.getGetContentResult();
       xml = xml.replace("<VirtualServer>",
           "<VirtualServer xmlns='" + XMLNS + "'>");
@@ -854,6 +1046,32 @@ public class SharePointAdaptor extends AbstractAdaptor {
       SiteDataStub.Item item = SiteDataStub.Item.Factory.parse(reader);
       log.exiting("SiteDataClient", "getContentListItemAttachments", item);
       return item;
+    }
+
+    private SiteDataStub.SPContentDatabase getChangesContentDatabase(
+        String contentDatabaseGuid, String startChangeId) throws Exception {
+      log.entering("SiteDataClient", "getChangesContentDatabase",
+          new Object[] {contentDatabaseGuid, startChangeId});
+      SiteDataStub.GetChanges request = new SiteDataStub.GetChanges();
+      request.setObjectType(SiteDataStub.ObjectType.ContentDatabase);
+      request.setContentDatabaseId(contentDatabaseGuid);
+      request.setLastChangeId(startChangeId);
+      request.setTimeout(15);
+      SiteDataStub.GetChangesResponse response = stub.getChanges(request);
+      log.log(Level.FINE, "GetChanges(ContentDatabase): Result={0}, "
+          + "MoreChanges={1}, CurrentChangeId={2}, LastChangeId={3}",
+          new Object[] {
+            response.getGetChangesResult(), response.getMoreChanges(),
+            response.getCurrentChangeId(), response.getLastChangeId()});
+      String xml = response.getGetChangesResult();
+      xml = xml.replace("<SPContentDatabase ",
+          "<SPContentDatabase xmlns='" + XMLNS + "' ");
+      XMLStreamReader reader = xmlInputFactory.createXMLStreamReader(
+          new StringReader(xml));
+      SiteDataStub.SPContentDatabase cd
+          = SiteDataStub.SPContentDatabase.Factory.parse(reader);
+      log.exiting("SiteDataClient", "getChangesContentDatabase", cd);
+      return cd;
     }
   }
 }
