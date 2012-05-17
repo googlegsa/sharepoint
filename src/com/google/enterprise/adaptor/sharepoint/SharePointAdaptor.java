@@ -167,12 +167,25 @@ public class SharePointAdaptor extends AbstractAdaptor
       throws InterruptedException, IOException {
     log.entering("SharePointAdaptor", "getModifiedDocIds", pusher);
     SiteDataClient client = getSiteDataClient(virtualServer);
-    SiteDataStub.VirtualServer vs = client.getContentVirtualServer();
-    Set<String> discoveredContentDatabases = new HashSet<String>();
-    if (vs.getContentDatabases() != null) {
-      for (SiteDataStub.ContentDatabase_type0 cd_t0
-          : vs.getContentDatabases().getContentDatabase()) {
-        discoveredContentDatabases.add(cd_t0.getID());
+    SiteDataStub.VirtualServer vs = null;
+    try {
+      vs = client.getContentVirtualServer();
+    } catch (IOException ex) {
+      log.log(Level.WARNING, "Could not retrieve list of content databases",
+          ex);
+    }
+    Set<String> discoveredContentDatabases;
+    if (vs == null) {
+      // Retrieving list of databases failed, but we can continue without it.
+      discoveredContentDatabases
+        = new HashSet<String>(contentDatabaseChangeId.keySet());
+    } else {
+      discoveredContentDatabases = new HashSet<String>();
+      if (vs.getContentDatabases() != null) {
+        for (SiteDataStub.ContentDatabase_type0 cd_t0
+            : vs.getContentDatabases().getContentDatabase()) {
+          discoveredContentDatabases.add(cd_t0.getID());
+        }
       }
     }
     Set<String> knownContentDatabases
@@ -197,8 +210,15 @@ public class SharePointAdaptor extends AbstractAdaptor
       contentDatabaseChangeId.remove(contentDatabase);
     }
     for (String contentDatabase : newContentDatabases) {
-      SiteDataStub.ContentDatabase cd
-          = client.getContentContentDatabase(contentDatabase);
+      SiteDataStub.ContentDatabase cd;
+      try {
+        cd = client.getContentContentDatabase(contentDatabase);
+      } catch (IOException ex) {
+        log.log(Level.WARNING, "Could not retrieve change id for content "
+            + "database: " + contentDatabase, ex);
+        // Continue processing. Hope that next time works better.
+        continue;
+      }
       String changeId = cd.getMetadata().getChangeId();
       contentDatabaseChangeId.put(contentDatabase, changeId);
     }
@@ -209,7 +229,14 @@ public class SharePointAdaptor extends AbstractAdaptor
         // this database is gone.
         continue;
       }
-      changeId = client.getModifiedDocIds(contentDatabase, changeId, pusher);
+      try {
+        changeId = client.getModifiedDocIds(contentDatabase, changeId, pusher);
+      } catch (IOException ex) {
+        log.log(Level.WARNING, "Error getting changes from content database: "
+            + contentDatabase, ex);
+        // Continue processing. Hope that next time works better.
+        continue;
+      }
       contentDatabaseChangeId.put(contentDatabase, changeId);
     }
     log.exiting("SharePointAdaptor", "getModifiedDocIds", pusher);
