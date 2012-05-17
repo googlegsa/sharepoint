@@ -137,28 +137,20 @@ public class SharePointAdaptor extends AbstractAdaptor
       throws IOException {
     log.entering("SharePointAdaptor", "getDocContent",
         new Object[] {request, response});
-    try {
-      DocId id = request.getDocId();
-      SiteDataClient virtualServerClient = getSiteDataClient(virtualServer);
-      if (id.equals(virtualServerDocId)) {
-        virtualServerClient.getVirtualServerDocContent(request, response);
-      } else {
-        SiteDataClient client
-            = virtualServerClient.getClientForUrl(id.getUniqueId());
-        if (client == null) {
-          log.log(Level.FINE, "responding not found");
-          response.respondNotFound();
-          log.exiting("SharePointAdaptor", "getDocContent");
-          return;
-        }
-        client.getDocContent(request, response);
+    DocId id = request.getDocId();
+    SiteDataClient virtualServerClient = getSiteDataClient(virtualServer);
+    if (id.equals(virtualServerDocId)) {
+      virtualServerClient.getVirtualServerDocContent(request, response);
+    } else {
+      SiteDataClient client
+          = virtualServerClient.getClientForUrl(id.getUniqueId());
+      if (client == null) {
+        log.log(Level.FINE, "responding not found");
+        response.respondNotFound();
+        log.exiting("SharePointAdaptor", "getDocContent");
+        return;
       }
-    } catch (RuntimeException ex) {
-      log.throwing("SharePointAdaptor", "getDocContent", ex);
-      throw ex;
-    } catch (IOException ex) {
-      log.throwing("SharePointAdaptor", "getDocContent", ex);
-      throw ex;
+      client.getDocContent(request, response);
     }
     log.exiting("SharePointAdaptor", "getDocContent");
   }
@@ -174,62 +166,51 @@ public class SharePointAdaptor extends AbstractAdaptor
   public void getModifiedDocIds(DocIdPusher pusher)
       throws InterruptedException, IOException {
     log.entering("SharePointAdaptor", "getModifiedDocIds", pusher);
-    try {
-      SiteDataClient client = getSiteDataClient(virtualServer);
-      SiteDataStub.VirtualServer vs = client.getContentVirtualServer();
-      Set<String> discoveredContentDatabases = new HashSet<String>();
-      if (vs.getContentDatabases() != null) {
-        for (SiteDataStub.ContentDatabase_type0 cd_t0
-            : vs.getContentDatabases().getContentDatabase()) {
-          discoveredContentDatabases.add(cd_t0.getID());
-        }
+    SiteDataClient client = getSiteDataClient(virtualServer);
+    SiteDataStub.VirtualServer vs = client.getContentVirtualServer();
+    Set<String> discoveredContentDatabases = new HashSet<String>();
+    if (vs.getContentDatabases() != null) {
+      for (SiteDataStub.ContentDatabase_type0 cd_t0
+          : vs.getContentDatabases().getContentDatabase()) {
+        discoveredContentDatabases.add(cd_t0.getID());
       }
-      Set<String> knownContentDatabases
-          = new HashSet<String>(contentDatabaseChangeId.keySet());
-      Set<String> removedContentDatabases
-          = new HashSet<String>(knownContentDatabases);
-      removedContentDatabases.removeAll(discoveredContentDatabases);
-      Set<String> newContentDatabases
-          = new HashSet<String>(discoveredContentDatabases);
-      newContentDatabases.removeAll(knownContentDatabases);
-      Set<String> updatedContentDatabases
-          = new HashSet<String>(knownContentDatabases);
-      updatedContentDatabases.retainAll(discoveredContentDatabases);
-      if (!removedContentDatabases.isEmpty()
-          || !newContentDatabases.isEmpty()) {
-        DocIdPusher.Record record
-            = new DocIdPusher.Record.Builder(virtualServerDocId)
-            .setCrawlImmediately(true).build();
-        pusher.pushRecords(Collections.singleton(record));
+    }
+    Set<String> knownContentDatabases
+        = new HashSet<String>(contentDatabaseChangeId.keySet());
+    Set<String> removedContentDatabases
+        = new HashSet<String>(knownContentDatabases);
+    removedContentDatabases.removeAll(discoveredContentDatabases);
+    Set<String> newContentDatabases
+        = new HashSet<String>(discoveredContentDatabases);
+    newContentDatabases.removeAll(knownContentDatabases);
+    Set<String> updatedContentDatabases
+        = new HashSet<String>(knownContentDatabases);
+    updatedContentDatabases.retainAll(discoveredContentDatabases);
+    if (!removedContentDatabases.isEmpty()
+        || !newContentDatabases.isEmpty()) {
+      DocIdPusher.Record record
+          = new DocIdPusher.Record.Builder(virtualServerDocId)
+          .setCrawlImmediately(true).build();
+      pusher.pushRecords(Collections.singleton(record));
+    }
+    for (String contentDatabase : removedContentDatabases) {
+      contentDatabaseChangeId.remove(contentDatabase);
+    }
+    for (String contentDatabase : newContentDatabases) {
+      SiteDataStub.ContentDatabase cd
+          = client.getContentContentDatabase(contentDatabase);
+      String changeId = cd.getMetadata().getChangeId();
+      contentDatabaseChangeId.put(contentDatabase, changeId);
+    }
+    for (String contentDatabase : updatedContentDatabases) {
+      String changeId = contentDatabaseChangeId.get(contentDatabase);
+      if (changeId == null) {
+        // The item was removed from contentDatabaseChangeId, so apparently
+        // this database is gone.
+        continue;
       }
-      for (String contentDatabase : removedContentDatabases) {
-        contentDatabaseChangeId.remove(contentDatabase);
-      }
-      for (String contentDatabase : newContentDatabases) {
-        SiteDataStub.ContentDatabase cd
-            = client.getContentContentDatabase(contentDatabase);
-        String changeId = cd.getMetadata().getChangeId();
-        contentDatabaseChangeId.put(contentDatabase, changeId);
-      }
-      for (String contentDatabase : updatedContentDatabases) {
-        String changeId = contentDatabaseChangeId.get(contentDatabase);
-        if (changeId == null) {
-          // The item was removed from contentDatabaseChangeId, so apparently
-          // this database is gone.
-          continue;
-        }
-        changeId = client.getModifiedDocIds(contentDatabase, changeId, pusher);
-        contentDatabaseChangeId.put(contentDatabase, changeId);
-      }
-    } catch (RuntimeException ex) {
-      log.throwing("SharePointAdaptor", "getModifiedDocIds", ex);
-      throw ex;
-    } catch (IOException ex) {
-      log.throwing("SharePointAdaptor", "getModifiedDocIds", ex);
-      throw ex;
-    } catch (InterruptedException ex) {
-      log.throwing("SharePointAdaptor", "getModifiedDocIds", ex);
-      throw ex;
+      changeId = client.getModifiedDocIds(contentDatabase, changeId, pusher);
+      contentDatabaseChangeId.put(contentDatabase, changeId);
     }
     log.exiting("SharePointAdaptor", "getModifiedDocIds", pusher);
   }
@@ -565,9 +546,7 @@ public class SharePointAdaptor extends AbstractAdaptor
       GetMethod method = new GetMethod(url);
       int statusCode = httpClient.executeMethod(method);
       if (statusCode != HttpStatus.SC_OK) {
-        IOException ioe = new IOException("Got status code: " + statusCode);
-        log.throwing("SiteDataClient", "getFileDocContent", ioe);
-        throw ioe;
+        throw new IOException("Got status code: " + statusCode);
       }
       InputStream is = method.getResponseBodyAsStream();
       IOHelper.copyStream(is, response.getOutputStream());
