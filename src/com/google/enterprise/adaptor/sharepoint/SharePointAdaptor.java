@@ -27,14 +27,10 @@ import com.google.enterprise.adaptor.Request;
 import com.google.enterprise.adaptor.Response;
 
 import org.apache.axiom.om.OMAttribute;
-import org.apache.axiom.om.OMContainer;
 import org.apache.axiom.om.OMElement;
-import org.apache.axiom.om.OMNode;
 import org.apache.axis2.AxisFault;
 import org.apache.axis2.client.Options;
-import org.apache.axis2.databinding.types.UnsignedInt;
 import org.apache.axis2.transport.http.HTTPConstants;
-import org.apache.axis2.transport.http.HttpTransportProperties;
 import org.apache.commons.httpclient.Credentials;
 import org.apache.commons.httpclient.HttpClient;
 import org.apache.commons.httpclient.HttpStatus;
@@ -182,9 +178,9 @@ public class SharePointAdaptor extends AbstractAdaptor
     } else {
       discoveredContentDatabases = new HashSet<String>();
       if (vs.getContentDatabases() != null) {
-        for (SiteDataStub.ContentDatabase_type0 cd_t0
+        for (SiteDataStub.ContentDatabase_type0 cdT0
             : vs.getContentDatabases().getContentDatabase()) {
-          discoveredContentDatabases.add(cd_t0.getID());
+          discoveredContentDatabases.add(cdT0.getID());
         }
       }
     }
@@ -390,10 +386,10 @@ public class SharePointAdaptor extends AbstractAdaptor
           + "<ul>");
       if (vs.getContentDatabases() != null) {
         DocIdEncoder encoder = context.getDocIdEncoder();
-        for (SiteDataStub.ContentDatabase_type0 cd_t0
+        for (SiteDataStub.ContentDatabase_type0 cdT0
             : vs.getContentDatabases().getContentDatabase()) {
           SiteDataStub.ContentDatabase cd
-              = getContentContentDatabase(cd_t0.getID(), true);
+              = getContentContentDatabase(cdT0.getID(), true);
           if (cd.getSites() != null && cd.getSites().getSite() != null) {
             for (SiteDataStub.Site_type0 site : cd.getSites().getSite()) {
               writer.write(liUrl(site.getURL()));
@@ -421,7 +417,7 @@ public class SharePointAdaptor extends AbstractAdaptor
           + "<body>"
           + "<h1>Site " + w.getMetadata().getTitle() + "</h1>");
 
-      // TODO: w.getMetadata().getNoIndex()
+      // TODO(ejona): w.getMetadata().getNoIndex()
       DocIdEncoder encoder = context.getDocIdEncoder();
       if (w.getWebs() != null && w.getWebs().getWeb() != null) {
         writer.write("<p>Sites</p><ul>");
