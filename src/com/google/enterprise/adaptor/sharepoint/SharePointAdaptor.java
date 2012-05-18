@@ -212,7 +212,7 @@ public class SharePointAdaptor extends AbstractAdaptor
     for (String contentDatabase : newContentDatabases) {
       SiteDataStub.ContentDatabase cd;
       try {
-        cd = client.getContentContentDatabase(contentDatabase);
+        cd = client.getContentContentDatabase(contentDatabase, false);
       } catch (IOException ex) {
         log.log(Level.WARNING, "Could not retrieve change id for content "
             + "database: " + contentDatabase, ex);
@@ -229,15 +229,29 @@ public class SharePointAdaptor extends AbstractAdaptor
         // this database is gone.
         continue;
       }
+      CursorPaginator<SiteDataStub.SPContentDatabase, String> changesPaginator
+          = client.getChangesContentDatabase(contentDatabase, changeId);
+      SiteDataStub.SPContentDatabase changes;
       try {
-        changeId = client.getModifiedDocIds(contentDatabase, changeId, pusher);
+        while ((changes = changesPaginator.next()) != null) {
+          try {
+            client.getModifiedDocIds(changes, pusher);
+          } catch (XmlProcessingException ex) {
+            log.log(Level.WARNING, "Error parsing changes from content "
+                + "database: " + contentDatabase, ex);
+            // The cursor is guaranteed to be advanced past the position that
+            // failed parsing, so we just ignore the failure and continue
+            // looping.
+          }
+          contentDatabaseChangeId.put(contentDatabase,
+              changesPaginator.getCursor());
+        }
       } catch (IOException ex) {
         log.log(Level.WARNING, "Error getting changes from content database: "
             + contentDatabase, ex);
         // Continue processing. Hope that next time works better.
         continue;
       }
-      contentDatabaseChangeId.put(contentDatabase, changeId);
     }
     log.exiting("SharePointAdaptor", "getModifiedDocIds", pusher);
   }
@@ -379,7 +393,7 @@ public class SharePointAdaptor extends AbstractAdaptor
         for (SiteDataStub.ContentDatabase_type0 cd_t0
             : vs.getContentDatabases().getContentDatabase()) {
           SiteDataStub.ContentDatabase cd
-            = getContentContentDatabase(cd_t0.getID());
+              = getContentContentDatabase(cd_t0.getID(), true);
           if (cd.getSites() != null && cd.getSites().getSite() != null) {
             for (SiteDataStub.Site_type0 site : cd.getSites().getSite()) {
               writer.write(liUrl(site.getURL()));
@@ -475,17 +489,22 @@ public class SharePointAdaptor extends AbstractAdaptor
           + "</head>"
           + "<body>"
           + "<h1>Folder " + folderPath + "</h1>");
-      SiteDataStub.Folder folder = getContentFolder(listGuid, folderPath);
-      SiteDataStub.Xml xml = folder.getFolder().getXml();
 
-      OMElement data = getFirstChildWithName(xml, DATA_ELEMENT);
+      Paginator<SiteDataStub.Folder> folderPaginator
+          = getContentFolder(listGuid, folderPath);
       writer.write("<p>List items</p><ul>");
-      for (OMElement row : getChildrenWithName(data, ROW_ELEMENT)) {
-        String rowUrl = row.getAttributeValue(OWS_SERVERURL_ATTRIBUTE);
-        String rowTitle = row.getAttributeValue(OWS_TITLE_ATTRIBUTE);
-        // TODO(ejona): Fix raw string concatenation.
-        writer.write("<li><a href=\"" + encodeUrl(rowUrl) + "\">" + rowTitle
-            + "</a></li>");
+      SiteDataStub.Folder folder;
+      while ((folder = folderPaginator.next()) != null) {
+        SiteDataStub.Xml xml = folder.getFolder().getXml();
+
+        OMElement data = getFirstChildWithName(xml, DATA_ELEMENT);
+        for (OMElement row : getChildrenWithName(data, ROW_ELEMENT)) {
+          String rowUrl = row.getAttributeValue(OWS_SERVERURL_ATTRIBUTE);
+          String rowTitle = row.getAttributeValue(OWS_TITLE_ATTRIBUTE);
+          // TODO(ejona): Fix raw string concatenation.
+          writer.write("<li><a href=\"" + encodeUrl(rowUrl) + "\">" + rowTitle
+              + "</a></li>");
+        }
       }
       writer.write("</ul>");
 
@@ -735,13 +754,10 @@ public class SharePointAdaptor extends AbstractAdaptor
     /**
      * @return new change id
      */
-    private String getModifiedDocIds(String contentDatabase,
-        String lastChangeId, DocIdPusher pusher) throws IOException,
-        InterruptedException {
+    private void getModifiedDocIds(SiteDataStub.SPContentDatabase changes,
+        DocIdPusher pusher) throws IOException, InterruptedException {
       log.entering("SiteDataClient", "getModifiedDocIds",
-          new Object[] {contentDatabase, lastChangeId, pusher});
-      SiteDataStub.SPContentDatabase changes
-          = getChangesContentDatabase(contentDatabase, lastChangeId);
+          new Object[] {changes, pusher});
       List<DocId> docIds = new ArrayList<DocId>();
       getModifiedDocIdsContentDatabase(changes, docIds);
       List<DocIdPusher.Record> records
@@ -753,9 +769,7 @@ public class SharePointAdaptor extends AbstractAdaptor
         records.add(builder.setDocId(docId).build());
       }
       pusher.pushRecords(records);
-      lastChangeId = changes.getContentDatabase().getMetadata().getChangeId();
-      log.exiting("SiteDataClient", "getModifiedDocIds", lastChangeId);
-      return lastChangeId;
+      log.exiting("SiteDataClient", "getModifiedDocIds");
     }
 
     private void getModifiedDocIdsContentDatabase(
@@ -927,12 +941,12 @@ public class SharePointAdaptor extends AbstractAdaptor
       return urlResponse;
     }
 
-    private SiteDataStub.ContentDatabase getContentContentDatabase(String id)
-        throws IOException {
+    private SiteDataStub.ContentDatabase getContentContentDatabase(String id,
+        boolean retrieveChildItems) throws IOException {
       log.entering("SiteDataClient", "getContentContentDatabase", id);
       SiteDataStub.GetContent request = new SiteDataStub.GetContent();
       request.setObjectType(SiteDataStub.ObjectType.ContentDatabase);
-      request.setRetrieveChildItems(true);
+      request.setRetrieveChildItems(retrieveChildItems);
       request.setSecurityOnly(false);
       request.setObjectId(id);
       SiteDataStub.GetContentResponse response = stub.getContent(request);
@@ -1030,32 +1044,44 @@ public class SharePointAdaptor extends AbstractAdaptor
       return data;
     }
 
-    private SiteDataStub.Folder getContentFolder(String guid, String url)
-        throws IOException {
+    private Paginator<SiteDataStub.Folder> getContentFolder(String guid,
+        String url) {
       log.entering("SiteDataClient", "getContentFolder",
           new Object[] {guid, url});
-      SiteDataStub.GetContent request = new SiteDataStub.GetContent();
+      final SiteDataStub.GetContent request = new SiteDataStub.GetContent();
       request.setObjectType(SiteDataStub.ObjectType.Folder);
       request.setRetrieveChildItems(true);
       request.setSecurityOnly(false);
       request.setFolderUrl(url);
       request.setObjectId(guid);
       request.setLastItemIdOnPage("");
-      SiteDataStub.GetContentResponse response = stub.getContent(request);
-      log.log(Level.FINE, "GetContent(Folder): Result={0}, "
-          + "LastItemIdOnPage={1}", new Object[] {
-          response.getGetContentResult(), response.getLastItemIdOnPage()});
-      String xml = response.getGetContentResult();
-      xml = xml.replace("<Folder>", "<Folder xmlns='" + XMLNS + "'>");
-      XMLStreamReader reader = createXmlStreamReader(xml);
-      SiteDataStub.Folder folder;
-      try {
-        folder = SiteDataStub.Folder.Factory.parse(reader);
-      } catch (Exception ex) {
-        throw new XmlProcessingException(ex);
-      }
-      log.exiting("SiteDataClient", "getContentFolder", folder);
-      return folder;
+      log.exiting("SiteDataClient", "getContentFolder");
+      return new Paginator<SiteDataStub.Folder>() {
+        @Override
+        public SiteDataStub.Folder next() throws IOException {
+          if (request.getLastItemIdOnPage() == null) {
+            return null;
+          }
+          log.log(Level.FINE, "GetContent request: ObjectType={0}, "
+              + "ObjectId={1}, LastItemIdOnPage={2}, RetrieveChildItems={3}, "
+              + "FolderUrl={4}", new Object[] {request.getObjectType(),
+              request.getObjectId(), request.getLastItemIdOnPage(),
+              request.getRetrieveChildItems(), request.getFolderUrl()});
+          SiteDataStub.GetContentResponse response = stub.getContent(request);
+          log.log(Level.FINE, "GetContent(Folder): Result={0}, "
+              + "LastItemIdOnPage={1}", new Object[] {
+              response.getGetContentResult(), response.getLastItemIdOnPage()});
+          request.setLastItemIdOnPage(response.getLastItemIdOnPage());
+          String xml = response.getGetContentResult();
+          xml = xml.replace("<Folder>", "<Folder xmlns='" + XMLNS + "'>");
+          XMLStreamReader reader = createXmlStreamReader(xml);
+          try {
+            return SiteDataStub.Folder.Factory.parse(reader);
+          } catch (Exception ex) {
+            throw new XmlProcessingException(ex);
+          }
+        }
+      };
     }
 
     private SiteDataStub.Item getContentListItemAttachments(String listId,
@@ -1086,33 +1112,60 @@ public class SharePointAdaptor extends AbstractAdaptor
       return item;
     }
 
-    private SiteDataStub.SPContentDatabase getChangesContentDatabase(
-        String contentDatabaseGuid, String startChangeId) throws IOException {
+    /**
+     * Get a paginator that allows looping over all the changes since {@code
+     * startChangeId}. If next() throws an XmlProcessingException, it is
+     * guaranteed to be after state has been updated so that a subsequent call
+     * to next() will provide the next page and not repeat the erroring page.
+     */
+    private CursorPaginator<SiteDataStub.SPContentDatabase, String>
+        getChangesContentDatabase(String contentDatabaseGuid,
+            String startChangeId) {
       log.entering("SiteDataClient", "getChangesContentDatabase",
           new Object[] {contentDatabaseGuid, startChangeId});
-      SiteDataStub.GetChanges request = new SiteDataStub.GetChanges();
+      final SiteDataStub.GetChanges request = new SiteDataStub.GetChanges();
       request.setObjectType(SiteDataStub.ObjectType.ContentDatabase);
       request.setContentDatabaseId(contentDatabaseGuid);
       request.setLastChangeId(startChangeId);
       request.setTimeout(15);
-      SiteDataStub.GetChangesResponse response = stub.getChanges(request);
-      log.log(Level.FINE, "GetChanges(ContentDatabase): Result={0}, "
-          + "MoreChanges={1}, CurrentChangeId={2}, LastChangeId={3}",
-          new Object[] {
-            response.getGetChangesResult(), response.getMoreChanges(),
-            response.getCurrentChangeId(), response.getLastChangeId()});
-      String xml = response.getGetChangesResult();
-      xml = xml.replace("<SPContentDatabase ",
-          "<SPContentDatabase xmlns='" + XMLNS + "' ");
-      SiteDataStub.SPContentDatabase cd;
-      XMLStreamReader reader = createXmlStreamReader(xml);
-      try {
-        cd = SiteDataStub.SPContentDatabase.Factory.parse(reader);
-      } catch (Exception ex) {
-        throw new XmlProcessingException(ex);
-      }
-      log.exiting("SiteDataClient", "getChangesContentDatabase", cd);
-      return cd;
+      log.exiting("SiteDataClient", "getChangesContentDatabase");
+      return new CursorPaginator<SiteDataStub.SPContentDatabase, String>() {
+        @Override
+        public SiteDataStub.SPContentDatabase next() throws IOException {
+          if (request.getLastChangeId().equals(request.getCurrentChangeId())) {
+            return null;
+          }
+          log.log(Level.FINE, "Request: ObjectType={0}, ContentDatabaseId={1}, "
+              + "LastChangeId={2}, CurrentChangeId={3}, Timeout={4}",
+              new Object[] {request.getObjectType(),
+                request.getContentDatabaseId(), request.getLastChangeId(),
+                request.getCurrentChangeId(), request.getTimeout()});
+          SiteDataStub.GetChangesResponse response = stub.getChanges(request);
+          log.log(Level.FINE, "GetChanges(ContentDatabase): Result={0}, "
+              + "MoreChanges={1}, CurrentChangeId={2}, LastChangeId={3}",
+              new Object[] {
+                response.getGetChangesResult(), response.getMoreChanges(),
+                response.getCurrentChangeId(), response.getLastChangeId()});
+          // Update state for next iteration.
+          request.setLastChangeId(response.getLastChangeId());
+          request.setCurrentChangeId(response.getCurrentChangeId());
+          // XmlProcessingExceptions fine after this point.
+          String xml = response.getGetChangesResult();
+          xml = xml.replace("<SPContentDatabase ",
+              "<SPContentDatabase xmlns='" + XMLNS + "' ");
+          XMLStreamReader reader = createXmlStreamReader(xml);
+          try {
+            return SiteDataStub.SPContentDatabase.Factory.parse(reader);
+          } catch (Exception ex) {
+            throw new XmlProcessingException(ex);
+          }
+        }
+
+        @Override
+        public String getCursor() {
+          return request.getLastChangeId();
+        }
+      };
     }
 
     private XMLStreamReader createXmlStreamReader(String xml)
@@ -1132,5 +1185,25 @@ public class SharePointAdaptor extends AbstractAdaptor
     public XmlProcessingException(Throwable cause) {
       super(cause);
     }
+  }
+
+  private interface Paginator<E> {
+    /**
+     * Get the next page of the series. If an exception is thrown, the state of
+     * the paginator is undefined.
+     *
+     * @return the next page of data, or {@code null} if no more pages available
+     */
+    public E next() throws IOException;
+  }
+
+  private interface CursorPaginator<E, C> extends Paginator<E> {
+    /**
+     * Provides a cursor for the current position. The intent is that you could
+     * get a cursor (even in the event of {@link #next} throwing an exception)
+     * and use it to create a query that would continue without repeating
+     * results.
+     */
+    public C getCursor();
   }
 }
