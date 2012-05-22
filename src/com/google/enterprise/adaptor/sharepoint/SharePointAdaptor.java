@@ -14,6 +14,7 @@
 
 package com.google.enterprise.adaptor.sharepoint;
 
+import com.google.common.annotations.VisibleForTesting;
 import com.google.common.collect.Lists;
 import com.google.enterprise.adaptor.AbstractAdaptor;
 import com.google.enterprise.adaptor.AdaptorContext;
@@ -87,6 +88,19 @@ public class SharePointAdaptor extends AbstractAdaptor
   private String virtualServer;
   private final ConcurrentSkipListMap<String, String> contentDatabaseChangeId
       = new ConcurrentSkipListMap<String, String>();
+  private final SiteDataStubFactory siteDataStubFactory;
+
+  public SharePointAdaptor() {
+    this(new SiteDataStubFactoryImpl());
+  }
+
+  @VisibleForTesting
+  SharePointAdaptor(SiteDataStubFactory siteDataStubFactory) {
+    if (siteDataStubFactory == null) {
+      throw new NullPointerException();
+    }
+    this.siteDataStubFactory = siteDataStubFactory;
+  }
 
   @Override
   public void initConfig(Config config) {
@@ -255,7 +269,7 @@ public class SharePointAdaptor extends AbstractAdaptor
   private SiteDataClient getSiteDataClient(String site) throws AxisFault {
     SiteDataClient client = clients.get(site);
     if (client == null) {
-      client = new SiteDataClient(site);
+      client = new SiteDataClient(site, siteDataStubFactory);
       clients.putIfAbsent(site, client);
       client = clients.get(site);
     }
@@ -266,28 +280,31 @@ public class SharePointAdaptor extends AbstractAdaptor
     AbstractAdaptor.main(new SharePointAdaptor(), args);
   }
 
-  private class SiteDataClient {
+  @VisibleForTesting
+  class SiteDataClient {
     private static final String XMLNS
         = "http://schemas.microsoft.com/sharepoint/soap/";
 
     private final SiteDataStub stub;
     private final String siteUrl;
 
-    public SiteDataClient(String site) throws AxisFault {
+    public SiteDataClient(String site, SiteDataStubFactory siteDataStubFactory)
+        throws AxisFault {
       log.entering("SiteDataClient", "SiteDataClient",
           new Object[] {site});
       if (!site.endsWith("/")) {
-        // Always end with a '/' for a cannonical form.
+        // Always end with a '/' for a canonical form.
         site = site + "/";
       }
       this.siteUrl = site;
-      this.stub = new SiteDataStub(site + "_vti_bin/SiteData.asmx");
+      this.stub = siteDataStubFactory.newSiteDataStub(
+          site + "_vti_bin/SiteData.asmx");
       Options options = stub._getServiceClient().getOptions();
       options.setProperty(HTTPConstants.CACHED_HTTP_CLIENT, httpClient);
       log.exiting("SiteDataClient", "SiteDataClient");
     }
 
-    private void getDocContent(Request request, Response response)
+    public void getDocContent(Request request, Response response)
         throws IOException {
       log.entering("SiteDataClient", "getDocContent",
           new Object[] {request, response});
@@ -319,9 +336,6 @@ public class SharePointAdaptor extends AbstractAdaptor
             urlResponse.getStrItemID());
       } else if (urlResponse.getStrListID() != null) {
         getListDocContent(request, response, urlResponse.getStrListID());
-      } else if (urlResponse.getStrBucketID() != null) {
-        log.log(Level.FINE, "responding not found");
-        response.respondNotFound();
       } else {
         // Assume it is a top-level site.
         getSiteDocContent(request, response, urlResponse.getStrWebID());
@@ -345,14 +359,6 @@ public class SharePointAdaptor extends AbstractAdaptor
       DocId docId = new DocId(url);
       log.exiting("SiteDataClient", "encodeDocId", docId);
       return docId;
-    }
-
-    private String encodeUrl(DocId docId) {
-      log.entering("SiteDataClient", "encodeUrl", docId);
-      URI uri = context.getDocIdEncoder().encodeDocId(docId);
-      String encoded = uri.toASCIIString();
-      log.exiting("SiteDataClient", "encodeUrl", encoded);
-      return encoded;
     }
 
     private String encodeUrl(String url) {
@@ -747,10 +753,8 @@ public class SharePointAdaptor extends AbstractAdaptor
       return true;
     }
 
-    /**
-     * @return new change id
-     */
-    private void getModifiedDocIds(SiteDataStub.SPContentDatabase changes,
+    @VisibleForTesting
+    void getModifiedDocIds(SiteDataStub.SPContentDatabase changes,
         DocIdPusher pusher) throws IOException, InterruptedException {
       log.entering("SiteDataClient", "getModifiedDocIds",
           new Object[] {changes, pusher});
@@ -862,7 +866,14 @@ public class SharePointAdaptor extends AbstractAdaptor
           new Object[] {changes, docIds});
       if (!"Unchanged".equals(changes.getChange())
           && !"Delete".equals(changes.getChange())) {
-        docIds.add(encodeDocId(changes.getDisplayUrl()));
+        OMElement data = changes.getListItem().getExtraElement();
+        String url = data.getAttributeValue(OWS_SERVERURL_ATTRIBUTE);
+        if (url == null) {
+          log.log(Level.WARNING, "Could not find server url attribute for list "
+              + "item {0}", changes.getId());
+        } else {
+          docIds.add(encodeDocId(url));
+        }
       }
       log.exiting("SiteDataClient", "getModifiedDocIdsListItem");
     }
@@ -929,7 +940,7 @@ public class SharePointAdaptor extends AbstractAdaptor
       SiteDataStub.GetURLSegmentsResponse urlResponse
           = stub.getURLSegments(urlRequest);
       log.log(Level.FINE, "GetURLSegments: Result={0}, StrWebID={1}, "
-          + "StrItemID={2}, StrListID={3}, StrBucketID={4}",
+          + "StrListID={2}, StrItemID={3}, StrBucketID={4}",
           new Object[] {urlResponse.getGetURLSegmentsResult(),
             urlResponse.getStrWebID(), urlResponse.getStrListID(),
             urlResponse.getStrItemID(), urlResponse.getStrBucketID()});
@@ -1017,7 +1028,6 @@ public class SharePointAdaptor extends AbstractAdaptor
           new Object[] {listId, itemId});
       SiteDataStub.GetContent request = new SiteDataStub.GetContent();
       request.setObjectType(SiteDataStub.ObjectType.ListItem);
-      request.setRetrieveChildItems(true);
       request.setSecurityOnly(false);
       request.setObjectId(listId);
       request.setFolderUrl("");
@@ -1046,7 +1056,6 @@ public class SharePointAdaptor extends AbstractAdaptor
           new Object[] {guid, url});
       final SiteDataStub.GetContent request = new SiteDataStub.GetContent();
       request.setObjectType(SiteDataStub.ObjectType.Folder);
-      request.setRetrieveChildItems(true);
       request.setSecurityOnly(false);
       request.setFolderUrl(url);
       request.setObjectId(guid);
@@ -1086,7 +1095,6 @@ public class SharePointAdaptor extends AbstractAdaptor
           new Object[] {listId, itemId});
       SiteDataStub.GetContent request = new SiteDataStub.GetContent();
       request.setObjectType(SiteDataStub.ObjectType.ListItemAttachments);
-      request.setRetrieveChildItems(true);
       request.setSecurityOnly(false);
       request.setObjectId(listId);
       request.setFolderUrl("");
@@ -1164,7 +1172,8 @@ public class SharePointAdaptor extends AbstractAdaptor
       };
     }
 
-    private XMLStreamReader createXmlStreamReader(String xml)
+    @VisibleForTesting
+    XMLStreamReader createXmlStreamReader(String xml)
         throws IOException {
       try {
         return xmlInputFactory.createXMLStreamReader(new StringReader(xml));
@@ -1201,5 +1210,17 @@ public class SharePointAdaptor extends AbstractAdaptor
      * results.
      */
     public C getCursor();
+  }
+
+  @VisibleForTesting
+  interface SiteDataStubFactory {
+    public SiteDataStub newSiteDataStub(String endpoint) throws AxisFault;
+  }
+
+  private static class SiteDataStubFactoryImpl implements SiteDataStubFactory {
+    @Override
+    public SiteDataStub newSiteDataStub(String endpoint) throws AxisFault {
+      return new SiteDataStub(endpoint);
+    }
   }
 }

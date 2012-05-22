@@ -14,16 +14,1889 @@
 
 package com.google.enterprise.adaptor.sharepoint;
 
+import static com.google.enterprise.adaptor.sharepoint.SharePointAdaptor.SiteDataStubFactory;
 import static org.junit.Assert.*;
 
-import org.junit.Test;
+import com.google.enterprise.adaptor.Config;
+import com.google.enterprise.adaptor.DocId;
+import com.google.enterprise.adaptor.DocIdPusher;
+import com.google.enterprise.adaptor.Metadata;
+
+import org.apache.axis2.AxisFault;
+import org.apache.axis2.databinding.types.UnsignedInt;
+import org.junit.*;
+import org.junit.rules.ExpectedException;
+
+import java.io.*;
+import java.nio.charset.Charset;
+import java.rmi.RemoteException;
+import java.util.concurrent.atomic.AtomicLong;
 
 /**
- * Test cases for @{link SharePointAdaptor}.
+ * Test cases for {@link SharePointAdaptor}.
  */
 public class SharePointAdaptorTest {
+  private final Charset charset = Charset.forName("UTF-8");
+  private Config config;
+  private SharePointAdaptor adaptor;
+
+  @Rule
+  public ExpectedException thrown = ExpectedException.none();
+
+  /**
+   * The first time SiteDataStub is created it initializes some Axis2
+   * structures. Do this in a separately so that the timing for this
+   * initalization does not count toward the first real test run. It looks like
+   * a bug when a faster test takes longer, just because it ran first.
+   */
+  @BeforeClass
+  public static void initSiteDataStub() throws AxisFault {
+    new UnsupportedSiteDataStub("");
+  }
+
+  @Before
+  public void setup() {
+    config = new Config();
+    new SharePointAdaptor().initConfig(config);
+    config.overrideKey("sharepoint.server", "http://localhost:1");
+    config.overrideKey("sharepoint.username", "fakeuser");
+    config.overrideKey("sharepoint.password", "fakepass");
+  }
+
+  @After
+  public void teardown() {
+    if (adaptor != null) {
+      adaptor.destroy();
+    }
+  }
+
   @Test
   public void testConstructor() {
     new SharePointAdaptor();
+  }
+
+  @Test
+  public void testNullSiteDataStubFactory() {
+    thrown.expect(NullPointerException.class);
+    new SharePointAdaptor(null);
+  }
+
+  @Test
+  public void testInitDestroy() throws IOException {
+    adaptor = new SharePointAdaptor(new UnsupportedSiteDataStubFactory());
+    adaptor.init(new MockAdaptorContext(config, null));
+    adaptor.destroy();
+    adaptor = null;
+  }
+
+  @Test
+  public void testGetDocContentWrongServer() throws IOException {
+    class WrongServerSiteDataStub extends UnsupportedSiteDataStub {
+      private final String endpoint;
+
+      public WrongServerSiteDataStub(String endpoint)
+          throws AxisFault {
+        super(endpoint);
+        this.endpoint = endpoint;
+      }
+
+      @Override
+      public SiteDataStub.GetSiteAndWebResponse getSiteAndWeb(
+          SiteDataStub.GetSiteAndWeb request) {
+        assertEquals(endpoint, "http://localhost:1/_vti_bin/SiteData.asmx");
+        assertEquals("http://wronghost:1/", request.getStrUrl());
+        SiteDataStub.GetSiteAndWebResponse response
+            = new SiteDataStub.GetSiteAndWebResponse();
+        response.setGetSiteAndWebResult(new UnsignedInt(1));
+        return response;
+      }
+    }
+
+    adaptor = new SharePointAdaptor(new SiteDataStubFactory() {
+      @Override
+      public SiteDataStub newSiteDataStub(String endpoint) throws AxisFault {
+        return new WrongServerSiteDataStub(endpoint);
+      }
+    });
+    adaptor.init(new MockAdaptorContext(config, null));
+    ByteArrayOutputStream baos = new ByteArrayOutputStream();
+    GetContentsRequest request = new GetContentsRequest(
+        new DocId("http://wronghost:1/"));
+    GetContentsResponse response = new GetContentsResponse(baos);
+    adaptor.getDocContent(request, response);
+    assertTrue(response.isNotFound());
+  }
+
+  @Test
+  public void testGetDocContentVirtualServer() throws IOException {
+    final String getContentVirtualServer
+        = "<VirtualServer>"
+        + "<Metadata URL=\"http://localhost:1/\" />"
+        + "<ContentDatabases>"
+        + "<ContentDatabase ID=\"{4fb7dea1-2912-4927-9eda-1ea2f0977cf8}\" />"
+        + "</ContentDatabases>"
+        + "<Policies AnonymousGrantMask=\"0\" AnonymousDenyMask=\"0\">"
+        + "<PolicyUser LoginName=\"NT AUTHORITY\\LOCAL SERVICE\""
+        + " Sid=\"S-1-5-19\" GrantMask=\"4611686224789442657\" DenyMask=\"0\"/>"
+        + "<PolicyUser LoginName=\"GDC-PSL\\spuser1\""
+        + " Sid=\"S-1-5-21-736914693-3137354690-2813686979-1130\""
+        + " GrantMask=\"4611686224789442657\" DenyMask=\"0\"/>"
+        + "<PolicyUser LoginName=\"GDC-PSL\\Administrator\""
+        + " Sid=\"S-1-5-21-736914693-3137354690-2813686979-500\""
+        + " GrantMask=\"9223372036854775807\" DenyMask=\"0\"/>"
+        + "</Policies></VirtualServer>";
+    final String getContentContentDatabase
+        = "<ContentDatabase>"
+        + "<Metadata ChangeId=\"1;0;4fb7dea1-2912-4927-9eda-1ea2f0977cf8;634727"
+        +   "056594000000;603\""
+        + " ID=\"{4fb7dea1-2912-4927-9eda-1ea2f0977cf8}\" />"
+        + "<Sites>"
+        + "<Site URL=\"http://localhost:1\""
+        + " ID=\"{bb3bb2dd-6ea7-471b-a361-6fb67988755c}\" />"
+        + "<Site URL=\"http://localhost:1/sites/SiteCollection\""
+        + " ID=\"{5cbcd3b1-fca9-48b2-92db-3b5de26f837d}\" />"
+        + "</Sites></ContentDatabase>";
+    class VirtualServerSiteDataStub extends UnsupportedSiteDataStub {
+      public VirtualServerSiteDataStub(String endpoint) throws AxisFault {
+        super(endpoint);
+      }
+
+      @Override
+      public SiteDataStub.GetContentResponse getContent(
+          SiteDataStub.GetContent request) {
+        if (SiteDataStub.ObjectType.VirtualServer
+            .equals(request.getObjectType())) {
+          assertEquals(true, request.getRetrieveChildItems());
+          assertEquals(false, request.getSecurityOnly());
+          SiteDataStub.GetContentResponse response
+              = new SiteDataStub.GetContentResponse();
+          response.setGetContentResult(getContentVirtualServer);
+          return response;
+        } else if (SiteDataStub.ObjectType.ContentDatabase
+            .equals(request.getObjectType())) {
+          assertEquals(true, request.getRetrieveChildItems());
+          assertEquals(false, request.getSecurityOnly());
+          assertEquals("{4fb7dea1-2912-4927-9eda-1ea2f0977cf8}",
+              request.getObjectId());
+          SiteDataStub.GetContentResponse response
+              = new SiteDataStub.GetContentResponse();
+          response.setGetContentResult(getContentContentDatabase);
+          return response;
+        } else {
+          fail("Unknown object type: " + request.getObjectType());
+          throw new AssertionError();
+        }
+      }
+    }
+
+    adaptor = new SharePointAdaptor(new SiteDataStubFactory() {
+      @Override
+      public SiteDataStub newSiteDataStub(String endpoint) throws AxisFault {
+        return new VirtualServerSiteDataStub(endpoint);
+      }
+    });
+    adaptor.init(new MockAdaptorContext(config, null));
+    ByteArrayOutputStream baos = new ByteArrayOutputStream();
+    GetContentsResponse response = new GetContentsResponse(baos);
+    adaptor.getDocContent(new GetContentsRequest(new DocId("")), response);
+    String responseString = new String(baos.toByteArray(), charset);
+    final String golden = "<!DOCTYPE html>\n"
+        + "<html><head><title>VirtualServer http://localhost:1/</title></head>"
+        + "<body><h1>VirtualServer http://localhost:1/</h1>"
+        + "<p>Sites</p><ul>"
+        + "<li><a href=\"http://localhost/http://localhost:1\">"
+        + "http://localhost:1</a></li>"
+        + "<li>"
+        + "<a href=\"http://localhost/http://localhost:1/sites/SiteCollection\""
+        + ">"
+        + "http://localhost:1/sites/SiteCollection</a></li>"
+        + "</ul></body></html>";
+    assertEquals(golden, responseString);
+  }
+
+  @Test
+  public void testGetDocContentSiteCollection() throws IOException {
+    final String getContentSiteCollection
+        = "<Web>"
+        + "<Metadata URL=\"http://localhost:1\""
+        + " LastModified=\"2012-05-15 19:07:39Z\""
+        + " Created=\"2011-10-14 18:59:25Z\""
+        + " ID=\"{b2ea1067-3a54-4ab7-a459-c8ec864b97eb}\""
+        + " Title=\"chinese1\" Description=\"\""
+        + " Author=\"GDC-PSL\\administrator\" Language=\"1033\""
+        + " CRC=\"558566148\" NoIndex=\"False\" DefaultHomePage=\"\""
+        + " ExternalSecurity=\"False\""
+        + " ScopeID=\"{01abac8c-66c8-4fed-829c-8dd02bbf40dd}\""
+        + " AllowAnonymousAccess=\"False\" AnonymousViewListItems=\"False\""
+        + " AnonymousPermMask=\"0\" />"
+        + "<Users>"
+        + "<User ID=\"1\" Sid=\"S-1-5-21-736914693-3137354690-2813686979-500\""
+        + " Name=\"GDC-PSL\\administrator\""
+        + " LoginName=\"GDC-PSL\\administrator\" Email=\"\" Notes=\"\""
+        + " IsSiteAdmin=\"True\" IsDomainGroup=\"False\" />"
+        + "<User ID=\"2\" Sid=\"S-1-5-21-736914693-3137354690-2813686979-1130\""
+        + " Name=\"spuser1\" LoginName=\"GDC-PSL\\spuser1\" Email=\"\""
+        + " Notes=\"\" IsSiteAdmin=\"True\" IsDomainGroup=\"False\" />"
+        + "</Users>"
+        + "<ACL><permissions>"
+        + "<permission memberid='2' mask='9223372036854775807' />"
+        + "<permission memberid='3' mask='9223372036854775807' />"
+        + "<permission memberid='4' mask='756052856929' />"
+        + "<permission memberid='5' mask='1856436900591' />"
+        + "</permissions>"
+        + "</ACL>"
+        + "<Webs>"
+        + "<Web URL=\"http://localhost:1/somesite\""
+        + " ID=\"{ee63e7d0-da23-4553-9f14-359f1cc1bf1c}\""
+        + " LastModified=\"2012-05-15 19:07:39Z\" />"
+        + "</Webs><Lists>"
+        + "<List ID=\"{133fcb96-7e9b-46c9-b5f3-09770a35ad8a}\""
+        + " LastModified=\"2012-05-15 18:21:38Z\""
+        + " DefaultViewUrl=\"/Lists/Announcements/AllItems.aspx\" />"
+        + "<List ID=\"{648f6636-3d90-4565-86b9-2dd7611fc855}\""
+        + " LastModified=\"2012-05-15 19:07:40Z\""
+        + " DefaultViewUrl=\"/Shared Documents/Forms/AllItems.aspx\" />"
+        + "</Lists>"
+        + "<FPFolder><Folders>"
+        + "<Folder URL=\"Lists\" ID=\"{c2c6cfcc-439e-4372-8a7a-87bec657eebf}\""
+        + " LastModified=\"2012-05-15 19:07:39Z\" />"
+        + "</Folders><Files>"
+        + "<File URL=\"default.aspx\""
+        + " ID=\"{1bdad8a3-376d-448c-b9c3-de91a6152687}\""
+        + " LastModified=\"2012-05-15 19:07:39Z\" />"
+        + "</Files></FPFolder></Web>";
+    class SiteCollectionSiteDataStub extends UnsupportedSiteDataStub {
+      private final String endpoint;
+
+      public SiteCollectionSiteDataStub(String endpoint) throws AxisFault {
+        super(endpoint);
+        this.endpoint = endpoint;
+      }
+
+      @Override
+      public SiteDataStub.GetSiteAndWebResponse getSiteAndWeb(
+          SiteDataStub.GetSiteAndWeb request) {
+        assertEquals(endpoint, "http://localhost:1/_vti_bin/SiteData.asmx");
+        assertEquals("http://localhost:1/sites/SiteCollection",
+            request.getStrUrl());
+        SiteDataStub.GetSiteAndWebResponse response
+            = new SiteDataStub.GetSiteAndWebResponse();
+        response.setGetSiteAndWebResult(new UnsignedInt(0));
+        response.setStrSite("http://localhost:1/sites/SiteCollection");
+        response.setStrWeb("http://localhost:1/sites/SiteCollection");
+        return response;
+      }
+
+      @Override
+      public SiteDataStub.GetURLSegmentsResponse getURLSegments(
+          SiteDataStub.GetURLSegments request) {
+        assertEquals(endpoint,
+            "http://localhost:1/sites/SiteCollection/_vti_bin/SiteData.asmx");
+        assertEquals("http://localhost:1/sites/SiteCollection",
+            request.getStrURL());
+        SiteDataStub.GetURLSegmentsResponse response
+            = new SiteDataStub.GetURLSegmentsResponse();
+        response.setGetURLSegmentsResult(true);
+        // Leave everything else null.
+        return response;
+      }
+
+      @Override
+      public SiteDataStub.GetContentResponse getContent(
+          SiteDataStub.GetContent request) {
+        assertEquals(SiteDataStub.ObjectType.Site, request.getObjectType());
+        assertEquals(true, request.getRetrieveChildItems());
+        assertEquals(false, request.getSecurityOnly());
+        assertEquals(null, request.getObjectId());
+        SiteDataStub.GetContentResponse response
+            = new SiteDataStub.GetContentResponse();
+        response.setGetContentResult(getContentSiteCollection);
+        return response;
+      }
+    }
+
+    adaptor = new SharePointAdaptor(new SiteDataStubFactory() {
+      @Override
+      public SiteDataStub newSiteDataStub(String endpoint) throws AxisFault {
+        return new SiteCollectionSiteDataStub(endpoint);
+      }
+    });
+    adaptor.init(new MockAdaptorContext(config, null));
+    ByteArrayOutputStream baos = new ByteArrayOutputStream();
+    GetContentsRequest request = new GetContentsRequest(
+        new DocId("http://localhost:1/sites/SiteCollection"));
+    GetContentsResponse response = new GetContentsResponse(baos);
+    adaptor.getDocContent(request, response);
+    String responseString = new String(baos.toByteArray(), charset);
+    final String golden = "<!DOCTYPE html>\n"
+        + "<html><head><title>Site chinese1</title></head>"
+        + "<body><h1>Site chinese1</h1>"
+        + "<p>Sites</p>"
+        + "<ul><li><a href=\"http://localhost/http://localhost:1/somesite\">"
+        + "http://localhost:1/somesite</a></li></ul>"
+        + "<p>Lists</p>"
+        + "<ul><li><a href=\"http://localhost/http://localhost:1/Lists/Announce"
+        + "ments/AllItems.aspx\">/Lists/Announcements/AllItems.aspx</a></li>"
+        + "<li><a href=\"http://localhost/http://localhost:1/Shared%20Documents"
+        + "/Forms/AllItems.aspx\">/Shared Documents/Forms/AllItems.aspx</a>"
+        + "</li></ul>"
+        + "<p>Folders</p>"
+        + "<ul><li><a href=\"http://localhost/http://localhost:1/sites/SiteColl"
+        + "ection/Lists\">Lists</a></li></ul>"
+        + "<p>Files</p>"
+        + "<ul><li><a href=\"http://localhost/http://localhost:1/sites/SiteColl"
+        + "ection/default.aspx\">default.aspx</a></li></ul>"
+        + "</body></html>";
+    assertEquals(golden, responseString);
+  }
+
+  @Test
+  public void testGetDocContentListItem() throws IOException {
+    final String getContentListItemResponse
+        = "<Item>"
+        + "<Metadata>"
+        + "<scope id=\"{f9cb02b3-7f29-4cac-804f-ba6e14f1eb39}\"><permissions>"
+        + "<permission memberid='1' mask='206292717568' />"
+        + "<permission memberid='3' mask='9223372036854775807' />"
+        + "<permission memberid='4' mask='756052856929' />"
+        + "<permission memberid='5' mask='1856436900591' />"
+        + "</permissions></scope>"
+        + "</Metadata>"
+        + "<xml xmlns:s='uuid:BDC6E3F0-6DA3-11d1-A2A3-00AA00C14882'"
+        + " xmlns:dt='uuid:C2F41010-65B3-11d1-A29F-00AA00C14882'"
+        + " xmlns:rs='urn:schemas-microsoft-com:rowset'"
+        + " xmlns:z='#RowsetSchema'>"
+        + "<s:Schema id='RowsetSchema'>"
+        + "<s:ElementType name='row' content='eltOnly' rs:CommandTimeout='30'>"
+        + "<s:AttributeType name='ows_ContentTypeId' rs:name='Content Type ID'"
+        + " rs:number='1'>"
+        + "<s:datatype dt:type='int' dt:maxLength='512' />"
+        + "</s:AttributeType>"
+        + "<s:AttributeType name='ows_Title' rs:name='Title' rs:number='2'>"
+        + "<s:datatype dt:type='string' dt:maxLength='512' />"
+        + "</s:AttributeType>"
+        + "<s:AttributeType name='ows__ModerationComments'"
+        + " rs:name='Approver Comments' rs:number='3'>"
+        + "<s:datatype dt:type='string' dt:maxLength='1073741823' />"
+        + "</s:AttributeType>"
+        + "<s:AttributeType name='ows_File_x0020_Type' rs:name='File Type'"
+        + " rs:number='4'>"
+        + "<s:datatype dt:type='string' dt:maxLength='512' />"
+        + "</s:AttributeType>"
+        + "<s:AttributeType name='ows_Additional_x0020_Info'"
+        + " rs:name='Additional Info' rs:number='5'>"
+        + "<s:datatype dt:type='string' dt:maxLength='512' />"
+        + "</s:AttributeType>"
+        + "<s:AttributeType name='ows_ContentType' rs:name='Content Type'"
+        + " rs:number='6'>"
+        + "<s:datatype dt:type='string' dt:maxLength='512' />"
+        + "</s:AttributeType>"
+        + "<s:AttributeType name='ows_ID' rs:name='ID' rs:number='7'>"
+        + "<s:datatype dt:type='i4' dt:maxLength='4' />"
+        + "</s:AttributeType>"
+        + "<s:AttributeType name='ows_Modified' rs:name='Modified'"
+        + " rs:number='8'>"
+        + "<s:datatype dt:type='datetime' dt:maxLength='8' />"
+        + "</s:AttributeType>"
+        + "<s:AttributeType name='ows_Created' rs:name='Created' rs:number='9'>"
+        + "<s:datatype dt:type='datetime' dt:maxLength='8' />"
+        + "</s:AttributeType>"
+        + "<s:AttributeType name='ows_Author' rs:name='Created By'"
+        + " rs:number='10'>"
+        + "<s:datatype dt:type='string' dt:lookup='true' dt:maxLength='512' />"
+        + "</s:AttributeType>"
+        + "<s:AttributeType name='ows_Editor' rs:name='Modified By'"
+        + " rs:number='11'>"
+        + "<s:datatype dt:type='string' dt:lookup='true' dt:maxLength='512' />"
+        + "</s:AttributeType>"
+        + "<s:AttributeType name='ows__HasCopyDestinations'"
+        + " rs:name='Has Copy Destinations' rs:number='12'>"
+        + "<s:datatype dt:type='boolean' dt:maxLength='1' />"
+        + "</s:AttributeType>"
+        + "<s:AttributeType name='ows__CopySource' rs:name='Copy Source'"
+        + " rs:number='13'>"
+        + "<s:datatype dt:type='string' dt:maxLength='1073741823' />"
+        + "</s:AttributeType>"
+        + "<s:AttributeType name='ows_owshiddenversion'"
+        + " rs:name='owshiddenversion' rs:number='14'>"
+        + "<s:datatype dt:type='i4' dt:maxLength='4' />"
+        + "</s:AttributeType>"
+        + "<s:AttributeType name='ows_WorkflowVersion'"
+        + " rs:name='Workflow Version' rs:number='15'>"
+        + "<s:datatype dt:type='i4' dt:maxLength='4' />"
+        + "</s:AttributeType>"
+        + "<s:AttributeType name='ows__UIVersion' rs:name='UI Version'"
+        + " rs:number='16'>"
+        + "<s:datatype dt:type='i4' dt:maxLength='4' />"
+        + "</s:AttributeType>"
+        + "<s:AttributeType name='ows__UIVersionString' rs:name='Version'"
+        + " rs:number='17'>"
+        + "<s:datatype dt:type='string' dt:maxLength='512' />"
+        + "</s:AttributeType>"
+        + "<s:AttributeType name='ows_Attachments' rs:name='Attachments'"
+        + " rs:number='18'>"
+        + "<s:datatype dt:type='boolean' dt:maxLength='1' />"
+        + "</s:AttributeType>"
+        + "<s:AttributeType name='ows__ModerationStatus'"
+        + " rs:name='Approval Status' rs:number='19'>"
+        + "<s:datatype dt:type='i4' dt:maxLength='4' />"
+        + "</s:AttributeType>"
+        + "<s:AttributeType name='ows_LinkTitleNoMenu' rs:name='Title'"
+        + " rs:number='20'>"
+        + "<s:datatype dt:type='string' dt:maxLength='512' />"
+        + "</s:AttributeType>"
+        + "<s:AttributeType name='ows_LinkTitle' rs:name='Title'"
+        + " rs:number='21'>"
+        + "<s:datatype dt:type='string' dt:maxLength='512' />"
+        + "</s:AttributeType>"
+        + "<s:AttributeType name='ows_SelectTitle' rs:name='Select'"
+        + " rs:number='22'>"
+        + "<s:datatype dt:type='i4' dt:maxLength='4' />"
+        + "</s:AttributeType>"
+        + "<s:AttributeType name='ows_InstanceID' rs:name='Instance ID'"
+        + " rs:number='23'>"
+        + "<s:datatype dt:type='i4' dt:maxLength='4' />"
+        + "</s:AttributeType>"
+        + "<s:AttributeType name='ows_Order' rs:name='Order' rs:number='24'>"
+        + "<s:datatype dt:type='float' dt:maxLength='8' />"
+        + "</s:AttributeType>"
+        + "<s:AttributeType name='ows_GUID' rs:name='GUID' rs:number='25'>"
+        + "<s:datatype dt:type='string' dt:maxLength='38' />"
+        + "</s:AttributeType>"
+        + "<s:AttributeType name='ows_WorkflowInstanceID'"
+        + " rs:name='Workflow Instance ID' rs:number='26'>"
+        + "<s:datatype dt:type='string' dt:maxLength='38' />"
+        + "</s:AttributeType>"
+        + "<s:AttributeType name='ows_FileRef' rs:name='URL Path'"
+        + " rs:number='27'>"
+        + "<s:datatype dt:type='string' dt:lookup='true' dt:maxLength='512' />"
+        + "</s:AttributeType>"
+        + "<s:AttributeType name='ows_FileDirRef' rs:name='Path'"
+        + " rs:number='28'>"
+        + "<s:datatype dt:type='string' dt:lookup='true' dt:maxLength='512' />"
+        + "</s:AttributeType>"
+        + "<s:AttributeType name='ows_Last_x0020_Modified' rs:name='Modified'"
+        + " rs:number='29'>"
+        + "<s:datatype dt:type='datetime' dt:lookup='true' dt:maxLength='8' />"
+        + "</s:AttributeType>"
+        + "<s:AttributeType name='ows_Created_x0020_Date' rs:name='Created'"
+        + " rs:number='30'>"
+        + "<s:datatype dt:type='datetime' dt:lookup='true' dt:maxLength='8' />"
+        + "</s:AttributeType>"
+        + "<s:AttributeType name='ows_FSObjType' rs:name='Item Type'"
+        + " rs:number='31'>"
+        + "<s:datatype dt:type='ui1' dt:lookup='true' dt:maxLength='4' />"
+        + "</s:AttributeType>"
+        + "<s:AttributeType name='ows_PermMask'"
+        + " rs:name='Effective Permissions Mask' rs:number='32'>"
+        + "<s:datatype dt:type='string' dt:maxLength='1073741823' />"
+        + "</s:AttributeType>"
+        + "<s:AttributeType name='ows_FileLeafRef' rs:name='Name'"
+        + " rs:number='33'>"
+        + "<s:datatype dt:type='string' dt:lookup='true' dt:maxLength='512' />"
+        + "</s:AttributeType>"
+        + "<s:AttributeType name='ows_UniqueId' rs:name='Unique Id'"
+        + " rs:number='34'>"
+        + "<s:datatype dt:type='string' dt:lookup='true' dt:maxLength='38' />"
+        + "</s:AttributeType>"
+        + "<s:AttributeType name='ows_ProgId' rs:name='ProgId' rs:number='35'>"
+        + "<s:datatype dt:type='string' dt:lookup='true' dt:maxLength='512' />"
+        + "</s:AttributeType>"
+        + "<s:AttributeType name='ows_ScopeId' rs:name='ScopeId'"
+        + " rs:number='36'>"
+        + "<s:datatype dt:type='string' dt:lookup='true' dt:maxLength='38' />"
+        + "</s:AttributeType>"
+        + "<s:AttributeType name='ows_HTML_x0020_File_x0020_Type'"
+        + " rs:name='HTML File Type' rs:number='37'>"
+        + "<s:datatype dt:type='string' dt:maxLength='512' />"
+        + "</s:AttributeType>"
+        + "<s:AttributeType name='ows__EditMenuTableStart'"
+        + " rs:name='Edit Menu Table Start' rs:number='38'>"
+        + "<s:datatype dt:type='string' dt:maxLength='512' />"
+        + "</s:AttributeType>"
+        + "<s:AttributeType name='ows__EditMenuTableEnd'"
+        + " rs:name='Edit Menu Table End' rs:number='39'>"
+        + "<s:datatype dt:type='i4' dt:maxLength='4' />"
+        + "</s:AttributeType>"
+        + "<s:AttributeType name='ows_LinkFilenameNoMenu' rs:name='Name'"
+        + " rs:number='40'>"
+        + "<s:datatype dt:type='string' dt:maxLength='512' />"
+        + "</s:AttributeType>"
+        + "<s:AttributeType name='ows_LinkFilename' rs:name='Name'"
+        + " rs:number='41'>"
+        + "<s:datatype dt:type='string' dt:maxLength='512' />"
+        + "</s:AttributeType>"
+        + "<s:AttributeType name='ows_DocIcon' rs:name='Type' rs:number='42'>"
+        + "<s:datatype dt:type='string' dt:maxLength='512' />"
+        + "</s:AttributeType>"
+        + "<s:AttributeType name='ows_ServerUrl' rs:name='Server Relative URL'"
+        + " rs:number='43'>"
+        + "<s:datatype dt:type='string' dt:maxLength='1073741823' />"
+        + "</s:AttributeType>"
+        + "<s:AttributeType name='ows_EncodedAbsUrl'"
+        + " rs:name='Encoded Absolute URL' rs:number='44'>"
+        + "<s:datatype dt:type='string' dt:maxLength='1073741823' />"
+        + "</s:AttributeType>"
+        + "<s:AttributeType name='ows_BaseName' rs:name='File Name'"
+        + " rs:number='45'>"
+        + "<s:datatype dt:type='string' dt:maxLength='1073741823' />"
+        + "</s:AttributeType>"
+        + "<s:AttributeType name='ows_MetaInfo' rs:name='Property Bag'"
+        + " rs:number='46'>"
+        + "<s:datatype dt:type='int' dt:lookup='true' dt:maxLength='2147483646'"
+        + " />"
+        + "</s:AttributeType>"
+        + "<s:AttributeType name='ows__Level' rs:name='Level' rs:number='47'>"
+        + "<s:datatype dt:type='ui1' dt:maxLength='1' />"
+        + "</s:AttributeType>"
+        + "<s:AttributeType name='ows__IsCurrentVersion'"
+        + " rs:name='Is Current Version' rs:number='48'>"
+        + "<s:datatype dt:type='boolean' dt:maxLength='1' />"
+        + "</s:AttributeType>"
+        + "</s:ElementType></s:Schema><scopes>"
+        + "<scope id='{f9cb02b3-7f29-4cac-804f-ba6e14f1eb39}' >"
+        + "<permission memberid='1' mask='206292717568' />"
+        + "<permission memberid='3' mask='9223372036854775807' />"
+        + "<permission memberid='4' mask='756052856929' />"
+        + "<permission memberid='5' mask='1856436900591' />"
+        + "</scope>"
+        + "<scope id='{2e29615c-59e7-493b-b08a-3642949cc069}' >"
+        + "<permission memberid='1' mask='9223372036854775807' />"
+        + "<permission memberid='3' mask='9223372036854775807' />"
+        + "<permission memberid='4' mask='756052856929' />"
+        + "<permission memberid='5' mask='1856436900591' />"
+        + "</scope>"
+        + "</scopes>"
+        + "<rs:data ItemCount=\"1\">"
+        + "<z:row ows_ContentTypeId='0x0100442459C9B5E59C4F9CFDC789A220FC92'"
+        + " ows_Title='Inside Folder' ows_ContentType='Item' ows_ID='2'"
+        + " ows_Modified='2012-05-04T21:24:32Z'"
+        + " ows_Created='2012-05-01T22:14:06Z'"
+        + " ows_Author='1073741823;#System Account'"
+        + " ows_Editor='1073741823;#System Account' ows_owshiddenversion='4'"
+        + " ows_WorkflowVersion='1' ows__UIVersion='512'"
+        + " ows__UIVersionString='1.0' ows_Attachments='1'"
+        + " ows__ModerationStatus='0' ows_LinkTitleNoMenu='Inside Folder'"
+        + " ows_LinkTitle='Inside Folder' ows_SelectTitle='2'"
+        + " ows_Order='200.000000000000'"
+        + " ows_GUID='{2C5BEF60-18FA-42CA-B472-7B5E1EC405A5}'"
+        + " ows_FileRef='2;#sites/SiteCollection/Lists/Custom List/Test Folder/"
+        +   "2_.000'"
+        + " ows_FileDirRef='2;#sites/SiteCollection/Lists/Custom List/Test Fold"
+        +   "er'"
+        + " ows_Last_x0020_Modified='2;#2012-05-01T22:14:06Z'"
+        + " ows_Created_x0020_Date='2;#2012-05-01T22:14:06Z'"
+        + " ows_FSObjType='2;#0' ows_PermMask='0x7fffffffffffffff'"
+        + " ows_FileLeafRef='2;#2_.000'"
+        + " ows_UniqueId='2;#{E7156244-AC2F-4402-AA74-7A365726CD02}'"
+        + " ows_ProgId='2;#'"
+        + " ows_ScopeId='2;#{2E29615C-59E7-493B-B08A-3642949CC069}'"
+        + " ows__EditMenuTableStart='2_.000' ows__EditMenuTableEnd='2'"
+        + " ows_LinkFilenameNoMenu='2_.000' ows_LinkFilename='2_.000'"
+        + " ows_ServerUrl='/sites/SiteCollection/Lists/Custom List/Test Folder/"
+        +   "2_.000'"
+        + " ows_EncodedAbsUrl='http://localhost:1/sites/SiteCollection/Lists/Cu"
+        +   "stom%20List/Test%20Folder/2_.000'"
+        + " ows_BaseName='2_' ows_MetaInfo='2;#' ows__Level='1'"
+        + " ows__IsCurrentVersion='1' ows_ServerRedirected='0'/>"
+        + "</rs:data>"
+        + "</xml></Item>";
+    final String getContentListItemAttachmentsResponse
+        = "<Item Count=\"1\">"
+        + "<Attachment URL=\"http://localhost:1/sites/SiteCollection/Lists/Cust"
+        + "om List/Attachments/2/1046000.pdf\" />"
+        + "</Item>";
+    SiteDataStub siteDataStub = new UnsupportedSiteDataStub("") {
+      @Override
+      public SiteDataStub.GetURLSegmentsResponse getURLSegments(
+          SiteDataStub.GetURLSegments request) {
+        assertEquals("http://localhost:1/sites/SiteCollection/Lists/Custom List"
+            + "/Test Folder/2_.000", request.getStrURL());
+        SiteDataStub.GetURLSegmentsResponse response
+            = new SiteDataStub.GetURLSegmentsResponse();
+        response.setGetURLSegmentsResult(true);
+        response.setStrListID("{6F33949A-B3FF-4B0C-BA99-93CB518AC2C0}");
+        response.setStrItemID("2");
+        return response;
+      }
+
+      @Override
+      public SiteDataStub.GetContentResponse getContent(
+          SiteDataStub.GetContent request) {
+        if (SiteDataStub.ObjectType.ListItem.equals(request.getObjectType())) {
+          assertEquals(false, request.getSecurityOnly());
+          assertEquals("{6F33949A-B3FF-4B0C-BA99-93CB518AC2C0}",
+              request.getObjectId());
+          assertEquals("2", request.getItemId());
+          SiteDataStub.GetContentResponse response
+              = new SiteDataStub.GetContentResponse();
+          response.setGetContentResult(getContentListItemResponse);
+          return response;
+        } else if (SiteDataStub.ObjectType.ListItemAttachments
+            .equals(request.getObjectType())) {
+          assertEquals(false, request.getSecurityOnly());
+          assertEquals("{6F33949A-B3FF-4B0C-BA99-93CB518AC2C0}",
+              request.getObjectId());
+          assertEquals("2", request.getItemId());
+          SiteDataStub.GetContentResponse response
+              = new SiteDataStub.GetContentResponse();
+          response.setGetContentResult(getContentListItemAttachmentsResponse);
+          return response;
+        } else {
+          fail("Unexpected object type: " + request.getObjectType());
+          throw new AssertionError();
+        }
+      }
+    };
+    SiteDataStubFactory siteDataStubFactory
+        = new SingleSiteDataStubFactory(siteDataStub);
+    adaptor = new SharePointAdaptor(siteDataStubFactory);
+    adaptor.init(new MockAdaptorContext(config, null));
+    ByteArrayOutputStream baos = new ByteArrayOutputStream();
+    GetContentsRequest request = new GetContentsRequest(
+        new DocId("http://localhost:1/sites/SiteCollection/Lists/Custom List/"
+          + "Test Folder/2_.000"));
+    GetContentsResponse response = new GetContentsResponse(baos);
+    adaptor.new SiteDataClient("http://localhost:1/sites/SiteCollection",
+        siteDataStubFactory).getDocContent(request, response);
+    String responseString = new String(baos.toByteArray(), charset);
+    final String golden
+        = "<!DOCTYPE html>\n"
+        + "<html><head><title>List Item Inside Folder</title></head>"
+        + "<body><h1>List Item Inside Folder</h1>"
+        + "<p>Attachments</p><ul>"
+        + "<li><a href=\"http://localhost/http://localhost:1/sites/SiteCollecti"
+        +   "on/Lists/Custom%20List/Attachments/2/1046000.pdf\">"
+        + "http://localhost:1/sites/SiteCollection/Lists/Custom List/Attachment"
+        +   "s/2/1046000.pdf</a></li>"
+        + "</ul></body></html>";
+    final Metadata goldenMetadata;
+    {
+      Metadata meta = new Metadata();
+      meta.add("Attachments", "1");
+      meta.add("Author", "System Account");
+      meta.add("BaseName", "2_");
+      meta.add("ContentType", "Item");
+      meta.add("ContentTypeId", "0x0100442459C9B5E59C4F9CFDC789A220FC92");
+      meta.add("Created", "2012-05-01T22:14:06Z");
+      meta.add("Created_x0020_Date", "2012-05-01T22:14:06Z");
+      meta.add("Editor", "System Account");
+      meta.add("EncodedAbsUrl", "http://localhost:1/sites/SiteCollection/Lists/"
+          + "Custom%20List/Test%20Folder/2_.000");
+      meta.add("FSObjType", "0");
+      meta.add("FileDirRef",
+          "sites/SiteCollection/Lists/Custom List/Test Folder");
+      meta.add("FileLeafRef", "2_.000");
+      meta.add("FileRef",
+          "sites/SiteCollection/Lists/Custom List/Test Folder/2_.000");
+      meta.add("GUID", "{2C5BEF60-18FA-42CA-B472-7B5E1EC405A5}");
+      meta.add("ID", "2");
+      meta.add("Last_x0020_Modified", "2012-05-01T22:14:06Z");
+      meta.add("LinkFilename", "2_.000");
+      meta.add("LinkFilenameNoMenu", "2_.000");
+      meta.add("LinkTitle", "Inside Folder");
+      meta.add("LinkTitleNoMenu", "Inside Folder");
+      meta.add("Modified", "2012-05-04T21:24:32Z");
+      meta.add("Order", "200.000000000000");
+      meta.add("PermMask", "0x7fffffffffffffff");
+      meta.add("ScopeId", "{2E29615C-59E7-493B-B08A-3642949CC069}");
+      meta.add("SelectTitle", "2");
+      meta.add("ServerRedirected", "0");
+      meta.add("ServerUrl",
+          "/sites/SiteCollection/Lists/Custom List/Test Folder/2_.000");
+      meta.add("Title", "Inside Folder");
+      meta.add("UniqueId", "{E7156244-AC2F-4402-AA74-7A365726CD02}");
+      meta.add("WorkflowVersion", "1");
+      meta.add("_EditMenuTableEnd", "2");
+      meta.add("_EditMenuTableStart", "2_.000");
+      meta.add("_IsCurrentVersion", "1");
+      meta.add("_Level", "1");
+      meta.add("_ModerationStatus", "0");
+      meta.add("_UIVersion", "512");
+      meta.add("_UIVersionString", "1.0");
+      meta.add("owshiddenversion", "4");
+      goldenMetadata = meta.unmodifiableView();
+    }
+    assertEquals(golden, responseString);
+    assertEquals(goldenMetadata, response.getMetadata());
+  }
+
+  @Test
+  public void testGetDocContentFolder() throws IOException {
+    final String getContentListItemResponse
+        = "<Item><Metadata>"
+        + "<scope id=\"{f9cb02b3-7f29-4cac-804f-ba6e14f1eb39}\">"
+        + "<permissions><permission memberid='1' mask='206292717568' />"
+        + "<permission memberid='3' mask='9223372036854775807' />"
+        + "<permission memberid='4' mask='756052856929' />"
+        + "<permission memberid='5' mask='1856436900591' />"
+        + "</permissions></scope>"
+        + "</Metadata>"
+        + "<xml xmlns:s='uuid:BDC6E3F0-6DA3-11d1-A2A3-00AA00C14882'"
+        + " xmlns:dt='uuid:C2F41010-65B3-11d1-A29F-00AA00C14882'"
+        + " xmlns:rs='urn:schemas-microsoft-com:rowset'"
+        + " xmlns:z='#RowsetSchema'>"
+        + "<s:Schema id='RowsetSchema'>"
+        + "<s:ElementType name='row' content='eltOnly' rs:CommandTimeout='30'>"
+        + "<s:AttributeType name='ows_ContentTypeId' rs:name='Content Type ID'"
+        + " rs:number='1'>"
+        + "<s:datatype dt:type='int' dt:maxLength='512' />"
+        + "</s:AttributeType>"
+        + "<s:AttributeType name='ows_Title' rs:name='Title' rs:number='2'>"
+        + "<s:datatype dt:type='string' dt:maxLength='512' />"
+        + "</s:AttributeType>"
+        + "<s:AttributeType name='ows__ModerationComments'"
+        + " rs:name='Approver Comments' rs:number='3'>"
+        + "<s:datatype dt:type='string' dt:maxLength='1073741823' />"
+        + "</s:AttributeType>"
+        + "<s:AttributeType name='ows_File_x0020_Type' rs:name='File Type'"
+        + " rs:number='4'>"
+        + "<s:datatype dt:type='string' dt:maxLength='512' />"
+        + "</s:AttributeType>"
+        + "<s:AttributeType name='ows_Additional_x0020_Info'"
+        + " rs:name='Additional Info' rs:number='5'>"
+        + "<s:datatype dt:type='string' dt:maxLength='512' />"
+        + "</s:AttributeType>"
+        + "<s:AttributeType name='ows_ContentType' rs:name='Content Type'"
+        + " rs:number='6'>"
+        + "<s:datatype dt:type='string' dt:maxLength='512' />"
+        + "</s:AttributeType>"
+        + "<s:AttributeType name='ows_ID' rs:name='ID' rs:number='7'>"
+        + "<s:datatype dt:type='i4' dt:maxLength='4' />"
+        + "</s:AttributeType>"
+        + "<s:AttributeType name='ows_Modified' rs:name='Modified'"
+        + " rs:number='8'>"
+        + "<s:datatype dt:type='datetime' dt:maxLength='8' />"
+        + "</s:AttributeType>"
+        + "<s:AttributeType name='ows_Created' rs:name='Created' rs:number='9'>"
+        + "<s:datatype dt:type='datetime' dt:maxLength='8' />"
+        + "</s:AttributeType>"
+        + "<s:AttributeType name='ows_Author' rs:name='Created By'"
+        + " rs:number='10'>"
+        + "<s:datatype dt:type='string' dt:lookup='true' dt:maxLength='512' />"
+        + "</s:AttributeType>"
+        + "<s:AttributeType name='ows_Editor' rs:name='Modified By'"
+        + " rs:number='11'>"
+        + "<s:datatype dt:type='string' dt:lookup='true' dt:maxLength='512' />"
+        + "</s:AttributeType>"
+        + "<s:AttributeType name='ows__HasCopyDestinations'"
+        + " rs:name='Has Copy Destinations' rs:number='12'>"
+        + "<s:datatype dt:type='boolean' dt:maxLength='1' />"
+        + "</s:AttributeType>"
+        + "<s:AttributeType name='ows__CopySource' rs:name='Copy Source'"
+        + " rs:number='13'>"
+        + "<s:datatype dt:type='string' dt:maxLength='1073741823' />"
+        + "</s:AttributeType>"
+        + "<s:AttributeType name='ows_owshiddenversion'"
+        + " rs:name='owshiddenversion' rs:number='14'>"
+        + "<s:datatype dt:type='i4' dt:maxLength='4' />"
+        + "</s:AttributeType>"
+        + "<s:AttributeType name='ows_WorkflowVersion'"
+        + " rs:name='Workflow Version' rs:number='15'>"
+        + "<s:datatype dt:type='i4' dt:maxLength='4' />"
+        + "</s:AttributeType>"
+        + "<s:AttributeType name='ows__UIVersion' rs:name='UI Version'"
+        + " rs:number='16'>"
+        + "<s:datatype dt:type='i4' dt:maxLength='4' />"
+        + "</s:AttributeType>"
+        + "<s:AttributeType name='ows__UIVersionString' rs:name='Version'"
+        + " rs:number='17'>"
+        + "<s:datatype dt:type='string' dt:maxLength='512' />"
+        + "</s:AttributeType>"
+        + "<s:AttributeType name='ows_Attachments' rs:name='Attachments'"
+        + " rs:number='18'>"
+        + "<s:datatype dt:type='boolean' dt:maxLength='1' />"
+        + "</s:AttributeType>"
+        + "<s:AttributeType name='ows__ModerationStatus'"
+        + " rs:name='Approval Status' rs:number='19'>"
+        + "<s:datatype dt:type='i4' dt:maxLength='4' />"
+        + "</s:AttributeType>"
+        + "<s:AttributeType name='ows_LinkTitleNoMenu' rs:name='Title'"
+        + " rs:number='20'>"
+        + "<s:datatype dt:type='string' dt:maxLength='512' />"
+        + "</s:AttributeType>"
+        + "<s:AttributeType name='ows_LinkTitle' rs:name='Title'"
+        + " rs:number='21'>"
+        + "<s:datatype dt:type='string' dt:maxLength='512' />"
+        + "</s:AttributeType>"
+        + "<s:AttributeType name='ows_SelectTitle' rs:name='Select'"
+        + " rs:number='22'>"
+        + "<s:datatype dt:type='i4' dt:maxLength='4' />"
+        + "</s:AttributeType>"
+        + "<s:AttributeType name='ows_InstanceID' rs:name='Instance ID'"
+        + " rs:number='23'>"
+        + "<s:datatype dt:type='i4' dt:maxLength='4' />"
+        + "</s:AttributeType>"
+        + "<s:AttributeType name='ows_Order' rs:name='Order' rs:number='24'>"
+        + "<s:datatype dt:type='float' dt:maxLength='8' />"
+        + "</s:AttributeType>"
+        + "<s:AttributeType name='ows_GUID' rs:name='GUID' rs:number='25'>"
+        + "<s:datatype dt:type='string' dt:maxLength='38' />"
+        + "</s:AttributeType>"
+        + "<s:AttributeType name='ows_WorkflowInstanceID'"
+        + " rs:name='Workflow Instance ID' rs:number='26'>"
+        + "<s:datatype dt:type='string' dt:maxLength='38' />"
+        + "</s:AttributeType>"
+        + "<s:AttributeType name='ows_FileRef' rs:name='URL Path'"
+        + " rs:number='27'>"
+        + "<s:datatype dt:type='string' dt:lookup='true' dt:maxLength='512' />"
+        + "</s:AttributeType>"
+        + "<s:AttributeType name='ows_FileDirRef' rs:name='Path'"
+        + " rs:number='28'>"
+        + "<s:datatype dt:type='string' dt:lookup='true' dt:maxLength='512' />"
+        + "</s:AttributeType>"
+        + "<s:AttributeType name='ows_Last_x0020_Modified' rs:name='Modified'"
+        + " rs:number='29'>"
+        + "<s:datatype dt:type='datetime' dt:lookup='true' dt:maxLength='8' />"
+        + "</s:AttributeType>"
+        + "<s:AttributeType name='ows_Created_x0020_Date' rs:name='Created'"
+        + " rs:number='30'>"
+        + "<s:datatype dt:type='datetime' dt:lookup='true' dt:maxLength='8' />"
+        + "</s:AttributeType>"
+        + "<s:AttributeType name='ows_FSObjType' rs:name='Item Type'"
+        + " rs:number='31'>"
+        + "<s:datatype dt:type='ui1' dt:lookup='true' dt:maxLength='4' />"
+        + "</s:AttributeType>"
+        + "<s:AttributeType name='ows_PermMask'"
+        + " rs:name='Effective Permissions Mask' rs:number='32'>"
+        + "<s:datatype dt:type='string' dt:maxLength='1073741823' />"
+        + "</s:AttributeType>"
+        + "<s:AttributeType name='ows_FileLeafRef' rs:name='Name'"
+        + " rs:number='33'>"
+        + "<s:datatype dt:type='string' dt:lookup='true' dt:maxLength='512' />"
+        + "</s:AttributeType>"
+        + "<s:AttributeType name='ows_UniqueId' rs:name='Unique Id'"
+        + " rs:number='34'>"
+        + "<s:datatype dt:type='string' dt:lookup='true' dt:maxLength='38' />"
+        + "</s:AttributeType>"
+        + "<s:AttributeType name='ows_ProgId' rs:name='ProgId' rs:number='35'>"
+        + "<s:datatype dt:type='string' dt:lookup='true' dt:maxLength='512' />"
+        + "</s:AttributeType>"
+        + "<s:AttributeType name='ows_ScopeId' rs:name='ScopeId'"
+        + " rs:number='36'>"
+        + "<s:datatype dt:type='string' dt:lookup='true' dt:maxLength='38' />"
+        + "</s:AttributeType>"
+        + "<s:AttributeType name='ows_HTML_x0020_File_x0020_Type'"
+        + " rs:name='HTML File Type' rs:number='37'>"
+        + "<s:datatype dt:type='string' dt:maxLength='512' />"
+        + "</s:AttributeType>"
+        + "<s:AttributeType name='ows__EditMenuTableStart'"
+        + " rs:name='Edit Menu Table Start' rs:number='38'>"
+        + "<s:datatype dt:type='string' dt:maxLength='512' />"
+        + "</s:AttributeType>"
+        + "<s:AttributeType name='ows__EditMenuTableEnd'"
+        + " rs:name='Edit Menu Table End' rs:number='39'>"
+        + "<s:datatype dt:type='i4' dt:maxLength='4' />"
+        + "</s:AttributeType>"
+        + "<s:AttributeType name='ows_LinkFilenameNoMenu' rs:name='Name'"
+        + " rs:number='40'>"
+        + "<s:datatype dt:type='string' dt:maxLength='512' />"
+        + "</s:AttributeType>"
+        + "<s:AttributeType name='ows_LinkFilename' rs:name='Name'"
+        + " rs:number='41'>"
+        + "<s:datatype dt:type='string' dt:maxLength='512' />"
+        + "</s:AttributeType>"
+        + "<s:AttributeType name='ows_DocIcon' rs:name='Type' rs:number='42'>"
+        + "<s:datatype dt:type='string' dt:maxLength='512' />"
+        + "</s:AttributeType>"
+        + "<s:AttributeType name='ows_ServerUrl' rs:name='Server Relative URL'"
+        + " rs:number='43'>"
+        + "<s:datatype dt:type='string' dt:maxLength='1073741823' />"
+        + "</s:AttributeType>"
+        + "<s:AttributeType name='ows_EncodedAbsUrl'"
+        + " rs:name='Encoded Absolute URL' rs:number='44'>"
+        + "<s:datatype dt:type='string' dt:maxLength='1073741823' />"
+        + "</s:AttributeType>"
+        + "<s:AttributeType name='ows_BaseName' rs:name='File Name'"
+        + " rs:number='45'>"
+        + "<s:datatype dt:type='string' dt:maxLength='1073741823' />"
+        + "</s:AttributeType>"
+        + "<s:AttributeType name='ows_MetaInfo' rs:name='Property Bag'"
+        + " rs:number='46'>"
+        + "<s:datatype dt:type='int' dt:lookup='true' dt:maxLength='2147483646'"
+        + " />"
+        + "</s:AttributeType>"
+        + "<s:AttributeType name='ows__Level' rs:name='Level' rs:number='47'>"
+        + "<s:datatype dt:type='ui1' dt:maxLength='1' />"
+        + "</s:AttributeType>"
+        + "<s:AttributeType name='ows__IsCurrentVersion'"
+        + " rs:name='Is Current Version' rs:number='48'>"
+        + "<s:datatype dt:type='boolean' dt:maxLength='1' />"
+        + "</s:AttributeType>"
+        + "</s:ElementType></s:Schema><scopes>"
+        + "<scope id='{f9cb02b3-7f29-4cac-804f-ba6e14f1eb39}' >"
+        + "<permission memberid='1' mask='206292717568' />"
+        + "<permission memberid='3' mask='9223372036854775807' />"
+        + "<permission memberid='4' mask='756052856929' />"
+        + "<permission memberid='5' mask='1856436900591' />"
+        + "</scope>"
+        + "<scope id='{2e29615c-59e7-493b-b08a-3642949cc069}' >"
+        + "<permission memberid='1' mask='9223372036854775807' />"
+        + "<permission memberid='3' mask='9223372036854775807' />"
+        + "<permission memberid='4' mask='756052856929' />"
+        + "<permission memberid='5' mask='1856436900591' />"
+        + "</scope>"
+        + "</scopes>"
+        + "<rs:data ItemCount=\"1\">"
+        + "<z:row"
+        + " ows_ContentTypeId='0x01200077DD29735CE61148A73F540231F24430'"
+        + " ows_Title='Test Folder' ows_ContentType='Folder' ows_ID='1'"
+        + " ows_Modified='2012-05-01T22:13:47Z'"
+        + " ows_Created='2012-05-01T22:13:47Z'"
+        + " ows_Author='1073741823;#System Account'"
+        + " ows_Editor='1073741823;#System Account' ows_owshiddenversion='1'"
+        + " ows_WorkflowVersion='1' ows__UIVersion='512'"
+        + " ows__UIVersionString='1.0' ows_Attachments='0'"
+        + " ows__ModerationStatus='0' ows_LinkTitleNoMenu='Test Folder'"
+        + " ows_LinkTitle='Test Folder' ows_SelectTitle='1'"
+        + " ows_Order='100.000000000000'"
+        + " ows_GUID='{C099F4ED-6E96-4A00-B94A-EE443061EE49}'"
+        + " ows_FileRef='1;#sites/SiteCollection/Lists/Custom List/Test Folder'"
+        + " ows_FileDirRef='1;#sites/SiteCollection/Lists/Custom List'"
+        + " ows_Last_x0020_Modified='1;#2012-05-02T21:13:17Z'"
+        + " ows_Created_x0020_Date='1;#2012-05-01T22:13:47Z'"
+        + " ows_FSObjType='1;#1' ows_PermMask='0x7fffffffffffffff'"
+        + " ows_FileLeafRef='1;#Test Folder'"
+        + " ows_UniqueId='1;#{CE33B6B7-9F5E-4224-8D77-9C42E6290FE6}'"
+        + " ows_ProgId='1;#'"
+        + " ows_ScopeId='1;#{2E29615C-59E7-493B-B08A-3642949CC069}'"
+        + " ows__EditMenuTableStart='Test Folder' ows__EditMenuTableEnd='1'"
+        + " ows_LinkFilenameNoMenu='Test Folder' ows_LinkFilename='Test Folder'"
+        + " ows_ServerUrl='/sites/SiteCollection/Lists/Custom List/Test Folder'"
+        + " ows_EncodedAbsUrl='http://localhost:1/sites/SiteCollection/Lists/Cu"
+        +   "stom%20List/Test%20Folder'"
+        + " ows_BaseName='Test Folder' ows_MetaInfo='1;#' ows__Level='1'"
+        + " ows__IsCurrentVersion='1' ows_ServerRedirected='0'/>"
+        + "</rs:data>"
+        + "</xml></Item>";
+    final String getContentListResponse
+        = "<List>"
+        + "<Metadata ID=\"{6f33949a-b3ff-4b0c-ba99-93cb518ac2c0}\""
+        + " LastModified=\"2012-05-04 21:24:32Z\" Title=\"Custom List\""
+        + " DefaultTitle=\"True\" Description=\"\" BaseType=\"GenericList\""
+        + " BaseTemplate=\"GenericList\""
+        + " DefaultViewUrl=\"/sites/SiteCollection/Lists/Custom List/AllItems.a"
+        +   "spx\""
+        + " DefaultViewItemUrl=\"/sites/SiteCollection/Lists/Custom List/DispFo"
+        +   "rm.aspx\""
+        + " RootFolder=\"Lists/Custom List\" Author=\"System Account\""
+        + " ItemCount=\"7\" ReadSecurity=\"1\" AllowAnonymousAccess=\"False\""
+        + " AnonymousViewListItems=\"False\" AnonymousPermMask=\"0\""
+        + " CRC=\"1334405648\" NoIndex=\"False\""
+        + " ScopeID=\"{f9cb02b3-7f29-4cac-804f-ba6e14f1eb39}\" />"
+        + "<ACL><permissions>"
+        + "<permission memberid='1' mask='206292717568' />"
+        + "<permission memberid='3' mask='9223372036854775807' />"
+        + "<permission memberid='4' mask='756052856929' />"
+        + "<permission memberid='5' mask='1856436900591' />"
+        + "</permissions></ACL>"
+        + "<Views>"
+        + "<View URL=\"Lists/Custom List/AllItems.aspx\""
+        + " ID=\"{18b67349-78bd-49a2-ba1a-cdbc048adf0b}\" Title=\"All Items\""
+        + " />"
+        + "</Views>"
+        + "<Schema>"
+        + "<Field Name=\"Title\" Title=\"Title\" Type=\"Text\" />"
+        + "<Field Name=\"Additional_x0020_Info\" Title=\"Additional Info\""
+        + " Type=\"Text\" />"
+        + "<Field Name=\"ContentType\" Title=\"Content Type\" Type=\"Choice\""
+        + " />"
+        + "<Field Name=\"ID\" Title=\"ID\" Type=\"Counter\" />"
+        + "<Field Name=\"Modified\" Title=\"Modified\" Type=\"DateTime\" />"
+        + "<Field Name=\"Created\" Title=\"Created\" Type=\"DateTime\" />"
+        + "<Field Name=\"Author\" Title=\"Created By\" Type=\"User\" />"
+        + "<Field Name=\"Editor\" Title=\"Modified By\" Type=\"User\" />"
+        + "<Field Name=\"_UIVersionString\" Title=\"Version\" Type=\"Text\" />"
+        + "<Field Name=\"Attachments\" Title=\"Attachments\""
+        + " Type=\"Attachments\" />"
+        + "<Field Name=\"Edit\" Title=\"Edit\" Type=\"Computed\" />"
+        + "<Field Name=\"LinkTitleNoMenu\" Title=\"Title\" Type=\"Computed\" />"
+        + "<Field Name=\"LinkTitle\" Title=\"Title\" Type=\"Computed\" />"
+        + "<Field Name=\"DocIcon\" Title=\"Type\" Type=\"Computed\" />"
+        + "</Schema></List>";
+    final String getContentFolderResponse
+        = "<Folder><Metadata>"
+        + "<scope id=\"{f9cb02b3-7f29-4cac-804f-ba6e14f1eb39}\">"
+        + "<permissions><permission memberid='1' mask='206292717568' />"
+        + "<permission memberid='3' mask='9223372036854775807' />"
+        + "<permission memberid='4' mask='756052856929' />"
+        + "<permission memberid='5' mask='1856436900591' />"
+        + "</permissions></scope>"
+        + "</Metadata>"
+        + "<xml xmlns:s='uuid:BDC6E3F0-6DA3-11d1-A2A3-00AA00C14882'"
+        + " xmlns:dt='uuid:C2F41010-65B3-11d1-A29F-00AA00C14882'"
+        + " xmlns:rs='urn:schemas-microsoft-com:rowset'"
+        + " xmlns:z='#RowsetSchema'>"
+        + "<s:Schema id='RowsetSchema'>"
+        + "<s:ElementType name='row' content='eltOnly' rs:CommandTimeout='30'>"
+        + "<s:AttributeType name='ows_ContentTypeId' rs:name='Content Type ID'"
+        + " rs:number='1'>"
+        + "<s:datatype dt:type='int' dt:maxLength='512' />"
+        + "</s:AttributeType>"
+        + "<s:AttributeType name='ows_Title' rs:name='Title' rs:number='2'>"
+        + "<s:datatype dt:type='string' dt:maxLength='512' />"
+        + "</s:AttributeType>"
+        + "<s:AttributeType name='ows__ModerationComments'"
+        + " rs:name='Approver Comments' rs:number='3'>"
+        + "<s:datatype dt:type='string' dt:maxLength='1073741823' />"
+        + "</s:AttributeType>"
+        + "<s:AttributeType name='ows_File_x0020_Type' rs:name='File Type'"
+        + " rs:number='4'>"
+        + "<s:datatype dt:type='string' dt:maxLength='512' />"
+        + "</s:AttributeType>"
+        + "<s:AttributeType name='ows_Additional_x0020_Info'"
+        + " rs:name='Additional Info' rs:number='5'>"
+        + "<s:datatype dt:type='string' dt:maxLength='512' />"
+        + "</s:AttributeType>"
+        + "<s:AttributeType name='ows_ContentType' rs:name='Content Type'"
+        + " rs:number='6'>"
+        + "<s:datatype dt:type='string' dt:maxLength='512' />"
+        + "</s:AttributeType>"
+        + "<s:AttributeType name='ows_ID' rs:name='ID' rs:number='7'>"
+        + "<s:datatype dt:type='i4' dt:maxLength='4' />"
+        + "</s:AttributeType>"
+        + "<s:AttributeType name='ows_Modified' rs:name='Modified'"
+        + " rs:number='8'>"
+        + "<s:datatype dt:type='datetime' dt:maxLength='8' />"
+        + "</s:AttributeType>"
+        + "<s:AttributeType name='ows_Created' rs:name='Created' rs:number='9'>"
+        + "<s:datatype dt:type='datetime' dt:maxLength='8' />"
+        + "</s:AttributeType>"
+        + "<s:AttributeType name='ows_Author' rs:name='Created By'"
+        + " rs:number='10'>"
+        + "<s:datatype dt:type='string' dt:lookup='true' dt:maxLength='512' />"
+        + "</s:AttributeType>"
+        + "<s:AttributeType name='ows_Editor' rs:name='Modified By'"
+        + " rs:number='11'>"
+        + "<s:datatype dt:type='string' dt:lookup='true' dt:maxLength='512' />"
+        + "</s:AttributeType>"
+        + "<s:AttributeType name='ows__HasCopyDestinations'"
+        + " rs:name='Has Copy Destinations' rs:number='12'>"
+        + "<s:datatype dt:type='boolean' dt:maxLength='1' />"
+        + "</s:AttributeType>"
+        + "<s:AttributeType name='ows__CopySource' rs:name='Copy Source'"
+        + " rs:number='13'>"
+        + "<s:datatype dt:type='string' dt:maxLength='1073741823' />"
+        + "</s:AttributeType>"
+        + "<s:AttributeType name='ows_owshiddenversion'"
+        + " rs:name='owshiddenversion' rs:number='14'>"
+        + "<s:datatype dt:type='i4' dt:maxLength='4' />"
+        + "</s:AttributeType>"
+        + "<s:AttributeType name='ows_WorkflowVersion'"
+        + " rs:name='Workflow Version' rs:number='15'>"
+        + "<s:datatype dt:type='i4' dt:maxLength='4' />"
+        + "</s:AttributeType>"
+        + "<s:AttributeType name='ows__UIVersion' rs:name='UI Version'"
+        + " rs:number='16'>"
+        + "<s:datatype dt:type='i4' dt:maxLength='4' />"
+        + "</s:AttributeType>"
+        + "<s:AttributeType name='ows__UIVersionString' rs:name='Version'"
+        + " rs:number='17'>"
+        + "<s:datatype dt:type='string' dt:maxLength='512' />"
+        + "</s:AttributeType>"
+        + "<s:AttributeType name='ows_Attachments' rs:name='Attachments'"
+        + " rs:number='18'>"
+        + "<s:datatype dt:type='boolean' dt:maxLength='1' />"
+        + "</s:AttributeType>"
+        + "<s:AttributeType name='ows__ModerationStatus'"
+        + " rs:name='Approval Status' rs:number='19'>"
+        + "<s:datatype dt:type='i4' dt:maxLength='4' />"
+        + "</s:AttributeType>"
+        + "<s:AttributeType name='ows_LinkTitleNoMenu' rs:name='Title'"
+        + " rs:number='20'>"
+        + "<s:datatype dt:type='string' dt:maxLength='512' />"
+        + "</s:AttributeType>"
+        + "<s:AttributeType name='ows_LinkTitle' rs:name='Title'"
+        + " rs:number='21'>"
+        + "<s:datatype dt:type='string' dt:maxLength='512' />"
+        + "</s:AttributeType>"
+        + "<s:AttributeType name='ows_SelectTitle' rs:name='Select'"
+        + " rs:number='22'>"
+        + "<s:datatype dt:type='i4' dt:maxLength='4' />"
+        + "</s:AttributeType>"
+        + "<s:AttributeType name='ows_InstanceID' rs:name='Instance ID'"
+        + " rs:number='23'>"
+        + "<s:datatype dt:type='i4' dt:maxLength='4' />"
+        + "</s:AttributeType>"
+        + "<s:AttributeType name='ows_Order' rs:name='Order' rs:number='24'>"
+        + "<s:datatype dt:type='float' dt:maxLength='8' />"
+        + "</s:AttributeType>"
+        + "<s:AttributeType name='ows_GUID' rs:name='GUID' rs:number='25'>"
+        + "<s:datatype dt:type='string' dt:maxLength='38' />"
+        + "</s:AttributeType>"
+        + "<s:AttributeType name='ows_WorkflowInstanceID'"
+        + " rs:name='Workflow Instance ID' rs:number='26'>"
+        + "<s:datatype dt:type='string' dt:maxLength='38' />"
+        + "</s:AttributeType>"
+        + "<s:AttributeType name='ows_FileRef' rs:name='URL Path'"
+        + " rs:number='27'>"
+        + "<s:datatype dt:type='string' dt:lookup='true' dt:maxLength='512' />"
+        + "</s:AttributeType>"
+        + "<s:AttributeType name='ows_FileDirRef' rs:name='Path'"
+        + " rs:number='28'>"
+        + "<s:datatype dt:type='string' dt:lookup='true' dt:maxLength='512' />"
+        + "</s:AttributeType>"
+        + "<s:AttributeType name='ows_Last_x0020_Modified' rs:name='Modified'"
+        + " rs:number='29'>"
+        + "<s:datatype dt:type='datetime' dt:lookup='true' dt:maxLength='8' />"
+        + "</s:AttributeType>"
+        + "<s:AttributeType name='ows_Created_x0020_Date' rs:name='Created'"
+        + " rs:number='30'>"
+        + "<s:datatype dt:type='datetime' dt:lookup='true' dt:maxLength='8' />"
+        + "</s:AttributeType>"
+        + "<s:AttributeType name='ows_FSObjType' rs:name='Item Type'"
+        + " rs:number='31'>"
+        + "<s:datatype dt:type='ui1' dt:lookup='true' dt:maxLength='4' />"
+        + "</s:AttributeType>"
+        + "<s:AttributeType name='ows_PermMask'"
+        + " rs:name='Effective Permissions Mask' rs:number='32'>"
+        + "<s:datatype dt:type='string' dt:maxLength='1073741823' />"
+        + "</s:AttributeType>"
+        + "<s:AttributeType name='ows_FileLeafRef' rs:name='Name'"
+        + " rs:number='33'>"
+        + "<s:datatype dt:type='string' dt:lookup='true' dt:maxLength='512' />"
+        + "</s:AttributeType>"
+        + "<s:AttributeType name='ows_UniqueId' rs:name='Unique Id'"
+        + " rs:number='34'>"
+        + "<s:datatype dt:type='string' dt:lookup='true' dt:maxLength='38' />"
+        + "</s:AttributeType>"
+        + "<s:AttributeType name='ows_ProgId' rs:name='ProgId' rs:number='35'>"
+        + "<s:datatype dt:type='string' dt:lookup='true' dt:maxLength='512' />"
+        + "</s:AttributeType>"
+        + "<s:AttributeType name='ows_ScopeId' rs:name='ScopeId'"
+        + " rs:number='36'>"
+        + "<s:datatype dt:type='string' dt:lookup='true' dt:maxLength='38' />"
+        + "</s:AttributeType>"
+        + "<s:AttributeType name='ows_HTML_x0020_File_x0020_Type'"
+        + " rs:name='HTML File Type' rs:number='37'>"
+        + "<s:datatype dt:type='string' dt:maxLength='512' />"
+        + "</s:AttributeType>"
+        + "<s:AttributeType name='ows__EditMenuTableStart'"
+        + " rs:name='Edit Menu Table Start' rs:number='38'>"
+        + "<s:datatype dt:type='string' dt:maxLength='512' />"
+        + "</s:AttributeType>"
+        + "<s:AttributeType name='ows__EditMenuTableEnd'"
+        + " rs:name='Edit Menu Table End' rs:number='39'>"
+        + "<s:datatype dt:type='i4' dt:maxLength='4' />"
+        + "</s:AttributeType>"
+        + "<s:AttributeType name='ows_LinkFilenameNoMenu' rs:name='Name'"
+        + " rs:number='40'>"
+        + "<s:datatype dt:type='string' dt:maxLength='512' />"
+        + "</s:AttributeType>"
+        + "<s:AttributeType name='ows_LinkFilename' rs:name='Name'"
+        + " rs:number='41'>"
+        + "<s:datatype dt:type='string' dt:maxLength='512' />"
+        + "</s:AttributeType>"
+        + "<s:AttributeType name='ows_DocIcon' rs:name='Type' rs:number='42'>"
+        + "<s:datatype dt:type='string' dt:maxLength='512' />"
+        + "</s:AttributeType>"
+        + "<s:AttributeType name='ows_ServerUrl' rs:name='Server Relative URL'"
+        + " rs:number='43'>"
+        + "<s:datatype dt:type='string' dt:maxLength='1073741823' />"
+        + "</s:AttributeType>"
+        + "<s:AttributeType name='ows_EncodedAbsUrl'"
+        + " rs:name='Encoded Absolute URL' rs:number='44'>"
+        + "<s:datatype dt:type='string' dt:maxLength='1073741823' />"
+        + "</s:AttributeType>"
+        + "<s:AttributeType name='ows_BaseName' rs:name='File Name'"
+        + " rs:number='45'>"
+        + "<s:datatype dt:type='string' dt:maxLength='1073741823' />"
+        + "</s:AttributeType>"
+        + "<s:AttributeType name='ows_MetaInfo' rs:name='Property Bag'"
+        + " rs:number='46'>"
+        + "<s:datatype dt:type='int' dt:lookup='true' dt:maxLength='2147483646'"
+        + " />"
+        + "</s:AttributeType>"
+        + "<s:AttributeType name='ows__Level' rs:name='Level' rs:number='47'>"
+        + "<s:datatype dt:type='ui1' dt:maxLength='1' />"
+        + "</s:AttributeType>"
+        + "<s:AttributeType name='ows__IsCurrentVersion'"
+        + " rs:name='Is Current Version' rs:number='48'>"
+        + "<s:datatype dt:type='boolean' dt:maxLength='1' />"
+        + "</s:AttributeType>"
+        + "</s:ElementType></s:Schema><scopes>"
+        + "<scope id='{f9cb02b3-7f29-4cac-804f-ba6e14f1eb39}' >"
+        + "<permission memberid='1' mask='206292717568' />"
+        + "<permission memberid='3' mask='9223372036854775807' />"
+        + "<permission memberid='4' mask='756052856929' />"
+        + "<permission memberid='5' mask='1856436900591' />"
+        + "</scope>"
+        + "<scope id='{2e29615c-59e7-493b-b08a-3642949cc069}' >"
+        + "<permission memberid='1' mask='9223372036854775807' />"
+        + "<permission memberid='3' mask='9223372036854775807' />"
+        + "<permission memberid='4' mask='756052856929' />"
+        + "<permission memberid='5' mask='1856436900591' />"
+        + "</scope>"
+        + "</scopes>"
+        + "<rs:data ItemCount=\"2\">"
+        + "<z:row"
+        + " ows_ContentTypeId='0x0100442459C9B5E59C4F9CFDC789A220FC92'"
+        + " ows_Title='Inside Folder' ows_ContentType='Item' ows_ID='2'"
+        + " ows_Modified='2012-05-04T21:24:32Z'"
+        + " ows_Created='2012-05-01T22:14:06Z'"
+        + " ows_Author='1073741823;#System Account'"
+        + " ows_Editor='1073741823;#System Account' ows_owshiddenversion='4'"
+        + " ows_WorkflowVersion='1' ows__UIVersion='512'"
+        + " ows__UIVersionString='1.0' ows_Attachments='1'"
+        + " ows__ModerationStatus='0' ows_LinkTitleNoMenu='Inside Folder'"
+        + " ows_LinkTitle='Inside Folder' ows_SelectTitle='2'"
+        + " ows_Order='200.000000000000'"
+        + " ows_GUID='{2C5BEF60-18FA-42CA-B472-7B5E1EC405A5}'"
+        + " ows_FileRef='2;#sites/SiteCollection/Lists/Custom List/Test Folder/"
+        +   "2_.000'"
+        + " ows_FileDirRef='2;#sites/SiteCollection/Lists/Custom List/Test Fold"
+        +   "er'"
+        + " ows_Last_x0020_Modified='2;#2012-05-01T22:14:06Z'"
+        + " ows_Created_x0020_Date='2;#2012-05-01T22:14:06Z'"
+        + " ows_FSObjType='2;#0' ows_PermMask='0x7fffffffffffffff'"
+        + " ows_FileLeafRef='2;#2_.000'"
+        + " ows_UniqueId='2;#{E7156244-AC2F-4402-AA74-7A365726CD02}'"
+        + " ows_ProgId='2;#'"
+        + " ows_ScopeId='2;#{2E29615C-59E7-493B-B08A-3642949CC069}'"
+        + " ows__EditMenuTableStart='2_.000' ows__EditMenuTableEnd='2'"
+        + " ows_LinkFilenameNoMenu='2_.000' ows_LinkFilename='2_.000'"
+        + " ows_ServerUrl='/sites/SiteCollection/Lists/Custom List/Test Folder/"
+        + "2_.000'"
+        + " ows_EncodedAbsUrl='http://localhost:1/sites/SiteCollection/Lists/Cu"
+        + "stom%20List/Test%20Folder/2_.000'"
+        + " ows_BaseName='2_' ows_MetaInfo='2;#' ows__Level='1'"
+        + " ows__IsCurrentVersion='1' ows_ServerRedirected='0'/>"
+        + "<z:row"
+        + " ows_ContentTypeId='0x01200077DD29735CE61148A73F540231F24430'"
+        + " ows_Title='testing' ows_ContentType='Folder' ows_ID='5'"
+        + " ows_Modified='2012-05-02T21:13:16Z'"
+        + " ows_Created='2012-05-02T21:13:16Z'"
+        + " ows_Author='1073741823;#System Account'"
+        + " ows_Editor='1073741823;#System Account' ows_owshiddenversion='1'"
+        + " ows_WorkflowVersion='1' ows__UIVersion='512'"
+        + " ows__UIVersionString='1.0' ows_Attachments='0'"
+        + " ows__ModerationStatus='0' ows_LinkTitleNoMenu='testing'"
+        + " ows_LinkTitle='testing' ows_SelectTitle='5'"
+        + " ows_Order='500.000000000000'"
+        + " ows_GUID='{D803788D-7A3A-4222-AC66-BFD261412A28}'"
+        + " ows_FileRef='5;#sites/SiteCollection/Lists/Custom List/Test Folder/"
+        +   "testing'"
+        + " ows_FileDirRef='5;#sites/SiteCollection/Lists/Custom List/Test Fold"
+        +   "er'"
+        + " ows_Last_x0020_Modified='5;#2012-05-04T17:49:23Z'"
+        + " ows_Created_x0020_Date='5;#2012-05-02T21:13:17Z'"
+        + " ows_FSObjType='5;#1' ows_PermMask='0x7fffffffffffffff'"
+        + " ows_FileLeafRef='5;#testing'"
+        + " ows_UniqueId='5;#{C2590C9A-C4E0-4411-BBB2-03ABC60AB073}'"
+        + " ows_ProgId='5;#'"
+        + " ows_ScopeId='5;#{2E29615C-59E7-493B-B08A-3642949CC069}'"
+        + " ows__EditMenuTableStart='testing' ows__EditMenuTableEnd='5'"
+        + " ows_LinkFilenameNoMenu='testing' ows_LinkFilename='testing'"
+        + " ows_ServerUrl='/sites/SiteCollection/Lists/Custom List/Test Folder/"
+        +   "testing'"
+        + " ows_EncodedAbsUrl='http://localhost:1/sites/SiteCollection/Lists/Cu"
+        +   "stom%20List/Test%20Folder/testing'"
+        + " ows_BaseName='testing' ows_MetaInfo='5;#' ows__Level='1'"
+        + " ows__IsCurrentVersion='1' ows_ServerRedirected='0'/>"
+        + "</rs:data>"
+        + "</xml></Folder>";
+    SiteDataStub siteDataStub = new UnsupportedSiteDataStub("") {
+      @Override
+      public SiteDataStub.GetURLSegmentsResponse getURLSegments(
+          SiteDataStub.GetURLSegments request) {
+        assertEquals("http://localhost:1/sites/SiteCollection/Lists/Custom List"
+            + "/Test Folder", request.getStrURL());
+        SiteDataStub.GetURLSegmentsResponse response
+            = new SiteDataStub.GetURLSegmentsResponse();
+        response.setGetURLSegmentsResult(true);
+        response.setStrListID("{6F33949A-B3FF-4B0C-BA99-93CB518AC2C0}");
+        response.setStrItemID("1");
+        return response;
+      }
+
+      @Override
+      public SiteDataStub.GetContentResponse getContent(
+          SiteDataStub.GetContent request) {
+        if (SiteDataStub.ObjectType.ListItem.equals(request.getObjectType())) {
+          assertEquals(false, request.getSecurityOnly());
+          assertEquals("{6F33949A-B3FF-4B0C-BA99-93CB518AC2C0}",
+              request.getObjectId());
+          assertEquals("1", request.getItemId());
+          SiteDataStub.GetContentResponse response
+              = new SiteDataStub.GetContentResponse();
+          response.setGetContentResult(getContentListItemResponse);
+          return response;
+        } else if (SiteDataStub.ObjectType.List
+            .equals(request.getObjectType())) {
+          assertEquals(false, request.getSecurityOnly());
+          assertEquals("{6F33949A-B3FF-4B0C-BA99-93CB518AC2C0}",
+              request.getObjectId());
+          assertEquals(null, request.getItemId());
+          SiteDataStub.GetContentResponse response
+              = new SiteDataStub.GetContentResponse();
+          response.setGetContentResult(getContentListResponse);
+          return response;
+        } else if (SiteDataStub.ObjectType.Folder
+            .equals(request.getObjectType())) {
+          assertEquals(false, request.getSecurityOnly());
+          assertEquals("{6F33949A-B3FF-4B0C-BA99-93CB518AC2C0}",
+              request.getObjectId());
+          assertEquals(null, request.getItemId());
+          assertEquals("/Test Folder", request.getFolderUrl());
+          SiteDataStub.GetContentResponse response
+              = new SiteDataStub.GetContentResponse();
+          response.setGetContentResult(getContentFolderResponse);
+          return response;
+        } else {
+          fail("Unexpected object type: " + request.getObjectType());
+          throw new AssertionError();
+        }
+      }
+    };
+    SiteDataStubFactory siteDataStubFactory
+        = new SingleSiteDataStubFactory(siteDataStub);
+    adaptor = new SharePointAdaptor(siteDataStubFactory);
+    adaptor.init(new MockAdaptorContext(config, null));
+    ByteArrayOutputStream baos = new ByteArrayOutputStream();
+    GetContentsRequest request = new GetContentsRequest(
+        new DocId("http://localhost:1/sites/SiteCollection/Lists/Custom List/"
+          + "Test Folder"));
+    GetContentsResponse response = new GetContentsResponse(baos);
+    adaptor.new SiteDataClient("http://localhost:1/sites/SiteCollection",
+        siteDataStubFactory).getDocContent(request, response);
+    String responseString = new String(baos.toByteArray(), charset);
+    final String golden
+        = "<!DOCTYPE html>\n"
+        + "<html><head><title>Folder /Test Folder</title></head>"
+        + "<body><h1>Folder /Test Folder</h1>"
+        + "<p>List items</p>"
+        + "<ul>"
+        + "<li><a href=\"http://localhost/http://localhost:1/sites/SiteCollecti"
+        + "on/Lists/Custom%20List/Test%20Folder/2_.000\">Inside Folder</a></li>"
+        + "<li><a href=\"http://localhost/http://localhost:1/sites/SiteCollecti"
+        + "on/Lists/Custom%20List/Test%20Folder/testing\">testing</a></li>"
+        + "</ul></body></html>";
+    final Metadata goldenMetadata;
+    {
+      Metadata meta = new Metadata();
+      meta.add("Attachments", "0");
+      meta.add("Author", "System Account");
+      meta.add("BaseName", "Test Folder");
+      meta.add("ContentType", "Folder");
+      meta.add("ContentTypeId", "0x01200077DD29735CE61148A73F540231F24430");
+      meta.add("Created", "2012-05-01T22:13:47Z");
+      meta.add("Created_x0020_Date", "2012-05-01T22:13:47Z");
+      meta.add("Editor", "System Account");
+      meta.add("EncodedAbsUrl", "http://localhost:1/sites/SiteCollection/Lists/"
+          + "Custom%20List/Test%20Folder");
+      meta.add("FSObjType", "1");
+      meta.add("FileDirRef", "sites/SiteCollection/Lists/Custom List");
+      meta.add("FileLeafRef", "Test Folder");
+      meta.add("FileRef", "sites/SiteCollection/Lists/Custom List/Test Folder");
+      meta.add("GUID", "{C099F4ED-6E96-4A00-B94A-EE443061EE49}");
+      meta.add("ID", "1");
+      meta.add("Last_x0020_Modified", "2012-05-02T21:13:17Z");
+      meta.add("LinkFilename", "Test Folder");
+      meta.add("LinkFilenameNoMenu", "Test Folder");
+      meta.add("LinkTitle", "Test Folder");
+      meta.add("LinkTitleNoMenu", "Test Folder");
+      meta.add("Modified", "2012-05-01T22:13:47Z");
+      meta.add("Order", "100.000000000000");
+      meta.add("PermMask", "0x7fffffffffffffff");
+      meta.add("ScopeId", "{2E29615C-59E7-493B-B08A-3642949CC069}");
+      meta.add("SelectTitle", "1");
+      meta.add("ServerRedirected", "0");
+      meta.add("ServerUrl",
+          "/sites/SiteCollection/Lists/Custom List/Test Folder");
+      meta.add("Title", "Test Folder");
+      meta.add("UniqueId", "{CE33B6B7-9F5E-4224-8D77-9C42E6290FE6}");
+      meta.add("WorkflowVersion", "1");
+      meta.add("_EditMenuTableEnd", "1");
+      meta.add("_EditMenuTableStart", "Test Folder");
+      meta.add("_IsCurrentVersion", "1");
+      meta.add("_Level", "1");
+      meta.add("_ModerationStatus", "0");
+      meta.add("_UIVersion", "512");
+      meta.add("_UIVersionString", "1.0");
+      meta.add("owshiddenversion", "1");
+      goldenMetadata = meta.unmodifiableView();
+    }
+    assertEquals(golden, responseString);
+    assertEquals(goldenMetadata, response.getMetadata());
+  }
+
+  @Test
+  public void testGetDocIds() throws IOException, InterruptedException {
+    adaptor = new SharePointAdaptor(new UnsupportedSiteDataStubFactory());
+    AccumulatingDocIdPusher pusher = new AccumulatingDocIdPusher();
+    adaptor.init(new MockAdaptorContext(config, pusher));
+    assertEquals(0, pusher.getRecords().size());
+    adaptor.getDocIds(pusher);
+    assertEquals(1, pusher.getRecords().size());
+    assertEquals(new DocIdPusher.Record.Builder(new DocId("")).build(),
+        pusher.getRecords().get(0));
+  }
+
+  @Test
+  public void testModifiedGetDocIds() throws IOException, InterruptedException {
+    final String getContentVirtualServer
+        = "<VirtualServer>"
+        + "<Metadata URL=\"http://localhost:1/\" />"
+        + "<ContentDatabases>"
+        + "<ContentDatabase ID=\"{4fb7dea1-2912-4927-9eda-1ea2f0977cf8}\" />"
+        + "<ContentDatabase ID=\"{3ac1e3b3-2326-7341-4afe-16751eafbc51}\" />"
+        + "</ContentDatabases>"
+        + "<Policies AnonymousGrantMask=\"0\" AnonymousDenyMask=\"0\">"
+        + "<PolicyUser LoginName=\"NT AUTHORITY\\LOCAL SERVICE\""
+        + " Sid=\"S-1-5-19\" GrantMask=\"4611686224789442657\" DenyMask=\"0\"/>"
+        + "<PolicyUser LoginName=\"GDC-PSL\\spuser1\""
+        + " Sid=\"S-1-5-21-736914693-3137354690-2813686979-1130\""
+        + " GrantMask=\"4611686224789442657\" DenyMask=\"0\"/>"
+        + "<PolicyUser LoginName=\"GDC-PSL\\Administrator\""
+        + " Sid=\"S-1-5-21-736914693-3137354690-2813686979-500\""
+        + " GrantMask=\"9223372036854775807\" DenyMask=\"0\"/>"
+        + "</Policies></VirtualServer>";
+    final String getContentVirtualServer2
+        = "<VirtualServer>"
+        + "<Metadata URL=\"http://localhost:1/\" />"
+        + "<ContentDatabases>"
+        + "<ContentDatabase ID=\"{4fb7dea1-2912-4927-9eda-1ea2f0977cf8}\" />"
+        + "</ContentDatabases>"
+        + "<Policies AnonymousGrantMask=\"0\" AnonymousDenyMask=\"0\">"
+        + "<PolicyUser LoginName=\"NT AUTHORITY\\LOCAL SERVICE\""
+        + " Sid=\"S-1-5-19\" GrantMask=\"4611686224789442657\" DenyMask=\"0\"/>"
+        + "<PolicyUser LoginName=\"GDC-PSL\\spuser1\""
+        + " Sid=\"S-1-5-21-736914693-3137354690-2813686979-1130\""
+        + " GrantMask=\"4611686224789442657\" DenyMask=\"0\"/>"
+        + "<PolicyUser LoginName=\"GDC-PSL\\Administrator\""
+        + " Sid=\"S-1-5-21-736914693-3137354690-2813686979-500\""
+        + " GrantMask=\"9223372036854775807\" DenyMask=\"0\"/>"
+        + "</Policies></VirtualServer>";
+    final String getContentContentDatabase4fb
+        = "<ContentDatabase>"
+        + "<Metadata ChangeId=\"1;0;4fb7dea1-2912-4927-9eda-1ea2f0977cf8;634727"
+        +   "056594000000;603\""
+        + " ID=\"{4fb7dea1-2912-4927-9eda-1ea2f0977cf8}\" />"
+        + "</ContentDatabase>";
+    final String getContentContentDatabase3ac
+        = "<ContentDatabase>"
+        + "<Metadata ChangeId=\"1;0;3ac1e3b3-2326-7341-4afe-16751eafbc51;634882"
+        +   "028739000000;224\""
+        + " ID=\"{3ac1e3b3-2326-7341-4afe-16751eafbc51}\" />"
+        + "</ContentDatabase>";
+    final String getChangesContentDatabase4fb
+        = "<SPContentDatabase Change=\"Unchanged\" ItemCount=\"0\">"
+        + "<ContentDatabase>"
+        + "<Metadata ChangeId=\"1;0;4fb7dea1-2912-4927-9eda-1ea2f0977cf8;634727"
+        +   "056594000000;603\""
+        + " ID=\"{4fb7dea1-2912-4927-9eda-1ea2f0977cf8}\" />"
+        + "</ContentDatabase></SPContentDatabase>";
+    final AtomicLong atomicState = new AtomicLong();
+    final AtomicLong atomicNumberGetChangesCalls = new AtomicLong(0);
+    SiteDataStub siteDataStub = new UnsupportedSiteDataStub("") {
+      @Override
+      public SiteDataStub.GetContentResponse getContent(
+          SiteDataStub.GetContent request) throws RemoteException {
+        long state = atomicState.get();
+        if (state == 0) {
+          throw new RemoteException("fake IO error");
+        } else if (state == 1) {
+          if (SiteDataStub.ObjectType.VirtualServer
+              .equals(request.getObjectType())) {
+            assertEquals(true, request.getRetrieveChildItems());
+            assertEquals(false, request.getSecurityOnly());
+            SiteDataStub.GetContentResponse response
+                = new SiteDataStub.GetContentResponse();
+            response.setGetContentResult(getContentVirtualServer);
+            return response;
+          } else if (SiteDataStub.ObjectType.ContentDatabase
+              .equals(request.getObjectType())) {
+            SiteDataStub.GetContentResponse response
+                = new SiteDataStub.GetContentResponse();
+            if ("{4fb7dea1-2912-4927-9eda-1ea2f0977cf8}"
+                .equals(request.getObjectId())) {
+              response.setGetContentResult(getContentContentDatabase4fb);
+            } else if ("{3ac1e3b3-2326-7341-4afe-16751eafbc51}"
+                .equals(request.getObjectId())) {
+              response.setGetContentResult(getContentContentDatabase3ac);
+            } else {
+              throw new AssertionError();
+            }
+            assertEquals(false, request.getRetrieveChildItems());
+            assertEquals(false, request.getSecurityOnly());
+            return response;
+          } else {
+            throw new AssertionError();
+          }
+        } else if (state == 2) {
+          assertEquals(SiteDataStub.ObjectType.VirtualServer,
+              request.getObjectType());
+          assertEquals(true, request.getRetrieveChildItems());
+          assertEquals(false, request.getSecurityOnly());
+          SiteDataStub.GetContentResponse response
+              = new SiteDataStub.GetContentResponse();
+          response.setGetContentResult(getContentVirtualServer2);
+          return response;
+        } else {
+          throw new AssertionError();
+        }
+      }
+
+      @Override
+      public SiteDataStub.GetChangesResponse getChanges(
+          SiteDataStub.GetChanges request) {
+        long state = atomicState.get();
+        if (state == 0) {
+          throw new AssertionError();
+        } else if (state == 2) {
+          atomicNumberGetChangesCalls.getAndIncrement();
+          assertEquals(SiteDataStub.ObjectType.ContentDatabase,
+              request.getObjectType());
+          assertEquals("{4fb7dea1-2912-4927-9eda-1ea2f0977cf8}",
+              request.getContentDatabaseId());
+          assertEquals(
+              "1;0;4fb7dea1-2912-4927-9eda-1ea2f0977cf8;634727056594000000;603",
+              request.getLastChangeId());
+          SiteDataStub.GetChangesResponse response
+              = new SiteDataStub.GetChangesResponse();
+          response.setLastChangeId("1;0;4fb7dea1-2912-4927-9eda-1ea2f0977cf8;63"
+              + "4727056594000000;603");
+          response.setCurrentChangeId(response.getLastChangeId());
+          response.setGetChangesResult(getChangesContentDatabase4fb);
+          return response;
+        } else {
+          throw new AssertionError();
+        }
+      }
+    };
+    SiteDataStubFactory siteDataStubFactory
+        = new SingleSiteDataStubFactory(siteDataStub);
+    adaptor = new SharePointAdaptor(siteDataStubFactory);
+    AccumulatingDocIdPusher pusher = new AccumulatingDocIdPusher();
+    adaptor.init(new MockAdaptorContext(config, pusher));
+
+    // Error getting content databases, so content databases remains unchanged
+    // (empty).
+    atomicState.set(0);
+    adaptor.getModifiedDocIds(pusher);
+    assertEquals(0, pusher.getRecords().size());
+    assertEquals(0, atomicNumberGetChangesCalls.get());
+
+    // Find new content databases and get their current change id.
+    atomicState.set(1);
+    adaptor.getModifiedDocIds(pusher);
+    assertEquals(1, pusher.getRecords().size());
+    assertEquals(new DocIdPusher.Record.Builder(new DocId(""))
+        .setCrawlImmediately(true).build(),
+        pusher.getRecords().get(0));
+    assertEquals(0, atomicNumberGetChangesCalls.get());
+    pusher.reset();
+
+    // Discover one content database disappeared; get changes for other content
+    // database.
+    atomicState.set(2);
+    adaptor.getModifiedDocIds(pusher);
+    assertEquals(1, pusher.getRecords().size());
+    assertEquals(new DocIdPusher.Record.Builder(new DocId(""))
+        .setCrawlImmediately(true).build(),
+        pusher.getRecords().get(0));
+    assertEquals(1, atomicNumberGetChangesCalls.get());
+  }
+
+  @Test
+  public void testModifiedGetDocIdsClient() throws IOException,
+      InterruptedException {
+    final String getChangesContentDatabase
+        = "<SPContentDatabase Change=\"Unchanged\" ItemCount=\"1\">"
+        + "<ContentDatabase>"
+        + "<Metadata ChangeId=\"1;0;4fb7dea1-2912-4927-9eda-1ea2f0977cf8;634727"
+        +   "056594000000;603\""
+        + " ID=\"{4fb7dea1-2912-4927-9eda-1ea2f0977cf8}\" />"
+        + "</ContentDatabase>"
+        + "<SPSite Change=\"Unchanged\" ItemCount=\"1\">"
+        + "<Messages><Message>1;0;4fb7dea1-2912-4927-9eda-1ea2f0977cf8;63472702"
+        + "8976500000;600 Microsoft.SharePoint.SPChangeItem Add Done </Message>"
+        + "</Messages>"
+        + "<Site>"
+        + "<Metadata URL=\"http://localhost:1\""
+        + " ID=\"{bb3bb2dd-6ea7-471b-a361-6fb67988755c}\""
+        + " LastModified=\"2012-05-15 19:07:39Z\" PortalURL=\"\""
+        + " UserProfileGUID=\"\""
+        + " RootWebId=\"{b2ea1067-3a54-4ab7-a459-c8ec864b97eb}\""
+        + " ChangeId=\"1;0;4fb7dea1-2912-4927-9eda-1ea2f0977cf8;634727056594000"
+        +   "000;603\" />"
+        + "<Groups><Group><Group ID=\"3\" Name=\"chinese1 Owners\""
+        + " Description=\"Use this group to give people full control permission"
+        +   "s to the SharePoint site: chinese1\" OwnerID=\"3\""
+        + " OwnerIsUser=\"False\" />"
+        + "<Users>"
+        + "<User ID=\"1\" Sid=\"S-1-5-21-736914693-3137354690-2813686979-500\""
+        + " Name=\"GDC-PSL\\administrator\""
+        + " LoginName=\"GDC-PSL\\administrator\" Email=\"\" Notes=\"\""
+        + " IsSiteAdmin=\"True\" IsDomainGroup=\"False\" />"
+        + "<User ID=\"2\" Sid=\"S-1-5-21-736914693-3137354690-2813686979-1130\""
+        + " Name=\"spuser1\" LoginName=\"GDC-PSL\\spuser1\" Email=\"\""
+        + " Notes=\"\" IsSiteAdmin=\"True\" IsDomainGroup=\"False\" />"
+        + "</Users></Group>"
+        + "<Group><Group ID=\"4\" Name=\"chinese1 Visitors\""
+        + " Description=\"Use this group to give people read permissions to the"
+        +   " SharePoint site: chinese1\""
+        + " OwnerID=\"3\" OwnerIsUser=\"False\" />"
+        + "<Users /></Group>"
+        + "<Group><Group ID=\"5\" Name=\"chinese1 Members\""
+        + " Description=\"Use this group to give people contribute permissions "
+        +   "to the SharePoint site: chinese1\""
+        + " OwnerID=\"3\" OwnerIsUser=\"False\" />"
+        + "<Users /></Group></Groups>"
+        + "</Site>"
+        + "<SPWeb Change=\"Unchanged\" ItemCount=\"1\">"
+        + "<Web><Metadata URL=\"http://localhost:1\""
+        + " LastModified=\"2012-05-15 19:07:39Z\""
+        + " Created=\"2011-10-14 18:59:25Z\""
+        + " ID=\"{b2ea1067-3a54-4ab7-a459-c8ec864b97eb}\" Title=\"chinese1\""
+        + " Description=\"\" Author=\"GDC-PSL\\administrator\""
+        + " Language=\"1033\" CRC=\"558566148\" NoIndex=\"False\""
+        + " DefaultHomePage=\"default.aspx\" ExternalSecurity=\"False\""
+        + " ScopeID=\"{01abac8c-66c8-4fed-829c-8dd02bbf40dd}\""
+        + " AllowAnonymousAccess=\"False\" AnonymousViewListItems=\"False\""
+        + " AnonymousPermMask=\"0\" />"
+        + "<Users><User ID=\"1\""
+        + " Sid=\"S-1-5-21-736914693-3137354690-2813686979-500\""
+        + " Name=\"GDC-PSL\\administrator\""
+        + " LoginName=\"GDC-PSL\\administrator\" Email=\"\" Notes=\"\""
+        + " IsSiteAdmin=\"True\" IsDomainGroup=\"False\" />"
+        + "<User ID=\"2\" Sid=\"S-1-5-21-736914693-3137354690-2813686979-1130\""
+        + " Name=\"spuser1\" LoginName=\"GDC-PSL\\spuser1\" Email=\"\""
+        + " Notes=\"\" IsSiteAdmin=\"True\" IsDomainGroup=\"False\" />"
+        + "</Users>"
+        + "<ACL><permissions>"
+        + "<permission memberid='2' mask='9223372036854775807' />"
+        + "<permission memberid='3' mask='9223372036854775807' />"
+        + "<permission memberid='4' mask='756052856929' />"
+        + "<permission memberid='5' mask='1856436900591' />"
+        + "</permissions></ACL>"
+        + "<Webs /><Lists />"
+        + "</Web>"
+        + "<SPList Change=\"Unchanged\" ItemCount=\"1\">"
+        + "<List><Metadata ID=\"{133fcb96-7e9b-46c9-b5f3-09770a35ad8a}\""
+        + " LastModified=\"2012-05-15 18:21:38Z\" Title=\"Announcements\""
+        + " DefaultTitle=\"True\""
+        + " Description=\"Use the Announcements list to post messages on the ho"
+        +   "me page of your site.\""
+        + " BaseType=\"GenericList\" BaseTemplate=\"Announcements\""
+        + " DefaultViewUrl=\"/Lists/Announcements/AllItems.aspx\""
+        + " DefaultViewItemUrl=\"/Lists/Announcements/DispForm.aspx\""
+        + " RootFolder=\"Lists/Announcements\" Author=\"System Account\""
+        + " ItemCount=\"2\" ReadSecurity=\"1\" AllowAnonymousAccess=\"False\""
+        + " AnonymousViewListItems=\"False\" AnonymousPermMask=\"0\""
+        + " CRC=\"751515778\" NoIndex=\"False\""
+        + " ScopeID=\"{01abac8c-66c8-4fed-829c-8dd02bbf40dd}\" />"
+        + "<ACL><permissions>"
+        + "<permission memberid='2' mask='9223372036854775807' />"
+        + "<permission memberid='3' mask='9223372036854775807' />"
+        + "<permission memberid='4' mask='756052856929' />"
+        + "<permission memberid='5' mask='1856436900591' />"
+        + "</permissions></ACL>"
+        + "<Views><View URL=\"Lists/Announcements/AllItems.aspx\""
+        + " ID=\"{54f41f88-ddf6-404c-bdf9-a104eabcd1a9}\" Title=\"All items\""
+        + " /></Views>"
+        + "<Schema>"
+        + "<Field Name=\"ID\" Title=\"ID\" Type=\"Counter\" />"
+        + "<Field Name=\"ContentType\" Title=\"Content Type\" Type=\"Text\" />"
+        + "<Field Name=\"Title\" Title=\"Title\" Type=\"Text\" />"
+        + "<Field Name=\"Modified\" Title=\"Modified\" Type=\"DateTime\" />"
+        + "<Field Name=\"Created\" Title=\"Created\" Type=\"DateTime\" />"
+        + "<Field Name=\"Author\" Title=\"Created By\" Type=\"User\" />"
+        + "<Field Name=\"Editor\" Title=\"Modified By\" Type=\"User\" />"
+        + "<Field Name=\"_UIVersionString\" Title=\"Version\" Type=\"Text\" />"
+        + "<Field Name=\"Attachments\" Title=\"Attachments\""
+        + " Type=\"Attachments\" />"
+        + "<Field Name=\"Edit\" Title=\"Edit\" Type=\"Computed\" />"
+        + "<Field Name=\"LinkTitleNoMenu\" Title=\"Title\" Type=\"Computed\" />"
+        + "<Field Name=\"LinkTitle\" Title=\"Title\" Type=\"Computed\" />"
+        + "<Field Name=\"DocIcon\" Title=\"Type\" Type=\"Computed\" />"
+        + "<Field Name=\"Body\" Title=\"Body\" Type=\"Note\" />"
+        + "<Field Name=\"Expires\" Title=\"Expires\" Type=\"DateTime\" />"
+        + "</Schema> </List>"
+        + "<SPListItem Change=\"Add\" ItemCount=\"0\" UpdateSecurity=\"False\""
+        + " Id=\"{5085be94-b5c1-45c8-a047-d0f03344fe31}\""
+        + " ParentId=\"{133fcb96-7e9b-46c9-b5f3-09770a35ad8a}_\""
+        + " InternalUrl=\"/siteurl=/siteid={bb3bb2dd-6ea7-471b-a361-6fb67988755"
+        +   "c}/weburl=/webid={b2ea1067-3a54-4ab7-a459-c8ec864b97eb}/listid={13"
+        +   "3fcb96-7e9b-46c9-b5f3-09770a35ad8a}/folderurl=/itemid=2\""
+        + " DisplayUrl=\"/Lists/Announcements/DispForm.aspx?ID=2\""
+        + " ServerUrl=\"http://localhost:1\" CRC=\"0\" Url=\"2_.000\">"
+        + "<ListItem>"
+        + "<z:row xmlns:z='#RowsetSchema' ows_ID='2'"
+        + " ows_ContentTypeId='0x010400FDF586FAF309684984C89E7FB272808F'"
+        + " ows_ContentType='Announcement' ows_Title='Test Announcement'"
+        + " ows_Modified='2012-05-15T18:21:38Z'"
+        + " ows_Created='2012-05-15T18:21:38Z'"
+        + " ows_Author='1073741823;#System Account'"
+        + " ows_Editor='1073741823;#System Account' ows_owshiddenversion='1'"
+        + " ows_WorkflowVersion='1' ows__UIVersion='512'"
+        + " ows__UIVersionString='1.0' ows_Attachments='0'"
+        + " ows__ModerationStatus='0' ows_LinkTitleNoMenu='Test Announcement'"
+        + " ows_LinkTitle='Test Announcement' ows_SelectTitle='2'"
+        + " ows_Order='200.000000000000'"
+        + " ows_GUID='{986A1401-9DE7-4CD5-8CC0-9BBC64D5F146}'"
+        + " ows_FileRef='2;#Lists/Announcements/2_.000'"
+        + " ows_FileDirRef='2;#Lists/Announcements'"
+        + " ows_Last_x0020_Modified='2;#2012-05-15T18:21:38Z'"
+        + " ows_Created_x0020_Date='2;#2012-05-15T18:21:38Z'"
+        + " ows_FSObjType='2;#0' ows_PermMask='0x7fffffffffffffff'"
+        + " ows_FileLeafRef='2;#2_.000'"
+        + " ows_UniqueId='2;#{5085BE94-B5C1-45C8-A047-D0F03344FE31}'"
+        + " ows_ProgId='2;#'"
+        + " ows_ScopeId='2;#{01ABAC8C-66C8-4FED-829C-8DD02BBF40DD}'"
+        + " ows__EditMenuTableStart='2_.000' ows__EditMenuTableEnd='2'"
+        + " ows_LinkFilenameNoMenu='2_.000' ows_LinkFilename='2_.000'"
+        + " ows_ServerUrl='/Lists/Announcements/2_.000'"
+        + " ows_EncodedAbsUrl='http://localhost:1/Lists/Announcements/2_.000'"
+        + " ows_BaseName='2_' ows_MetaInfo='2;#' ows__Level='1'"
+        + " ows__IsCurrentVersion='1'"
+        + " ows_Body='This is the body of the announcement.'"
+        + " ows_ServerRedirected='0'/>"
+        + "<permissions>"
+        + "<permission memberid='2' mask='9223372036854775807' />"
+        + "<permission memberid='3' mask='9223372036854775807' />"
+        + "<permission memberid='4' mask='756052856929' />"
+        + "<permission memberid='5' mask='1856436900591' />"
+        + "</permissions></ListItem></SPListItem>"
+        + "</SPList>"
+        + "</SPWeb>"
+        + "</SPSite>"
+        + "</SPContentDatabase>";
+    SiteDataStubFactory siteDataStubFactory
+        = new SingleSiteDataStubFactory(new UnsupportedSiteDataStub(""));
+    adaptor = new SharePointAdaptor(siteDataStubFactory);
+    AccumulatingDocIdPusher pusher = new AccumulatingDocIdPusher();
+    adaptor.init(new MockAdaptorContext(config, pusher));
+    SharePointAdaptor.SiteDataClient client = adaptor.new SiteDataClient(
+        "http://localhost:1/sites/SiteCollection", siteDataStubFactory);
+
+    SiteDataStub.SPContentDatabase result
+        = parseChanges(client, getChangesContentDatabase);
+
+    client.getModifiedDocIds(result, pusher);
+    assertEquals(1, pusher.getRecords().size());
+    assertEquals(new DocIdPusher.Record.Builder(new DocId(
+          "http://localhost:1/Lists/Announcements/2_.000"))
+        .setCrawlImmediately(true).build(), pusher.getRecords().get(0));
+  }
+
+  private SiteDataStub.SPContentDatabase parseChanges(
+      SharePointAdaptor.SiteDataClient client, String xml) {
+    String xmlns = "http://schemas.microsoft.com/sharepoint/soap/";
+    xml = xml.replace("<SPContentDatabase ",
+        "<SPContentDatabase xmlns='" + xmlns + "' ");
+    try {
+      return SiteDataStub.SPContentDatabase.Factory.parse(
+          client.createXmlStreamReader(xml));
+    } catch (Exception ex) {
+      throw new RuntimeException(ex);
+    }
+  }
+
+  private static class UnsupportedSiteDataStubFactory
+      implements SiteDataStubFactory {
+    @Override
+    public SiteDataStub newSiteDataStub(String endpoint) {
+      throw new UnsupportedOperationException();
+    }
+  }
+
+  private static class SingleSiteDataStubFactory
+      implements SiteDataStubFactory {
+    private final SiteDataStub siteDataStub;
+
+    public SingleSiteDataStubFactory(SiteDataStub siteDataStub) {
+      this.siteDataStub = siteDataStub;
+    }
+
+    @Override
+    public SiteDataStub newSiteDataStub(String endpoint) throws AxisFault {
+      return siteDataStub;
+    }
+  }
+
+  /**
+   * Throw UnsupportedOperationException for all calls that would issue a SOAP
+   * request.
+   */
+  private static class UnsupportedSiteDataStub extends SiteDataStub {
+    public UnsupportedSiteDataStub(String endpoint) throws AxisFault {
+      super(endpoint);
+    }
+
+    @Override
+    public SiteDataStub.GetListItemsResponse getListItems(
+        SiteDataStub.GetListItems request) {
+      throw new UnsupportedOperationException();
+    }
+
+    @Override
+    public SiteDataStub.GetWebResponse getWeb(SiteDataStub.GetWeb request) {
+      throw new UnsupportedOperationException();
+    }
+
+    @Override
+    public SiteDataStub.EnumerateFolderResponse enumerateFolder(
+        SiteDataStub.EnumerateFolder request) {
+      throw new UnsupportedOperationException();
+    }
+
+    @Override
+    public SiteDataStub.GetContentResponse getContent(
+        SiteDataStub.GetContent request) throws RemoteException {
+      throw new UnsupportedOperationException();
+    }
+
+    @Override
+    public SiteDataStub.GetSiteResponse getSite(SiteDataStub.GetSite request) {
+      throw new UnsupportedOperationException();
+    }
+
+    @Override
+    public SiteDataStub.GetListCollectionResponse getListCollection(
+        SiteDataStub.GetListCollection request) {
+      throw new UnsupportedOperationException();
+    }
+
+    @Override
+    public SiteDataStub.GetSiteAndWebResponse getSiteAndWeb(
+        SiteDataStub.GetSiteAndWeb request) throws RemoteException {
+      throw new UnsupportedOperationException();
+    }
+
+    @Override
+    public SiteDataStub.GetChangesExResponse getChangesEx(
+        SiteDataStub.GetChangesEx request) {
+      throw new UnsupportedOperationException();
+    }
+
+    @Override
+    public SiteDataStub.GetSiteUrlResponse getSiteUrl(
+        SiteDataStub.GetSiteUrl request) {
+      throw new UnsupportedOperationException();
+    }
+
+    @Override
+    public SiteDataStub.GetAttachmentsResponse getAttachments(
+        SiteDataStub.GetAttachments request) {
+      throw new UnsupportedOperationException();
+    }
+
+    @Override
+    public SiteDataStub.GetListResponse getList(SiteDataStub.GetList request) {
+      throw new UnsupportedOperationException();
+    }
+
+    @Override
+    public SiteDataStub.GetChangesResponse getChanges(
+        SiteDataStub.GetChanges request) throws RemoteException {
+      throw new UnsupportedOperationException();
+    }
+
+    @Override
+    public SiteDataStub.GetURLSegmentsResponse getURLSegments(
+        SiteDataStub.GetURLSegments request) throws RemoteException {
+      throw new UnsupportedOperationException();
+    }
   }
 }

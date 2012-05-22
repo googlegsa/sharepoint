@@ -185,6 +185,7 @@ lib/plexi submodule or add the the command line argument
       <compilerarg value="-Xlint:unchecked"/>
       <classpath refid="adaptor.build.classpath"/>
       <classpath location="${build-src.dir}"/>
+      <classpath location="${build-generate.dir}"/>
       <classpath location="${junit.jar}"/>
     </javac>
   </target>
@@ -238,6 +239,7 @@ lib/plexi submodule or add the the command line argument
       <classpath location="${junit.jar}"/>
       <classpath location="${build-instrument.dir}"/>
       <classpath location="${build-src.dir}"/>
+      <classpath location="${build-generate.dir}"/>
       <classpath location="${build-test.dir}"/>
       <formatter type="plain" usefile="false"/>
       <formatter classname="JUnitLogFixFormatter" usefile="false"/>
