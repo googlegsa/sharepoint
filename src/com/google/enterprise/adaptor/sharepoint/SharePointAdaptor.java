@@ -68,8 +68,12 @@ public class SharePointAdaptor extends AbstractAdaptor
   private static final QName OWS_TITLE_ATTRIBUTE = new QName("ows_Title");
   private static final QName OWS_SERVERURL_ATTRIBUTE
       = new QName("ows_ServerUrl");
-  private static final QName OWS_CONTENTTYPE_ATTRIBUTE
-      = new QName("ows_ContentType");
+  private static final QName OWS_CONTENTTYPEID_ATTRIBUTE
+      = new QName("ows_ContentTypeId");
+  /**
+   * As described at http://msdn.microsoft.com/en-us/library/aa543822.aspx .
+   */
+  private static final String CONTENTTYPEID_DOCUMENT_PREFIX = "0x0101";
   private static final QName OWS_ATTACHMENTS_ATTRIBUTE
       = new QName("ows_Attachments");
   private static final Pattern ALTERNATIVE_VALUE_PATTERN
@@ -638,10 +642,11 @@ public class SharePointAdaptor extends AbstractAdaptor
         log.exiting("SiteDataClient", "getListItemDocContent");
         return;
       }
-      String contentType = row.getAttributeValue(OWS_CONTENTTYPE_ATTRIBUTE);
-      // TODO(ejona): This is likely unreliable. Investigate a better way.
-      if ("Document".equals(contentType)) {
-        // This is a file, so display its contents.
+      String contentTypeId = row.getAttributeValue(OWS_CONTENTTYPEID_ATTRIBUTE);
+      if (contentTypeId != null
+          && contentTypeId.startsWith(CONTENTTYPEID_DOCUMENT_PREFIX)) {
+        // This is a file (or "Document" in SharePoint-speak), so display its
+        // contents.
         getFileDocContent(request, response);
       } else {
         // Some list item.
