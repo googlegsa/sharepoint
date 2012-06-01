@@ -578,7 +578,7 @@ xmlns:rs="urn:schemas-microsoft-com:rowset" xmlns:s="http://www.w3.org/2001/XMLS
         <s:attribute name="ParentId" type="s:string" use="optional"/>
         <s:attribute name="InternalUrl" type="s:string" use="optional"/>
         <s:attribute name="DisplayUrl" type="s:string" use="optional"/>
-        <s:attribute name="CRC" type="s:int" use="optional"/>
+        <s:attribute name="CRC" type="s:unsignedInt" use="optional"/>
         <s:attribute name="ServerUrl" type="s:string" use="optional"/>
         <s:attribute name="SequenceNumber" type="s:string" use="optional"/>
         <s:attribute name="PresentInFarm" type="tns:TrueFalseType" use="optional"/>
@@ -618,7 +618,7 @@ xmlns:rs="urn:schemas-microsoft-com:rowset" xmlns:s="http://www.w3.org/2001/XMLS
         <s:attribute name="ParentId" type="s:string" use="optional"/>
         <s:attribute name="UpdateSecurity" type="tns:TrueFalseType" use="optional"/>
         <s:attribute name="InternalUrl" type="s:string" use="optional"/>
-        <s:attribute name="CRC" type="s:int" use="optional"/>
+        <s:attribute name="CRC" type="s:unsignedInt" use="optional"/>
         <s:attribute name="SequenceNumber" type="s:string" use="optional"/>
       </s:complexType>
      </s:element>
@@ -649,7 +649,7 @@ xmlns:rs="urn:schemas-microsoft-com:rowset" xmlns:s="http://www.w3.org/2001/XMLS
         <s:attribute name="ParentId" type="s:string" use="optional"/>
         <s:attribute name="InternalUrl" type="s:string" use="optional"/>
         <s:attribute name="DisplayUrl" type="s:string" use="optional"/>
-        <s:attribute name="CRC" type="s:int" use="optional"/>
+        <s:attribute name="CRC" type="s:unsignedInt" use="optional"/>
         <s:attribute name="ServerUrl" type="s:string" use="optional"/>
         <s:attribute name="SequenceNumber" type="s:string" use="optional"/>
       </s:complexType>
@@ -964,7 +964,7 @@ xmlns:rs="urn:schemas-microsoft-com:rowset" xmlns:s="http://www.w3.org/2001/XMLS
           <s:attribute name="InternalUrl" type="s:string" />
           <s:attribute name="DisplayUrl" type="s:string" />
           <s:attribute name="Url" type="s:string" />
-          <s:attribute name="CRC" type="s:int" />
+          <s:attribute name="CRC" type="s:unsignedInt" />
           <s:attribute name="ServerUrl" type="s:string" />
           <s:attribute name="SequenceNumber" type="s:string"/>
         </s:complexType>
@@ -980,7 +980,7 @@ xmlns:rs="urn:schemas-microsoft-com:rowset" xmlns:s="http://www.w3.org/2001/XMLS
           <s:attribute name="InternalUrl" type="s:string" />
           <s:attribute name="DisplayUrl" type="s:string" />
           <s:attribute name="Url" type="s:string" />
-          <s:attribute name="CRC" type="s:int" />
+          <s:attribute name="CRC" type="s:unsignedInt" />
           <s:attribute name="ServerUrl" type="s:string" />
           <s:attribute name="SequenceNumber" type="s:string"/>
         </s:complexType>
@@ -1002,7 +1002,7 @@ xmlns:rs="urn:schemas-microsoft-com:rowset" xmlns:s="http://www.w3.org/2001/XMLS
           <s:attribute name="ParentId" type="s:string" />
           <s:attribute name="InternalUrl" type="s:string" />
           <s:attribute name="DisplayUrl" type="s:string" />
-          <s:attribute name="CRC" type="s:int" />
+          <s:attribute name="CRC" type="s:unsignedInt" />
           <s:attribute name="ServerUrl" type="s:string" />
           <s:attribute name="SequenceNumber" type="s:string" use="optional"/>
         </s:complexType>
