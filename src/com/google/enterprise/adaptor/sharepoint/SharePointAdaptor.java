@@ -15,7 +15,6 @@
 package com.google.enterprise.adaptor.sharepoint;
 
 import com.google.common.annotations.VisibleForTesting;
-import com.google.common.collect.Lists;
 import com.google.enterprise.adaptor.AbstractAdaptor;
 import com.google.enterprise.adaptor.AdaptorContext;
 import com.google.enterprise.adaptor.Config;
@@ -27,32 +26,62 @@ import com.google.enterprise.adaptor.PollingIncrementalAdaptor;
 import com.google.enterprise.adaptor.Request;
 import com.google.enterprise.adaptor.Response;
 
-import org.apache.axiom.om.OMAttribute;
-import org.apache.axiom.om.OMElement;
-import org.apache.axis2.AxisFault;
-import org.apache.axis2.client.Options;
-import org.apache.axis2.transport.http.HTTPConstants;
-import org.apache.commons.httpclient.Credentials;
-import org.apache.commons.httpclient.HttpClient;
-import org.apache.commons.httpclient.HttpStatus;
-import org.apache.commons.httpclient.MultiThreadedHttpConnectionManager;
-import org.apache.commons.httpclient.NTCredentials;
-import org.apache.commons.httpclient.auth.AuthScope;
-import org.apache.commons.httpclient.methods.GetMethod;
+import com.microsoft.schemas.sharepoint.soap.ContentDatabase;
+import com.microsoft.schemas.sharepoint.soap.ContentDatabases;
+import com.microsoft.schemas.sharepoint.soap.Files;
+import com.microsoft.schemas.sharepoint.soap.FolderData;
+import com.microsoft.schemas.sharepoint.soap.Folders;
+import com.microsoft.schemas.sharepoint.soap.Item;
+import com.microsoft.schemas.sharepoint.soap.ItemData;
+import com.microsoft.schemas.sharepoint.soap.Lists;
+import com.microsoft.schemas.sharepoint.soap.ObjectType;
+import com.microsoft.schemas.sharepoint.soap.SPContentDatabase;
+import com.microsoft.schemas.sharepoint.soap.SPFile;
+import com.microsoft.schemas.sharepoint.soap.SPFolder;
+import com.microsoft.schemas.sharepoint.soap.SPList;
+import com.microsoft.schemas.sharepoint.soap.SPListItem;
+import com.microsoft.schemas.sharepoint.soap.SPSite;
+import com.microsoft.schemas.sharepoint.soap.SPWeb;
+import com.microsoft.schemas.sharepoint.soap.SiteDataSoap;
+import com.microsoft.schemas.sharepoint.soap.Sites;
+import com.microsoft.schemas.sharepoint.soap.VirtualServer;
+import com.microsoft.schemas.sharepoint.soap.Web;
+import com.microsoft.schemas.sharepoint.soap.Webs;
+import com.microsoft.schemas.sharepoint.soap.Xml;
+
+import org.w3c.dom.Attr;
+import org.w3c.dom.Document;
+import org.w3c.dom.Element;
+import org.w3c.dom.NamedNodeMap;
+import org.w3c.dom.Node;
+import org.w3c.dom.NodeList;
+
+import org.xml.sax.SAXException;
 
 import java.io.*;
-import java.net.URI;
-import java.net.URISyntaxException;
+import java.net.*;
 import java.nio.charset.Charset;
 import java.util.*;
 import java.util.concurrent.*;
 import java.util.logging.*;
 import java.util.regex.Pattern;
 
+import javax.xml.XMLConstants;
+import javax.xml.bind.JAXBContext;
+import javax.xml.bind.JAXBException;
+import javax.xml.bind.Unmarshaller;
 import javax.xml.namespace.QName;
-import javax.xml.stream.XMLInputFactory;
-import javax.xml.stream.XMLStreamException;
-import javax.xml.stream.XMLStreamReader;
+import javax.xml.parsers.DocumentBuilderFactory;
+import javax.xml.parsers.ParserConfigurationException;
+import javax.xml.transform.Source;
+import javax.xml.transform.dom.DOMSource;
+import javax.xml.transform.stream.StreamSource;
+import javax.xml.validation.Schema;
+import javax.xml.validation.SchemaFactory;
+import javax.xml.ws.EndpointReference;
+import javax.xml.ws.Holder;
+import javax.xml.ws.Service;
+import javax.xml.ws.WebServiceException;
 
 /**
  * SharePoint Adaptor for the GSA.
@@ -60,58 +89,93 @@ import javax.xml.stream.XMLStreamReader;
 public class SharePointAdaptor extends AbstractAdaptor
     implements PollingIncrementalAdaptor {
   private static final Charset CHARSET = Charset.forName("UTF-8");
+  private static final String XMLNS
+      = "http://schemas.microsoft.com/sharepoint/soap/";
   private static final QName DATA_ELEMENT
       = new QName("urn:schemas-microsoft-com:rowset", "data");
   private static final QName ROW_ELEMENT = new QName("#RowsetSchema", "row");
-  private static final QName OWS_FSOBJTYPE_ATTRIBUTE
-      = new QName("ows_FSObjType");
-  private static final QName OWS_TITLE_ATTRIBUTE = new QName("ows_Title");
-  private static final QName OWS_SERVERURL_ATTRIBUTE
-      = new QName("ows_ServerUrl");
-  private static final QName OWS_CONTENTTYPEID_ATTRIBUTE
-      = new QName("ows_ContentTypeId");
+  private static final String OWS_FSOBJTYPE_ATTRIBUTE = "ows_FSObjType";
+  private static final String OWS_TITLE_ATTRIBUTE = "ows_Title";
+  private static final String OWS_SERVERURL_ATTRIBUTE = "ows_ServerUrl";
+  private static final String OWS_CONTENTTYPEID_ATTRIBUTE = "ows_ContentTypeId";
   /**
    * As described at http://msdn.microsoft.com/en-us/library/aa543822.aspx .
    */
   private static final String CONTENTTYPEID_DOCUMENT_PREFIX = "0x0101";
-  private static final QName OWS_ATTACHMENTS_ATTRIBUTE
-      = new QName("ows_Attachments");
+  private static final String OWS_ATTACHMENTS_ATTRIBUTE = "ows_Attachments";
   private static final Pattern ALTERNATIVE_VALUE_PATTERN
       = Pattern.compile("^\\d+;#");
+  /**
+   * The JAXBContext is expensive to initialize, so we share a copy between
+   * instances.
+   */
+  private static final JAXBContext jaxbContext;
+  private static final Schema schema;
+
+  static {
+    try {
+      jaxbContext = JAXBContext.newInstance(
+          "com.microsoft.schemas.sharepoint.soap");
+    } catch (JAXBException ex) {
+      throw new RuntimeException("Could not initialize JAXBContext", ex);
+    }
+
+    try {
+      DocumentBuilderFactory dbf = DocumentBuilderFactory.newInstance();
+      dbf.setNamespaceAware(true);
+      Document doc = dbf.newDocumentBuilder()
+          .parse(SiteDataSoap.class.getResourceAsStream("SiteData.wsdl"));
+      String schemaNs = XMLConstants.W3C_XML_SCHEMA_NS_URI;
+      Node schemaNode = doc.getElementsByTagNameNS(schemaNs, "schema").item(0);
+      schema = SchemaFactory.newInstance(schemaNs).newSchema(
+          new DOMSource(schemaNode));
+    } catch (IOException ex) {
+      throw new RuntimeException("Could not initialize Schema", ex);
+    } catch (SAXException ex) {
+      throw new RuntimeException("Could not initialize Schema", ex);
+    } catch (ParserConfigurationException ex) {
+      throw new RuntimeException("Could not initialize Schema", ex);
+    }
+  }
 
   private static final Logger log
       = Logger.getLogger(SharePointAdaptor.class.getName());
 
   private final ConcurrentMap<String, SiteDataClient> clients
       = new ConcurrentSkipListMap<String, SiteDataClient>();
-  private final XMLInputFactory xmlInputFactory = XMLInputFactory.newFactory();
   private final DocId virtualServerDocId = new DocId("");
-  private MultiThreadedHttpConnectionManager httpManager;
-  private HttpClient httpClient;
   private AdaptorContext context;
   private String virtualServer;
   private final ConcurrentSkipListMap<String, String> contentDatabaseChangeId
       = new ConcurrentSkipListMap<String, String>();
-  private final SiteDataStubFactory siteDataStubFactory;
+  private final SiteDataFactory siteDataFactory;
+  private NtlmAuthenticator ntlmAuthenticator;
 
   public SharePointAdaptor() {
-    this(new SiteDataStubFactoryImpl());
+    this(new SiteDataFactoryImpl());
   }
 
   @VisibleForTesting
-  SharePointAdaptor(SiteDataStubFactory siteDataStubFactory) {
-    if (siteDataStubFactory == null) {
+  SharePointAdaptor(SiteDataFactory siteDataFactory) {
+    if (siteDataFactory == null) {
       throw new NullPointerException();
     }
-    this.siteDataStubFactory = siteDataStubFactory;
+    this.siteDataFactory = siteDataFactory;
   }
+
+  /**
+   * Method to cause static initialization of the class. Mainly useful to tests
+   * so that the cost of initializing the class does not count toward the first
+   * test case run.
+   */
+  @VisibleForTesting
+  static void init() {}
 
   @Override
   public void initConfig(Config config) {
     config.addKey("sharepoint.server", null);
     config.addKey("sharepoint.username", null);
     config.addKey("sharepoint.password", null);
-    config.addKey("sharepoint.domain", "");
   }
 
   @Override
@@ -121,19 +185,14 @@ public class SharePointAdaptor extends AbstractAdaptor
     virtualServer = config.getValue("sharepoint.server");
     String username = config.getValue("sharepoint.username");
     String password = config.getValue("sharepoint.password");
-    String domain = config.getValue("sharepoint.domain");
 
     log.log(Level.CONFIG, "VirtualServer: {0}", virtualServer);
     log.log(Level.CONFIG, "Username: {0}", username);
     log.log(Level.CONFIG, "Password: {0}", password);
-    log.log(Level.CONFIG, "Domain: {0}", domain);
 
-    httpManager = new MultiThreadedHttpConnectionManager();
-    httpClient = new HttpClient(httpManager);
-
-    Credentials creds = new NTCredentials(username, password,
-        config.getServerHostname(), domain);
-    httpClient.getState().setCredentials(AuthScope.ANY, creds);
+    ntlmAuthenticator = new NtlmAuthenticator(username, password);
+    // Unfortunately, this is a JVM-wide modification.
+    Authenticator.setDefault(ntlmAuthenticator);
 
     if (false) {
       contentDatabaseChangeId.put("{4fb7dea1-2912-4927-9eda-1ea2f0977cf8}",
@@ -143,7 +202,7 @@ public class SharePointAdaptor extends AbstractAdaptor
 
   @Override
   public void destroy() {
-    httpManager.shutdown();
+    Authenticator.setDefault(null);
   }
 
   @Override
@@ -181,7 +240,7 @@ public class SharePointAdaptor extends AbstractAdaptor
       throws InterruptedException, IOException {
     log.entering("SharePointAdaptor", "getModifiedDocIds", pusher);
     SiteDataClient client = getSiteDataClient(virtualServer);
-    SiteDataStub.VirtualServer vs = null;
+    VirtualServer vs = null;
     try {
       vs = client.getContentVirtualServer();
     } catch (IOException ex) {
@@ -196,9 +255,9 @@ public class SharePointAdaptor extends AbstractAdaptor
     } else {
       discoveredContentDatabases = new HashSet<String>();
       if (vs.getContentDatabases() != null) {
-        for (SiteDataStub.ContentDatabase_type0 cdT0
+        for (ContentDatabases.ContentDatabase cd
             : vs.getContentDatabases().getContentDatabase()) {
-          discoveredContentDatabases.add(cdT0.getID());
+          discoveredContentDatabases.add(cd.getID());
         }
       }
     }
@@ -224,7 +283,7 @@ public class SharePointAdaptor extends AbstractAdaptor
       contentDatabaseChangeId.remove(contentDatabase);
     }
     for (String contentDatabase : newContentDatabases) {
-      SiteDataStub.ContentDatabase cd;
+      ContentDatabase cd;
       try {
         cd = client.getContentContentDatabase(contentDatabase, false);
       } catch (IOException ex) {
@@ -243,9 +302,9 @@ public class SharePointAdaptor extends AbstractAdaptor
         // this database is gone.
         continue;
       }
-      CursorPaginator<SiteDataStub.SPContentDatabase, String> changesPaginator
+      CursorPaginator<SPContentDatabase, String> changesPaginator
           = client.getChangesContentDatabase(contentDatabase, changeId);
-      SiteDataStub.SPContentDatabase changes;
+      SPContentDatabase changes;
       try {
         while ((changes = changesPaginator.next()) != null) {
           try {
@@ -270,10 +329,10 @@ public class SharePointAdaptor extends AbstractAdaptor
     log.exiting("SharePointAdaptor", "getModifiedDocIds", pusher);
   }
 
-  private SiteDataClient getSiteDataClient(String site) throws AxisFault {
+  private SiteDataClient getSiteDataClient(String site) {
     SiteDataClient client = clients.get(site);
     if (client == null) {
-      client = new SiteDataClient(site, siteDataStubFactory);
+      client = new SiteDataClient(site, siteDataFactory);
       clients.putIfAbsent(site, client);
       client = clients.get(site);
     }
@@ -286,14 +345,10 @@ public class SharePointAdaptor extends AbstractAdaptor
 
   @VisibleForTesting
   class SiteDataClient {
-    private static final String XMLNS
-        = "http://schemas.microsoft.com/sharepoint/soap/";
-
-    private final SiteDataStub stub;
+    private final CheckedExceptionSiteDataSoap siteData;
     private final String siteUrl;
 
-    public SiteDataClient(String site, SiteDataStubFactory siteDataStubFactory)
-        throws AxisFault {
+    public SiteDataClient(String site, SiteDataFactory siteDataFactory) {
       log.entering("SiteDataClient", "SiteDataClient",
           new Object[] {site});
       if (!site.endsWith("/")) {
@@ -301,10 +356,10 @@ public class SharePointAdaptor extends AbstractAdaptor
         site = site + "/";
       }
       this.siteUrl = site;
-      this.stub = siteDataStubFactory.newSiteDataStub(
-          site + "_vti_bin/SiteData.asmx");
-      Options options = stub._getServiceClient().getOptions();
-      options.setProperty(HTTPConstants.CACHED_HTTP_CLIENT, httpClient);
+      String endpoint = site + "_vti_bin/SiteData.asmx";
+      ntlmAuthenticator.addToWhitelist(endpoint);
+      this.siteData = new CheckedExceptionSiteDataSoapAdapter(
+          siteDataFactory.newSiteData(endpoint));
       log.exiting("SiteDataClient", "SiteDataClient");
     }
 
@@ -319,9 +374,12 @@ public class SharePointAdaptor extends AbstractAdaptor
         return;
       }
 
-      SiteDataStub.GetURLSegmentsResponse urlResponse
-          = getUrlSegments(request.getDocId().getUniqueId());
-      if (!urlResponse.getGetURLSegmentsResult()) {
+      Holder<String> webId = new Holder<String>();
+      Holder<String> listId = new Holder<String>();
+      Holder<String> itemId = new Holder<String>();
+      boolean success = getUrlSegments(request.getDocId().getUniqueId(), webId,
+          listId, itemId);
+      if (!success) {
         // It may still be an aspx page.
         if (request.getDocId().getUniqueId().toLowerCase(Locale.ENGLISH)
             .endsWith(".aspx")) {
@@ -333,16 +391,15 @@ public class SharePointAdaptor extends AbstractAdaptor
         log.exiting("SiteDataClient", "getDocContent");
         return;
       }
-      if (urlResponse.getStrWebID() != null) {
-        getSiteDocContent(request, response, urlResponse.getStrWebID());
-      } else if (urlResponse.getStrItemID() != null) {
-        getListItemDocContent(request, response, urlResponse.getStrListID(),
-            urlResponse.getStrItemID());
-      } else if (urlResponse.getStrListID() != null) {
-        getListDocContent(request, response, urlResponse.getStrListID());
+      if (webId.value != null) {
+        getSiteDocContent(request, response, webId.value);
+      } else if (itemId.value != null) {
+        getListItemDocContent(request, response, listId.value, itemId.value);
+      } else if (listId.value != null) {
+        getListDocContent(request, response, listId.value);
       } else {
         // Assume it is a top-level site.
-        getSiteDocContent(request, response, urlResponse.getStrWebID());
+        getSiteDocContent(request, response, null);
       }
       log.exiting("SiteDataClient", "getDocContent");
     }
@@ -382,7 +439,7 @@ public class SharePointAdaptor extends AbstractAdaptor
         throws IOException {
       log.entering("SiteDataClient", "getVirtualServerDocContent",
           new Object[] {request, response});
-      SiteDataStub.VirtualServer vs = getContentVirtualServer();
+      VirtualServer vs = getContentVirtualServer();
       response.setContentType("text/html");
       Writer writer
           = new OutputStreamWriter(response.getOutputStream(), CHARSET);
@@ -394,16 +451,13 @@ public class SharePointAdaptor extends AbstractAdaptor
           + "<h1>VirtualServer " + vs.getMetadata().getURL() + "</h1>"
           + "<p>Sites</p>"
           + "<ul>");
-      if (vs.getContentDatabases() != null) {
-        DocIdEncoder encoder = context.getDocIdEncoder();
-        for (SiteDataStub.ContentDatabase_type0 cdT0
-            : vs.getContentDatabases().getContentDatabase()) {
-          SiteDataStub.ContentDatabase cd
-              = getContentContentDatabase(cdT0.getID(), true);
-          if (cd.getSites() != null && cd.getSites().getSite() != null) {
-            for (SiteDataStub.Site_type0 site : cd.getSites().getSite()) {
-              writer.write(liUrl(site.getURL()));
-            }
+      DocIdEncoder encoder = context.getDocIdEncoder();
+      for (ContentDatabases.ContentDatabase cdcd
+          : vs.getContentDatabases().getContentDatabase()) {
+        ContentDatabase cd = getContentContentDatabase(cdcd.getID(), true);
+        if (cd.getSites() != null) {
+          for (Sites.Site site : cd.getSites().getSite()) {
+            writer.write(liUrl(site.getURL()));
           }
         }
       }
@@ -416,7 +470,7 @@ public class SharePointAdaptor extends AbstractAdaptor
         String id) throws IOException {
       log.entering("SiteDataClient", "getSiteDocContent",
           new Object[] {request, response, id});
-      SiteDataStub.Web w = getContentWeb(id);
+      Web w = getContentWeb(id);
       response.setContentType("text/html");
       Writer writer
           = new OutputStreamWriter(response.getOutputStream(), CHARSET);
@@ -429,38 +483,38 @@ public class SharePointAdaptor extends AbstractAdaptor
 
       // TODO(ejona): w.getMetadata().getNoIndex()
       DocIdEncoder encoder = context.getDocIdEncoder();
-      if (w.getWebs() != null && w.getWebs().getWeb() != null) {
+      if (w.getWebs() != null) {
         writer.write("<p>Sites</p><ul>");
-        for (SiteDataStub.Web_type0 web : w.getWebs().getWeb()) {
+        for (Webs.Web web : w.getWebs().getWeb()) {
           writer.write(liUrl(web.getURL()));
         }
         writer.write("</ul>");
       }
-      if (w.getLists() != null && w.getLists().getList() != null) {
+      if (w.getLists() != null) {
         writer.write("<p>Lists</p><ul>");
-        for (SiteDataStub.List_type0 list : w.getLists().getList()) {
+        for (Lists.List list : w.getLists().getList()) {
           writer.write(liUrl(list.getDefaultViewUrl()));
         }
         writer.write("</ul>");
       }
       if (w.getFPFolder() != null) {
-        SiteDataStub.FolderData f = w.getFPFolder();
-        if (f.getFolders() != null) {
+        FolderData f = w.getFPFolder();
+        if (!f.getFolders().isEmpty()) {
           writer.write("<p>Folders</p><ul>");
-          for (SiteDataStub.Folders folders : f.getFolders()) {
+          for (Folders folders : f.getFolders()) {
             if (folders.getFolder() != null) {
-              for (SiteDataStub.Folder_type0 folder : folders.getFolder()) {
+              for (Folders.Folder folder : folders.getFolder()) {
                 writer.write(liUrl(folder.getURL()));
               }
             }
           }
           writer.write("</ul>");
         }
-        if (f.getFiles() != null) {
+        if (!f.getFiles().isEmpty()) {
           writer.write("<p>Files</p><ul>");
-          for (SiteDataStub.Files files : f.getFiles()) {
+          for (Files files : f.getFiles()) {
             if (files.getFile() != null) {
-              for (SiteDataStub.File_type0 file : files.getFile()) {
+              for (Files.File file : files.getFile()) {
                 writer.write(liUrl(file.getURL()));
               }
             }
@@ -477,7 +531,7 @@ public class SharePointAdaptor extends AbstractAdaptor
         String id) throws IOException {
       log.entering("SiteDataClient", "getListDocContent",
           new Object[] {request, response, id});
-      SiteDataStub.List l = getContentList(id);
+      com.microsoft.schemas.sharepoint.soap.List l = getContentList(id);
       processFolder(id, "", response);
       log.exiting("SiteDataClient", "getListDocContent");
     }
@@ -496,17 +550,17 @@ public class SharePointAdaptor extends AbstractAdaptor
           + "<body>"
           + "<h1>Folder " + folderPath + "</h1>");
 
-      Paginator<SiteDataStub.Folder> folderPaginator
+      Paginator<ItemData> folderPaginator
           = getContentFolder(listGuid, folderPath);
       writer.write("<p>List items</p><ul>");
-      SiteDataStub.Folder folder;
+      ItemData folder;
       while ((folder = folderPaginator.next()) != null) {
-        SiteDataStub.Xml xml = folder.getFolder().getXml();
+        Xml xml = folder.getXml();
 
-        OMElement data = getFirstChildWithName(xml, DATA_ELEMENT);
-        for (OMElement row : getChildrenWithName(data, ROW_ELEMENT)) {
-          String rowUrl = row.getAttributeValue(OWS_SERVERURL_ATTRIBUTE);
-          String rowTitle = row.getAttributeValue(OWS_TITLE_ATTRIBUTE);
+        Element data = getFirstChildWithName(xml, DATA_ELEMENT);
+        for (Element row : getChildrenWithName(data, ROW_ELEMENT)) {
+          String rowUrl = row.getAttribute(OWS_SERVERURL_ATTRIBUTE);
+          String rowTitle = row.getAttribute(OWS_TITLE_ATTRIBUTE);
           // TODO(ejona): Fix raw string concatenation.
           writer.write("<li><a href=\"" + encodeUrl(rowUrl) + "\">" + rowTitle
               + "</a></li>");
@@ -519,25 +573,47 @@ public class SharePointAdaptor extends AbstractAdaptor
       log.exiting("SiteDataClient", "processFolder");
     }
 
-    private OMElement getFirstChildWithName(SiteDataStub.Xml xml, QName name) {
-      for (OMElement child : xml.getExtraElement()) {
-        if (child.getQName().equals(name)) {
+    private boolean elementHasName(Element ele, QName name) {
+      return name.getLocalPart().equals(ele.getLocalName())
+          && name.getNamespaceURI().equals(ele.getNamespaceURI());
+    }
+
+    private Element getFirstChildWithName(Xml xml, QName name) {
+      for (Object oChild : xml.getAny()) {
+        if (!(oChild instanceof Element)) {
+          continue;
+        }
+        Element child = (Element) oChild;
+        if (elementHasName(child, name)) {
           return child;
         }
       }
       return null;
     }
 
-    private List<OMElement> getChildrenWithName(OMElement ele, QName name) {
-      @SuppressWarnings("unchecked")
-      Iterator<OMElement> children = ele.getChildrenWithName(ROW_ELEMENT);
-      return Lists.newArrayList(children);
+    private List<Element> getChildrenWithName(Element ele, QName name) {
+      List<Element> l = new ArrayList<Element>();
+      NodeList nl = ele.getChildNodes();
+      for (int i = 0; i < nl.getLength(); i++) {
+        Node n = nl.item(i);
+        if (!(n instanceof Element)) {
+          continue;
+        }
+        Element child = (Element) n;
+        if (elementHasName(child, name)) {
+          l.add(child);
+        }
+      }
+      return l;
     }
 
-    private List<OMAttribute> getAllAttributes(OMElement ele) {
-      @SuppressWarnings("unchecked")
-      Iterator<OMAttribute> attributes = ele.getAllAttributes();
-      return Lists.newArrayList(attributes);
+    private List<Attr> getAllAttributes(Element ele) {
+      NamedNodeMap map = ele.getAttributes();
+      List<Attr> attrs = new ArrayList<Attr>(map.getLength());
+      for (int i = 0; i < map.getLength(); i++) {
+        attrs.add((Attr) map.item(i));
+      }
+      return attrs;
     }
 
     private void addMetadata(Response response, String name, String value) {
@@ -595,14 +671,16 @@ public class SharePointAdaptor extends AbstractAdaptor
       } catch (URISyntaxException ex) {
         throw new IOException(ex);
       }
-      GetMethod method = new GetMethod(url);
-      int statusCode = httpClient.executeMethod(method);
-      if (statusCode != HttpStatus.SC_OK) {
-        throw new IOException("Got status code: " + statusCode);
+      HttpURLConnection conn
+          = (HttpURLConnection) new URL(url).openConnection();
+      conn.setDoInput(true);
+      conn.setDoOutput(false);
+      if (conn.getResponseCode() != HttpURLConnection.HTTP_OK) {
+        throw new IOException("Got status code: " + conn.getResponseCode());
       }
-      InputStream is = method.getResponseBodyAsStream();
+      InputStream is = conn.getInputStream();
       IOHelper.copyStream(is, response.getOutputStream());
-      method.releaseConnection();
+      is.close();
       log.exiting("SiteDataClient", "getFileDocContent");
     }
 
@@ -610,28 +688,26 @@ public class SharePointAdaptor extends AbstractAdaptor
         String listId, String itemId) throws IOException {
       log.entering("SiteDataClient", "getListItemDocContent",
           new Object[] {request, response, listId, itemId});
-      SiteDataStub.ItemData i = getContentItem(listId, itemId);
-      SiteDataStub.Xml xml = i.getXml();
+      ItemData i = getContentItem(listId, itemId);
+      Xml xml = i.getXml();
 
-      OMElement data = getFirstChildWithName(xml, DATA_ELEMENT);
-      OMElement row = getChildrenWithName(data, ROW_ELEMENT).get(0);
+      Element data = getFirstChildWithName(xml, DATA_ELEMENT);
+      Element row = getChildrenWithName(data, ROW_ELEMENT).get(0);
       // This should be in the form of "1234;#0". We want to extract the 0.
-      String type =
-          row.getAttributeValue(OWS_FSOBJTYPE_ATTRIBUTE).split(";#", 2)[1];
+      String type = row.getAttribute(OWS_FSOBJTYPE_ATTRIBUTE).split(";#", 2)[1];
       boolean isFolder = "1".equals(type);
-      String title = row.getAttributeValue(OWS_TITLE_ATTRIBUTE);
+      String title = row.getAttribute(OWS_TITLE_ATTRIBUTE);
       if (title == null) {
         title = "Unknown title";
       }
-      String serverUrl = row.getAttributeValue(OWS_SERVERURL_ATTRIBUTE);
+      String serverUrl = row.getAttribute(OWS_SERVERURL_ATTRIBUTE);
 
-      for (OMAttribute attribute : getAllAttributes(row)) {
-        addMetadata(response, attribute.getLocalName(),
-            attribute.getAttributeValue());
+      for (Attr attribute : getAllAttributes(row)) {
+        addMetadata(response, attribute.getName(), attribute.getValue());
       }
 
       if (isFolder) {
-        SiteDataStub.List l = getContentList(listId);
+        com.microsoft.schemas.sharepoint.soap.List l = getContentList(listId);
         String root
             = encodeDocId(l.getMetadata().getRootFolder()).getUniqueId();
         String folder = encodeDocId(serverUrl).getUniqueId();
@@ -642,7 +718,7 @@ public class SharePointAdaptor extends AbstractAdaptor
         log.exiting("SiteDataClient", "getListItemDocContent");
         return;
       }
-      String contentTypeId = row.getAttributeValue(OWS_CONTENTTYPEID_ATTRIBUTE);
+      String contentTypeId = row.getAttribute(OWS_CONTENTTYPEID_ATTRIBUTE);
       if (contentTypeId != null
           && contentTypeId.startsWith(CONTENTTYPEID_DOCUMENT_PREFIX)) {
         // This is a file (or "Document" in SharePoint-speak), so display its
@@ -659,19 +735,14 @@ public class SharePointAdaptor extends AbstractAdaptor
             + "</head>"
             + "<body>"
             + "<h1>List Item " + title + "</h1>");
-        String strAttachments
-            = row.getAttributeValue(OWS_ATTACHMENTS_ATTRIBUTE);
+        String strAttachments = row.getAttribute(OWS_ATTACHMENTS_ATTRIBUTE);
         int attachments = strAttachments == null
             ? 0 : Integer.parseInt(strAttachments);
         if (attachments > 0) {
           writer.write("<p>Attachments</p><ul>");
-          SiteDataStub.Item item
-              = getContentListItemAttachments(listId, itemId);
-          if (item.getAttachment() != null) {
-            for (SiteDataStub.Attachment_type0 attachment
-                : item.getAttachment()) {
-              writer.write(liUrl(attachment.getURL()));
-            }
+          Item item = getContentListItemAttachments(listId, itemId);
+          for (Item.Attachment attachment : item.getAttachment()) {
+            writer.write(liUrl(attachment.getURL()));
           }
           writer.write("</ul>");
         }
@@ -702,26 +773,25 @@ public class SharePointAdaptor extends AbstractAdaptor
       String itemId = parts[0];
       log.log(Level.FINE, "Detected possible attachment: "
           + "listUrl={0}, itemId={1}", new Object[] {listUrl, itemId});
-      SiteDataStub.GetURLSegmentsResponse urlResponse = getUrlSegments(listUrl);
-      if (!urlResponse.getGetURLSegmentsResult()) {
+      Holder<String> listIdHolder = new Holder<String>();
+      boolean success = getUrlSegments(listUrl, null, listIdHolder, null);
+      if (!success) {
         log.fine("Could not get list id from list url");
         log.exiting("SiteDataClient", "getAttachmentDocContent", false);
         return false;
       }
-      String listId = urlResponse.getStrListID();
+      String listId = listIdHolder.value;
       if (listId == null) {
         log.fine("List URL does not point to a list");
         log.exiting("SiteDataClient", "getAttachmentDocContent", false);
         return false;
       }
-      SiteDataStub.Item item = getContentListItemAttachments(listId, itemId);
+      Item item = getContentListItemAttachments(listId, itemId);
       boolean verifiedIsAttachment = false;
-      if (item.getAttachment() != null) {
-        for (SiteDataStub.Attachment_type0 attachment : item.getAttachment()) {
-          if (url.equals(attachment.getURL())) {
-            verifiedIsAttachment = true;
-            break;
-          }
+      for (Item.Attachment attachment : item.getAttachment()) {
+        if (url.equals(attachment.getURL())) {
+          verifiedIsAttachment = true;
+          break;
         }
       }
       if (verifiedIsAttachment) {
@@ -746,21 +816,23 @@ public class SharePointAdaptor extends AbstractAdaptor
       } catch (URISyntaxException ex) {
         throw new IOException(ex);
       }
-      url = hostUri.resolve(pathUri).toASCIIString();
-      GetMethod method = new GetMethod(url);
-      int statusCode = httpClient.executeMethod(method);
-      if (statusCode != HttpStatus.SC_OK) {
-        throw new IOException("Got status code: " + statusCode);
+      URL finalUrl = hostUri.resolve(pathUri).toURL();
+      HttpURLConnection conn = (HttpURLConnection) finalUrl.openConnection();
+      conn.setDoInput(true);
+      conn.setDoOutput(false);
+      if (conn.getResponseCode() != HttpURLConnection.HTTP_OK) {
+        throw new IOException("Got status code: " + conn.getResponseCode());
       }
-      InputStream is = method.getResponseBodyAsStream();
+      InputStream is = conn.getInputStream();
       IOHelper.copyStream(is, response.getOutputStream());
+      is.close();
       log.exiting("SiteDataClient", "getAttachmentDocContent", true);
       return true;
     }
 
     @VisibleForTesting
-    void getModifiedDocIds(SiteDataStub.SPContentDatabase changes,
-        DocIdPusher pusher) throws IOException, InterruptedException {
+    void getModifiedDocIds(SPContentDatabase changes, DocIdPusher pusher)
+        throws IOException, InterruptedException {
       log.entering("SiteDataClient", "getModifiedDocIds",
           new Object[] {changes, pusher});
       List<DocId> docIds = new ArrayList<DocId>();
@@ -777,64 +849,54 @@ public class SharePointAdaptor extends AbstractAdaptor
       log.exiting("SiteDataClient", "getModifiedDocIds");
     }
 
-    private void getModifiedDocIdsContentDatabase(
-        SiteDataStub.SPContentDatabase changes, List<DocId> docIds) {
+    private void getModifiedDocIdsContentDatabase(SPContentDatabase changes,
+        List<DocId> docIds) {
       log.entering("SiteDataClient", "getModifiedDocIdsContentDatabase",
           new Object[] {changes, docIds});
       if (!"Unchanged".equals(changes.getChange())) {
         docIds.add(virtualServerDocId);
       }
-      if (changes.getSPSite() != null) {
-        for (SiteDataStub.SPSite_type0 site : changes.getSPSite()) {
-          getModifiedDocIdsSite(site, docIds);
-        }
+      for (SPSite site : changes.getSPSite()) {
+        getModifiedDocIdsSite(site, docIds);
       }
       log.exiting("SiteDataClient", "getModifiedDocIdsContentDatabase");
     }
 
-    private void getModifiedDocIdsSite(SiteDataStub.SPSite_type0 changes,
-        List<DocId> docIds) {
+    private void getModifiedDocIdsSite(SPSite changes, List<DocId> docIds) {
       log.entering("SiteDataClient", "getModifiedDocIdsSite",
           new Object[] {changes, docIds});
       if (!"Unchanged".equals(changes.getChange())
           && !"Delete".equals(changes.getChange())) {
         docIds.add(new DocId(changes.getSite().getMetadata().getURL()));
       }
-      if (changes.getSPWeb() != null) {
-        for (SiteDataStub.SPWeb_type0 web : changes.getSPWeb()) {
-          getModifiedDocIdsWeb(web, docIds);
-        }
+      for (SPWeb web : changes.getSPWeb()) {
+        getModifiedDocIdsWeb(web, docIds);
       }
       log.exiting("SiteDataClient", "getModifiedDocIdsSite");
     }
 
-    private void getModifiedDocIdsWeb(SiteDataStub.SPWeb_type0 changes,
-        List<DocId> docIds) {
+    private void getModifiedDocIdsWeb(SPWeb changes, List<DocId> docIds) {
       log.entering("SiteDataClient", "getModifiedDocIdsWeb",
           new Object[] {changes, docIds});
       if (!"Unchanged".equals(changes.getChange())
           && !"Delete".equals(changes.getChange())) {
         docIds.add(new DocId(changes.getWeb().getMetadata().getURL()));
       }
-      if (changes.getSPWebChoice_type1() != null) {
-        for (SiteDataStub.SPWebChoice_type1 choice
-            : changes.getSPWebChoice_type1()) {
-          if (choice.getSPFolder() != null) {
-            getModifiedDocIdsFolder(choice.getSPFolder(), docIds);
-          }
-          if (choice.getSPList() != null) {
-            getModifiedDocIdsList(choice.getSPList(), docIds);
-          }
-          if (choice.getSPFile() != null) {
-            getModifiedDocIdsFile(choice.getSPFile(), docIds);
-          }
+      for (Object choice : changes.getSPFolderOrSPListOrSPFile()) {
+        if (choice instanceof SPFolder) {
+          getModifiedDocIdsFolder((SPFolder) choice, docIds);
+        }
+        if (choice instanceof SPList) {
+          getModifiedDocIdsList((SPList) choice, docIds);
+        }
+        if (choice instanceof SPFile) {
+          getModifiedDocIdsFile((SPFile) choice, docIds);
         }
       }
       log.exiting("SiteDataClient", "getModifiedDocIdsWeb");
     }
 
-    private void getModifiedDocIdsFolder(SiteDataStub.SPFolder_type0 changes,
-        List<DocId> docIds) {
+    private void getModifiedDocIdsFolder(SPFolder changes, List<DocId> docIds) {
       log.entering("SiteDataClient", "getModifiedDocIdsFolder",
           new Object[] {changes, docIds});
       if (!"Unchanged".equals(changes.getChange())
@@ -844,47 +906,48 @@ public class SharePointAdaptor extends AbstractAdaptor
       log.exiting("SiteDataClient", "getModifiedDocIdsFolder");
     }
 
-    private void getModifiedDocIdsList(SiteDataStub.SPList_type0 changes,
-        List<DocId> docIds) {
+    private void getModifiedDocIdsList(SPList changes, List<DocId> docIds) {
       log.entering("SiteDataClient", "getModifiedDocIdsList",
           new Object[] {changes, docIds});
       if (!"Unchanged".equals(changes.getChange())
           && !"Delete".equals(changes.getChange())) {
         docIds.add(encodeDocId(changes.getDisplayUrl()));
       }
-      if (changes.getSPListChoice_type0() != null) {
-        for (SiteDataStub.SPListChoice_type0 choice
-            : changes.getSPListChoice_type0()) {
-          // Ignore view change detection.
+      for (Object choice : changes.getSPViewOrSPListItem()) {
+        // Ignore view change detection.
 
-          if (choice.getSPListItem() != null) {
-            getModifiedDocIdsListItem(choice.getSPListItem(), docIds);
-          }
+        if (choice instanceof SPListItem) {
+          getModifiedDocIdsListItem((SPListItem) choice, docIds);
         }
       }
       log.exiting("SiteDataClient", "getModifiedDocIdsList");
     }
 
-    private void getModifiedDocIdsListItem(
-        SiteDataStub.SPListItem_type0 changes, List<DocId> docIds) {
+    private void getModifiedDocIdsListItem(SPListItem changes,
+        List<DocId> docIds) {
       log.entering("SiteDataClient", "getModifiedDocIdsListItem",
           new Object[] {changes, docIds});
       if (!"Unchanged".equals(changes.getChange())
           && !"Delete".equals(changes.getChange())) {
-        OMElement data = changes.getListItem().getExtraElement();
-        String url = data.getAttributeValue(OWS_SERVERURL_ATTRIBUTE);
-        if (url == null) {
-          log.log(Level.WARNING, "Could not find server url attribute for list "
-              + "item {0}", changes.getId());
+        Object oData = changes.getListItem().getAny();
+        if (!(oData instanceof Element)) {
+          log.log(Level.WARNING, "Unexpected object type for data: {0}",
+              oData.getClass());
         } else {
-          docIds.add(encodeDocId(url));
+          Element data = (Element) oData;
+          String url = data.getAttribute(OWS_SERVERURL_ATTRIBUTE);
+          if (url == null) {
+            log.log(Level.WARNING, "Could not find server url attribute for "
+                + "list item {0}", changes.getId());
+          } else {
+            docIds.add(encodeDocId(url));
+          }
         }
       }
       log.exiting("SiteDataClient", "getModifiedDocIdsListItem");
     }
 
-    private void getModifiedDocIdsFile(SiteDataStub.SPFile_type0 changes,
-        List<DocId> docIds) {
+    private void getModifiedDocIdsFile(SPFile changes, List<DocId> docIds) {
       log.entering("SiteDataClient", "getModifiedDocIdsFile",
           new Object[] {changes, docIds});
       if (!"Unchanged".equals(changes.getChange())
@@ -894,229 +957,150 @@ public class SharePointAdaptor extends AbstractAdaptor
       log.exiting("SiteDataClient", "getModifiedDocIdsFile");
     }
 
-    private SiteDataStub.VirtualServer getContentVirtualServer()
-        throws IOException {
+    private VirtualServer getContentVirtualServer() throws IOException {
       log.entering("SiteDataClient", "getContentVirtualServer");
-      SiteDataStub.GetContent request = new SiteDataStub.GetContent();
-      request.setObjectType(SiteDataStub.ObjectType.VirtualServer);
-      request.setRetrieveChildItems(true);
-      request.setSecurityOnly(false);
-      SiteDataStub.GetContentResponse response = stub.getContent(request);
-      log.log(Level.FINE, "GetContent(VirtualServer): Result={0}, "
-          + "LastItemIdOnPage={1}", new Object[] {
-          response.getGetContentResult(), response.getLastItemIdOnPage()});
-      String xml = response.getGetContentResult();
+      Holder<String> result = new Holder<String>();
+      siteData.getContent(ObjectType.VIRTUAL_SERVER, null, null, null, true,
+          false, null, result);
+      log.log(Level.FINE, "GetContent(VirtualServer): Result={0}",
+          result.value);
+      String xml = result.value;
       xml = xml.replace("<VirtualServer>",
           "<VirtualServer xmlns='" + XMLNS + "'>");
-      XMLStreamReader reader = createXmlStreamReader(xml);
-      SiteDataStub.VirtualServer vs;
-      try {
-        vs = SiteDataStub.VirtualServer.Factory.parse(reader);
-      } catch (Exception ex) {
-        throw new XmlProcessingException(ex);
-      }
+      VirtualServer vs = jaxbParse(xml, VirtualServer.class);
       log.exiting("SiteDataClient", "getContentVirtualServer", vs);
       return vs;
     }
 
     private SiteDataClient getClientForUrl(String url) throws IOException {
       log.entering("SiteDataClient", "getClientForUrl", url);
-      SiteDataStub.GetSiteAndWeb request = new SiteDataStub.GetSiteAndWeb();
-      request.setStrUrl(url);
-      SiteDataStub.GetSiteAndWebResponse response = stub.getSiteAndWeb(request);
+      Holder<Long> result = new Holder<Long>();
+      Holder<String> site = new Holder<String>();
+      Holder<String> web = new Holder<String>();
+      siteData.getSiteAndWeb(url, result, site, web);
+
       log.log(Level.FINE, "GetSiteAndWeb: Result={0}, StrSite={1}, StrWeb={2}",
-          new Object[] {response.getGetSiteAndWebResult(),
-          response.getStrSite(), response.getStrWeb()});
-      if (response.getGetSiteAndWebResult().longValue() != 0) {
+          new Object[] {result.value, site.value, web.value});
+      if (result.value != 0) {
         log.exiting("SiteDataClient", "getClientForUrl", null);
         return null;
       }
-      SiteDataClient client = getSiteDataClient(response.getStrWeb());
+      SiteDataClient client = getSiteDataClient(web.value);
       log.exiting("SiteDataClient", "getClientForUrl", client);
       return client;
     }
 
-    private SiteDataStub.GetURLSegmentsResponse getUrlSegments(String url)
-        throws IOException {
+    private boolean getUrlSegments(String url, Holder<String> webId,
+        Holder<String> listId, Holder<String> itemId) throws IOException {
       log.entering("SiteDataClient", "getUrlSegments", url);
-      SiteDataStub.GetURLSegments urlRequest
-          = new SiteDataStub.GetURLSegments();
-      urlRequest.setStrURL(url);
-      SiteDataStub.GetURLSegmentsResponse urlResponse
-          = stub.getURLSegments(urlRequest);
+      Holder<Boolean> result = new Holder<Boolean>();
+      siteData.getURLSegments(url, result, webId, null, listId, itemId);
       log.log(Level.FINE, "GetURLSegments: Result={0}, StrWebID={1}, "
-          + "StrListID={2}, StrItemID={3}, StrBucketID={4}",
-          new Object[] {urlResponse.getGetURLSegmentsResult(),
-            urlResponse.getStrWebID(), urlResponse.getStrListID(),
-            urlResponse.getStrItemID(), urlResponse.getStrBucketID()});
-      log.exiting("SiteDataClient", "getUrlSegments", urlResponse);
-      return urlResponse;
+          + "StrListID={2}, StrItemID={3}",
+          new Object[] {result.value, webId.value, listId.value, itemId.value});
+      log.exiting("SiteDataClient", "getUrlSegments", result.value);
+      return result.value;
     }
 
-    private SiteDataStub.ContentDatabase getContentContentDatabase(String id,
+    private ContentDatabase getContentContentDatabase(String id,
         boolean retrieveChildItems) throws IOException {
       log.entering("SiteDataClient", "getContentContentDatabase", id);
-      SiteDataStub.GetContent request = new SiteDataStub.GetContent();
-      request.setObjectType(SiteDataStub.ObjectType.ContentDatabase);
-      request.setRetrieveChildItems(retrieveChildItems);
-      request.setSecurityOnly(false);
-      request.setObjectId(id);
-      SiteDataStub.GetContentResponse response = stub.getContent(request);
-      log.log(Level.FINE, "GetContent(ContentDatabase): Result={0}, "
-          + "LastItemIdOnPage={1}", new Object[] {
-          response.getGetContentResult(), response.getLastItemIdOnPage()});
-      String xml = response.getGetContentResult();
+      Holder<String> result = new Holder<String>();
+      siteData.getContent(ObjectType.CONTENT_DATABASE, id, null, null,
+          retrieveChildItems, false, null, result);
+      log.log(Level.FINE, "GetContent(ContentDatabase): Result={0}",
+          result.value);
+      String xml = result.value;
       xml = xml.replace("<ContentDatabase>",
           "<ContentDatabase xmlns='" + XMLNS + "'>");
-      XMLStreamReader reader = createXmlStreamReader(xml);
-      SiteDataStub.ContentDatabase cd;
-      try {
-        cd = SiteDataStub.ContentDatabase.Factory.parse(reader);
-      } catch (Exception ex) {
-        throw new XmlProcessingException(ex);
-      }
+      ContentDatabase cd = jaxbParse(xml, ContentDatabase.class);
       log.exiting("SiteDataClient", "getContentContentDatabase", cd);
       return cd;
     }
 
-    private SiteDataStub.Web getContentWeb(String id) throws IOException {
+    private Web getContentWeb(String id) throws IOException {
       log.entering("SiteDataClient", "getContentWeb", id);
-      SiteDataStub.GetContent request = new SiteDataStub.GetContent();
-      request.setObjectType(SiteDataStub.ObjectType.Site);
-      request.setRetrieveChildItems(true);
-      request.setSecurityOnly(false);
-      request.setObjectId(id);
-      SiteDataStub.GetContentResponse response = stub.getContent(request);
-      log.log(Level.FINE, "GetContent(Site): Result={0}, LastItemIdOnPage={1}",
-          new Object[] {response.getGetContentResult(),
-          response.getLastItemIdOnPage()});
-      String xml = response.getGetContentResult();
+      Holder<String> result = new Holder<String>();
+      siteData.getContent(ObjectType.SITE, id, null, null, true, false, null,
+          result);
+      log.log(Level.FINE, "GetContent(Site): Result={0}", result.value);
+      String xml = result.value;
       xml = xml.replace("<Web>", "<Web xmlns='" + XMLNS + "'>");
-      XMLStreamReader reader = createXmlStreamReader(xml);
-      SiteDataStub.Web web;
-      try {
-        web = SiteDataStub.Web.Factory.parse(reader);
-      } catch (Exception ex) {
-        throw new XmlProcessingException(ex);
-      }
+      Web web = jaxbParse(xml, Web.class);
       log.exiting("SiteDataClient", "getContentWeb", web);
       return web;
     }
 
-    private SiteDataStub.List getContentList(String id) throws IOException {
+    private com.microsoft.schemas.sharepoint.soap.List getContentList(String id)
+        throws IOException {
       log.entering("SiteDataClient", "getContentList", id);
-      SiteDataStub.GetContent request = new SiteDataStub.GetContent();
-      request.setObjectType(SiteDataStub.ObjectType.List);
-      request.setRetrieveChildItems(false);
-      request.setSecurityOnly(false);
-      request.setObjectId(id);
-      SiteDataStub.GetContentResponse response = stub.getContent(request);
-      log.log(Level.FINE, "GetContent(List): Result={0}, LastItemIdOnPage={1}",
-          new Object[] {response.getGetContentResult(),
-          response.getLastItemIdOnPage()});
-      String xml = response.getGetContentResult();
+      Holder<String> result = new Holder<String>();
+      siteData.getContent(ObjectType.LIST, id, null, null, false, false, null,
+          result);
+      log.log(Level.FINE, "GetContent(List): Result={0}", result.value);
+      String xml = result.value;
       xml = xml.replace("<List>", "<List xmlns='" + XMLNS + "'>");
-      XMLStreamReader reader = createXmlStreamReader(xml);
-      SiteDataStub.List list;
-      try {
-        list = SiteDataStub.List.Factory.parse(reader);
-      } catch (Exception ex) {
-        throw new XmlProcessingException(ex);
-      }
+      com.microsoft.schemas.sharepoint.soap.List list = jaxbParse(xml,
+          com.microsoft.schemas.sharepoint.soap.List.class);
       log.exiting("SiteDataClient", "getContentList", list);
       return list;
     }
 
-    private SiteDataStub.ItemData getContentItem(String listId, String itemId)
+    private ItemData getContentItem(String listId, String itemId)
         throws IOException {
       log.entering("SiteDataClient", "getContentItem",
           new Object[] {listId, itemId});
-      SiteDataStub.GetContent request = new SiteDataStub.GetContent();
-      request.setObjectType(SiteDataStub.ObjectType.ListItem);
-      request.setSecurityOnly(false);
-      request.setObjectId(listId);
-      request.setFolderUrl("");
-      request.setItemId(itemId);
-      SiteDataStub.GetContentResponse response = stub.getContent(request);
-      log.log(Level.FINE, "GetContent(ListItem): Result={0}, "
-          + "LastItemIdOnPage={1}", new Object[] {
-          response.getGetContentResult(), response.getLastItemIdOnPage()});
-      String xml = response.getGetContentResult();
+      Holder<String> result = new Holder<String>();
+      siteData.getContent(ObjectType.LIST_ITEM, listId, "", itemId, false,
+          false, null, result);
+      log.log(Level.FINE, "GetContent(ListItem): Result={0}", result.value);
+      String xml = result.value;
       xml = xml.replace("<Item>", "<ItemData xmlns='" + XMLNS + "'>");
       xml = xml.replace("</Item>", "</ItemData>");
-      XMLStreamReader reader = createXmlStreamReader(xml);
-      SiteDataStub.ItemData data;
-      try {
-        data = SiteDataStub.ItemData.Factory.parse(reader);
-      } catch (Exception ex) {
-        throw new XmlProcessingException(ex);
-      }
+      ItemData data = jaxbParse(xml, ItemData.class);
       log.exiting("SiteDataClient", "getContentItem", data);
       return data;
     }
 
-    private Paginator<SiteDataStub.Folder> getContentFolder(String guid,
-        String url) {
+    private Paginator<ItemData> getContentFolder(final String guid,
+        final String url) {
       log.entering("SiteDataClient", "getContentFolder",
           new Object[] {guid, url});
-      final SiteDataStub.GetContent request = new SiteDataStub.GetContent();
-      request.setObjectType(SiteDataStub.ObjectType.Folder);
-      request.setSecurityOnly(false);
-      request.setFolderUrl(url);
-      request.setObjectId(guid);
-      request.setLastItemIdOnPage("");
+      final Holder<String> lastItemIdOnPage = new Holder<String>("");
       log.exiting("SiteDataClient", "getContentFolder");
-      return new Paginator<SiteDataStub.Folder>() {
+      return new Paginator<ItemData>() {
         @Override
-        public SiteDataStub.Folder next() throws IOException {
-          if (request.getLastItemIdOnPage() == null) {
+        public ItemData next() throws IOException {
+          if (lastItemIdOnPage.value == null) {
             return null;
           }
-          log.log(Level.FINE, "GetContent request: ObjectType={0}, "
-              + "ObjectId={1}, LastItemIdOnPage={2}, RetrieveChildItems={3}, "
-              + "FolderUrl={4}", new Object[] {request.getObjectType(),
-              request.getObjectId(), request.getLastItemIdOnPage(),
-              request.getRetrieveChildItems(), request.getFolderUrl()});
-          SiteDataStub.GetContentResponse response = stub.getContent(request);
+          Holder<String> result = new Holder<String>();
+          log.log(Level.FINE, "GetContent request: LastItemIdOnPage={0}",
+              lastItemIdOnPage.value);
+          siteData.getContent(ObjectType.FOLDER, guid, url, null, true, false,
+              lastItemIdOnPage, result);
           log.log(Level.FINE, "GetContent(Folder): Result={0}, "
               + "LastItemIdOnPage={1}", new Object[] {
-              response.getGetContentResult(), response.getLastItemIdOnPage()});
-          request.setLastItemIdOnPage(response.getLastItemIdOnPage());
-          String xml = response.getGetContentResult();
+              result.value, lastItemIdOnPage.value});
+          String xml = result.value;
           xml = xml.replace("<Folder>", "<Folder xmlns='" + XMLNS + "'>");
-          XMLStreamReader reader = createXmlStreamReader(xml);
-          try {
-            return SiteDataStub.Folder.Factory.parse(reader);
-          } catch (Exception ex) {
-            throw new XmlProcessingException(ex);
-          }
+          return jaxbParse(xml, ItemData.class);
         }
       };
     }
 
-    private SiteDataStub.Item getContentListItemAttachments(String listId,
-        String itemId) throws IOException {
+    private Item getContentListItemAttachments(String listId, String itemId)
+        throws IOException {
       log.entering("SiteDataClient", "getContentListItemAttachments",
           new Object[] {listId, itemId});
-      SiteDataStub.GetContent request = new SiteDataStub.GetContent();
-      request.setObjectType(SiteDataStub.ObjectType.ListItemAttachments);
-      request.setSecurityOnly(false);
-      request.setObjectId(listId);
-      request.setFolderUrl("");
-      request.setItemId(itemId);
-      SiteDataStub.GetContentResponse response = stub.getContent(request);
-      log.log(Level.FINE, "GetContent(ListItemAttachments): Result={0}, "
-          + "LastItemIdOnPage={1}", new Object[] {
-          response.getGetContentResult(), response.getLastItemIdOnPage()});
-      String xml = response.getGetContentResult();
+      Holder<String> result = new Holder<String>();
+      siteData.getContent(ObjectType.LIST_ITEM_ATTACHMENTS, listId, "",
+          itemId, true, false, null, result);
+      log.log(Level.FINE, "GetContent(ListItemAttachments): Result={0}",
+          result.value);
+      String xml = result.value;
       xml = xml.replace("<Item ", "<Item xmlns='" + XMLNS + "' ");
-      XMLStreamReader reader = createXmlStreamReader(xml);
-      SiteDataStub.Item item;
-      try {
-        item = SiteDataStub.Item.Factory.parse(reader);
-      } catch (Exception ex) {
-        throw new XmlProcessingException(ex);
-      }
+      Item item = jaxbParse(xml, Item.class);
       log.exiting("SiteDataClient", "getContentListItemAttachments", item);
       return item;
     }
@@ -1127,63 +1111,54 @@ public class SharePointAdaptor extends AbstractAdaptor
      * guaranteed to be after state has been updated so that a subsequent call
      * to next() will provide the next page and not repeat the erroring page.
      */
-    private CursorPaginator<SiteDataStub.SPContentDatabase, String>
-        getChangesContentDatabase(String contentDatabaseGuid,
+    private CursorPaginator<SPContentDatabase, String>
+        getChangesContentDatabase(final String contentDatabaseGuid,
             String startChangeId) {
       log.entering("SiteDataClient", "getChangesContentDatabase",
           new Object[] {contentDatabaseGuid, startChangeId});
-      final SiteDataStub.GetChanges request = new SiteDataStub.GetChanges();
-      request.setObjectType(SiteDataStub.ObjectType.ContentDatabase);
-      request.setContentDatabaseId(contentDatabaseGuid);
-      request.setLastChangeId(startChangeId);
-      request.setTimeout(15);
+      final Holder<String> lastChangeId = new Holder<String>(startChangeId);
+      final Holder<String> currentChangeId = new Holder<String>();
       log.exiting("SiteDataClient", "getChangesContentDatabase");
-      return new CursorPaginator<SiteDataStub.SPContentDatabase, String>() {
+      return new CursorPaginator<SPContentDatabase, String>() {
         @Override
-        public SiteDataStub.SPContentDatabase next() throws IOException {
-          if (request.getLastChangeId().equals(request.getCurrentChangeId())) {
+        public SPContentDatabase next() throws IOException {
+          if (lastChangeId.value.equals(currentChangeId.value)) {
             return null;
           }
-          log.log(Level.FINE, "Request: ObjectType={0}, ContentDatabaseId={1}, "
-              + "LastChangeId={2}, CurrentChangeId={3}, Timeout={4}",
-              new Object[] {request.getObjectType(),
-                request.getContentDatabaseId(), request.getLastChangeId(),
-                request.getCurrentChangeId(), request.getTimeout()});
-          SiteDataStub.GetChangesResponse response = stub.getChanges(request);
+          Holder<String> result = new Holder<String>();
+          Holder<Boolean> moreChanges = new Holder<Boolean>();
+          log.log(Level.FINE, "Request: LastChangeId={0}, CurrentChangeId={1}",
+              new Object[] {lastChangeId.value, currentChangeId.value});
+          siteData.getChanges(ObjectType.CONTENT_DATABASE, contentDatabaseGuid,
+              lastChangeId, currentChangeId, 15, result, null);
           log.log(Level.FINE, "GetChanges(ContentDatabase): Result={0}, "
               + "MoreChanges={1}, CurrentChangeId={2}, LastChangeId={3}",
-              new Object[] {
-                response.getGetChangesResult(), response.getMoreChanges(),
-                response.getCurrentChangeId(), response.getLastChangeId()});
-          // Update state for next iteration.
-          request.setLastChangeId(response.getLastChangeId());
-          request.setCurrentChangeId(response.getCurrentChangeId());
+              new Object[] {result.value, moreChanges.value,
+                currentChangeId.value, lastChangeId.value});
           // XmlProcessingExceptions fine after this point.
-          String xml = response.getGetChangesResult();
+          String xml = result.value;
           xml = xml.replace("<SPContentDatabase ",
               "<SPContentDatabase xmlns='" + XMLNS + "' ");
-          XMLStreamReader reader = createXmlStreamReader(xml);
-          try {
-            return SiteDataStub.SPContentDatabase.Factory.parse(reader);
-          } catch (Exception ex) {
-            throw new XmlProcessingException(ex);
-          }
+          return jaxbParse(xml, SPContentDatabase.class);
         }
 
         @Override
         public String getCursor() {
-          return request.getLastChangeId();
+          return lastChangeId.value;
         }
       };
     }
 
     @VisibleForTesting
-    XMLStreamReader createXmlStreamReader(String xml)
-        throws IOException {
+    <T> T jaxbParse(String xml, Class<T> klass)
+        throws XmlProcessingException {
+      Source source = new StreamSource(new StringReader(xml));
       try {
-        return xmlInputFactory.createXMLStreamReader(new StringReader(xml));
-      } catch (XMLStreamException xse) {
-        throw new XmlProcessingException(xse);
+        Unmarshaller unmarshaller = jaxbContext.createUnmarshaller();
+        unmarshaller.setSchema(schema);
+        return unmarshaller.unmarshal(source, klass).getValue();
+      } catch (JAXBException ex) {
+        throw new XmlProcessingException(ex, xml);
       }
     }
   }
@@ -1191,8 +1166,18 @@ public class SharePointAdaptor extends AbstractAdaptor
   /**
    * Container exception for wrapping xml processing exceptions in IOExceptions.
    */
-  private class XmlProcessingException extends IOException {
-    public XmlProcessingException(Throwable cause) {
+  private static class XmlProcessingException extends IOException {
+    public XmlProcessingException(JAXBException cause, String xml) {
+      super("Error when parsing xml: " + xml, cause);
+    }
+  }
+
+  /**
+   * Container exception for wrapping WebServiceExceptions in a checked
+   * exception.
+   */
+  private static class WebServiceIOException extends IOException {
+    public WebServiceIOException(WebServiceException cause) {
       super(cause);
     }
   }
@@ -1218,14 +1203,140 @@ public class SharePointAdaptor extends AbstractAdaptor
   }
 
   @VisibleForTesting
-  interface SiteDataStubFactory {
-    public SiteDataStub newSiteDataStub(String endpoint) throws AxisFault;
+  interface SiteDataFactory {
+    public SiteDataSoap newSiteData(String endpoint);
   }
 
-  private static class SiteDataStubFactoryImpl implements SiteDataStubFactory {
+  private static class SiteDataFactoryImpl implements SiteDataFactory {
+    private final Service siteDataService;
+
+    public SiteDataFactoryImpl() {
+      URL url = SiteDataSoap.class.getResource("SiteData.wsdl");
+      QName qname = new QName(XMLNS, "SiteData");
+      this.siteDataService = Service.create(url, qname);
+    }
+
     @Override
-    public SiteDataStub newSiteDataStub(String endpoint) throws AxisFault {
-      return new SiteDataStub(endpoint);
+    public SiteDataSoap newSiteData(String endpoint) {
+      String endpointString
+          = "<wsa:EndpointReference"
+          + " xmlns:wsa='http://www.w3.org/2005/08/addressing'>"
+          + "<wsa:Address>" + endpoint + "</wsa:Address>"
+          + "</wsa:EndpointReference>";
+      EndpointReference endpointRef = EndpointReference.readFrom(
+          new StreamSource(new StringReader(endpointString)));
+      return siteDataService.getPort(endpointRef, SiteDataSoap.class);
+    }
+  }
+
+  private static class NtlmAuthenticator extends Authenticator {
+    // URLs are not comparable, so use String instead.
+    private final Set<String> whitelist = new ConcurrentSkipListSet<String>();
+    private final String username;
+    private final char[] password;
+
+    public NtlmAuthenticator(String username, String password) {
+      this.username = username;
+      this.password = password.toCharArray();
+    }
+
+    @Override
+    protected PasswordAuthentication getPasswordAuthentication() {
+      String urlString = getRequestingURL().toString();
+      if (whitelist.contains(urlString)) {
+        return new PasswordAuthentication(username, password);
+      } else {
+        return super.getPasswordAuthentication();
+      }
+    }
+
+    public void addToWhitelist(String url) {
+      whitelist.add(url);
+    }
+  }
+
+  /**
+   * A subset of SiteDataSoap that throws WebServiceIOExceptions instead of the
+   * WebServiceException (which is a RuntimeException).
+   */
+  private static interface CheckedExceptionSiteDataSoap {
+    public void getSiteAndWeb(String strUrl, Holder<Long> getSiteAndWebResult,
+        Holder<String> strSite, Holder<String> strWeb)
+        throws WebServiceIOException;
+
+    public void getURLSegments(String strURL,
+        Holder<Boolean> getURLSegmentsResult, Holder<String> strWebID,
+        Holder<String> strBucketID, Holder<String> strListID,
+        Holder<String> strItemID) throws WebServiceIOException;
+
+    public void getContent(ObjectType objectType, String objectId,
+        String folderUrl, String itemId, boolean retrieveChildItems,
+        boolean securityOnly, Holder<String> lastItemIdOnPage,
+        Holder<String> getContentResult) throws WebServiceIOException;
+
+    public void getChanges(ObjectType objectType, String contentDatabaseId,
+        Holder<String> lastChangeId, Holder<String> currentChangeId,
+        Integer timeout, Holder<String> getChangesResult,
+        Holder<Boolean> moreChanges) throws WebServiceIOException;
+  }
+
+  private static class CheckedExceptionSiteDataSoapAdapter
+      implements CheckedExceptionSiteDataSoap {
+    private final SiteDataSoap siteData;
+
+    public CheckedExceptionSiteDataSoapAdapter(SiteDataSoap siteData) {
+      this.siteData = siteData;
+    }
+
+    @Override
+    public void getSiteAndWeb(String strUrl, Holder<Long> getSiteAndWebResult,
+        Holder<String> strSite, Holder<String> strWeb)
+        throws WebServiceIOException {
+      try {
+        siteData.getSiteAndWeb(strUrl, getSiteAndWebResult, strSite, strWeb);
+      } catch (WebServiceException ex) {
+        throw new WebServiceIOException(ex);
+      }
+    }
+
+    @Override
+    public void getURLSegments(String strURL,
+        Holder<Boolean> getURLSegmentsResult, Holder<String> strWebID,
+        Holder<String> strBucketID, Holder<String> strListID,
+        Holder<String> strItemID) throws WebServiceIOException {
+      try {
+        siteData.getURLSegments(strURL, getURLSegmentsResult, strWebID,
+            strBucketID, strListID, strItemID);
+      } catch (WebServiceException ex) {
+        throw new WebServiceIOException(ex);
+      }
+    }
+
+    @Override
+    public void getContent(ObjectType objectType, String objectId,
+        String folderUrl, String itemId, boolean retrieveChildItems,
+        boolean securityOnly, Holder<String> lastItemIdOnPage,
+        Holder<String> getContentResult) throws WebServiceIOException {
+      try {
+        siteData.getContent(objectType, objectId, folderUrl, itemId,
+            retrieveChildItems, securityOnly, lastItemIdOnPage,
+            getContentResult);
+      } catch (WebServiceException ex) {
+        throw new WebServiceIOException(ex);
+      }
+    }
+
+    @Override
+    public void getChanges(ObjectType objectType, String contentDatabaseId,
+        Holder<String> lastChangeId, Holder<String> currentChangeId,
+        Integer timeout, Holder<String> getChangesResult,
+        Holder<Boolean> moreChanges) throws WebServiceIOException {
+      try {
+        siteData.getChanges(objectType, contentDatabaseId, lastChangeId,
+            currentChangeId, timeout, getChangesResult, moreChanges);
+      } catch (WebServiceException ex) {
+        throw new WebServiceIOException(ex);
+      }
     }
   }
 }

@@ -557,7 +557,7 @@ xmlns:rs="urn:schemas-microsoft-com:rowset" xmlns:s="http://www.w3.org/2001/XMLS
        <s:element name="Messages" >
          <s:complexType>
            <s:sequence>
-             <s:element name="Message" type="tns:xml" minOccurs="0" maxOccurs="unbounded" />
+             <s:any processContents="lax"/><!-- Message -->
            </s:sequence>
          </s:complexType>
        </s:element>
@@ -706,6 +706,7 @@ xmlns:rs="urn:schemas-microsoft-com:rowset" xmlns:s="http://www.w3.org/2001/XMLS
         </s:complexType>
       </s:element>
       <s:element name="Folder" type="tns:ItemData"/>
+      <s:element name="Web" type="tns:Web"/>
       <s:complexType name="Web">
           <s:sequence>
             <s:element name="Metadata" type="tns:WebMetadata" minOccurs="1" maxOccurs="1"/>
@@ -753,6 +754,7 @@ xmlns:rs="urn:schemas-microsoft-com:rowset" xmlns:s="http://www.w3.org/2001/XMLS
           </s:element>
         </s:sequence>
       </s:complexType>
+      <s:element name="ItemData" type="tns:ItemData"/>
       <s:complexType name="ItemData">
         <s:sequence>
           <s:element name="Metadata" type="tns:Metadata"/>
@@ -761,7 +763,7 @@ xmlns:rs="urn:schemas-microsoft-com:rowset" xmlns:s="http://www.w3.org/2001/XMLS
       </s:complexType>
       <s:complexType name="xml">
         <s:sequence>
-          <s:any minOccurs="0" maxOccurs="unbounded"/>
+          <s:any minOccurs="0" maxOccurs="unbounded" processContents="lax"/>
         </s:sequence>
       </s:complexType>
       <s:complexType name="Policies">
@@ -818,11 +820,6 @@ xmlns:rs="urn:schemas-microsoft-com:rowset" xmlns:s="http://www.w3.org/2001/XMLS
           </s:sequence>
         </s:complexType>
       </s:element>
-      <s:complexType name="Permissions">
-        <s:sequence>
-          <s:element name="Permission" type="tns:ListPermission" maxOccurs="unbounded"/>
-        </s:sequence>
-      </s:complexType>
       <s:complexType name="ListPermission">
         <s:attribute name="MemberID" type="s:int" use="required"/>
         <s:attribute name="Mask" type="s:unsignedLong" use="required"/>
@@ -1037,7 +1034,7 @@ xmlns:rs="urn:schemas-microsoft-com:rowset" xmlns:s="http://www.w3.org/2001/XMLS
             <s:element name='ListItem' >
               <s:complexType >
                 <s:sequence >
-                  <s:any/><!-- z:row -->
+                  <s:any processContents="lax"/><!-- z:row -->
                   <s:element name='permissions' type='tns:permissionsForACL' />
                 </s:sequence>
               </s:complexType>
