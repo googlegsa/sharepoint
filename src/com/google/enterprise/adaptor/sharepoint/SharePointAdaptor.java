@@ -358,8 +358,9 @@ public class SharePointAdaptor extends AbstractAdaptor
       this.siteUrl = site;
       String endpoint = site + "_vti_bin/SiteData.asmx";
       ntlmAuthenticator.addToWhitelist(endpoint);
-      this.siteData = new CheckedExceptionSiteDataSoapAdapter(
-          siteDataFactory.newSiteData(endpoint));
+      SiteDataSoap siteDataSoap = siteDataFactory.newSiteData(endpoint);
+      siteDataSoap = LoggingWSHandler.create(SiteDataSoap.class, siteDataSoap);
+      this.siteData = new CheckedExceptionSiteDataSoapAdapter(siteDataSoap);
       log.exiting("SiteDataClient", "SiteDataClient");
     }
 
@@ -962,8 +963,6 @@ public class SharePointAdaptor extends AbstractAdaptor
       Holder<String> result = new Holder<String>();
       siteData.getContent(ObjectType.VIRTUAL_SERVER, null, null, null, true,
           false, null, result);
-      log.log(Level.FINE, "GetContent(VirtualServer): Result={0}",
-          result.value);
       String xml = result.value;
       xml = xml.replace("<VirtualServer>",
           "<VirtualServer xmlns='" + XMLNS + "'>");
@@ -979,8 +978,6 @@ public class SharePointAdaptor extends AbstractAdaptor
       Holder<String> web = new Holder<String>();
       siteData.getSiteAndWeb(url, result, site, web);
 
-      log.log(Level.FINE, "GetSiteAndWeb: Result={0}, StrSite={1}, StrWeb={2}",
-          new Object[] {result.value, site.value, web.value});
       if (result.value != 0) {
         log.exiting("SiteDataClient", "getClientForUrl", null);
         return null;
@@ -995,9 +992,6 @@ public class SharePointAdaptor extends AbstractAdaptor
       log.entering("SiteDataClient", "getUrlSegments", url);
       Holder<Boolean> result = new Holder<Boolean>();
       siteData.getURLSegments(url, result, webId, null, listId, itemId);
-      log.log(Level.FINE, "GetURLSegments: Result={0}, StrWebID={1}, "
-          + "StrListID={2}, StrItemID={3}",
-          new Object[] {result.value, webId.value, listId.value, itemId.value});
       log.exiting("SiteDataClient", "getUrlSegments", result.value);
       return result.value;
     }
@@ -1008,8 +1002,6 @@ public class SharePointAdaptor extends AbstractAdaptor
       Holder<String> result = new Holder<String>();
       siteData.getContent(ObjectType.CONTENT_DATABASE, id, null, null,
           retrieveChildItems, false, null, result);
-      log.log(Level.FINE, "GetContent(ContentDatabase): Result={0}",
-          result.value);
       String xml = result.value;
       xml = xml.replace("<ContentDatabase>",
           "<ContentDatabase xmlns='" + XMLNS + "'>");
@@ -1023,7 +1015,6 @@ public class SharePointAdaptor extends AbstractAdaptor
       Holder<String> result = new Holder<String>();
       siteData.getContent(ObjectType.SITE, id, null, null, true, false, null,
           result);
-      log.log(Level.FINE, "GetContent(Site): Result={0}", result.value);
       String xml = result.value;
       xml = xml.replace("<Web>", "<Web xmlns='" + XMLNS + "'>");
       Web web = jaxbParse(xml, Web.class);
@@ -1037,7 +1028,6 @@ public class SharePointAdaptor extends AbstractAdaptor
       Holder<String> result = new Holder<String>();
       siteData.getContent(ObjectType.LIST, id, null, null, false, false, null,
           result);
-      log.log(Level.FINE, "GetContent(List): Result={0}", result.value);
       String xml = result.value;
       xml = xml.replace("<List>", "<List xmlns='" + XMLNS + "'>");
       com.microsoft.schemas.sharepoint.soap.List list = jaxbParse(xml,
@@ -1053,7 +1043,6 @@ public class SharePointAdaptor extends AbstractAdaptor
       Holder<String> result = new Holder<String>();
       siteData.getContent(ObjectType.LIST_ITEM, listId, "", itemId, false,
           false, null, result);
-      log.log(Level.FINE, "GetContent(ListItem): Result={0}", result.value);
       String xml = result.value;
       xml = xml.replace("<Item>", "<ItemData xmlns='" + XMLNS + "'>");
       xml = xml.replace("</Item>", "</ItemData>");
@@ -1075,13 +1064,8 @@ public class SharePointAdaptor extends AbstractAdaptor
             return null;
           }
           Holder<String> result = new Holder<String>();
-          log.log(Level.FINE, "GetContent request: LastItemIdOnPage={0}",
-              lastItemIdOnPage.value);
           siteData.getContent(ObjectType.FOLDER, guid, url, null, true, false,
               lastItemIdOnPage, result);
-          log.log(Level.FINE, "GetContent(Folder): Result={0}, "
-              + "LastItemIdOnPage={1}", new Object[] {
-              result.value, lastItemIdOnPage.value});
           String xml = result.value;
           xml = xml.replace("<Folder>", "<Folder xmlns='" + XMLNS + "'>");
           return jaxbParse(xml, ItemData.class);
@@ -1096,8 +1080,6 @@ public class SharePointAdaptor extends AbstractAdaptor
       Holder<String> result = new Holder<String>();
       siteData.getContent(ObjectType.LIST_ITEM_ATTACHMENTS, listId, "",
           itemId, true, false, null, result);
-      log.log(Level.FINE, "GetContent(ListItemAttachments): Result={0}",
-          result.value);
       String xml = result.value;
       xml = xml.replace("<Item ", "<Item xmlns='" + XMLNS + "' ");
       Item item = jaxbParse(xml, Item.class);
@@ -1127,14 +1109,8 @@ public class SharePointAdaptor extends AbstractAdaptor
           }
           Holder<String> result = new Holder<String>();
           Holder<Boolean> moreChanges = new Holder<Boolean>();
-          log.log(Level.FINE, "Request: LastChangeId={0}, CurrentChangeId={1}",
-              new Object[] {lastChangeId.value, currentChangeId.value});
           siteData.getChanges(ObjectType.CONTENT_DATABASE, contentDatabaseGuid,
               lastChangeId, currentChangeId, 15, result, null);
-          log.log(Level.FINE, "GetChanges(ContentDatabase): Result={0}, "
-              + "MoreChanges={1}, CurrentChangeId={2}, LastChangeId={3}",
-              new Object[] {result.value, moreChanges.value,
-                currentChangeId.value, lastChangeId.value});
           // XmlProcessingExceptions fine after this point.
           String xml = result.value;
           xml = xml.replace("<SPContentDatabase ",
