@@ -568,6 +568,13 @@ public class SharePointAdaptor extends AbstractAdaptor
         for (Element row : getChildrenWithName(data, ROW_ELEMENT)) {
           String rowUrl = row.getAttribute(OWS_SERVERURL_ATTRIBUTE);
           String rowTitle = row.getAttribute(OWS_TITLE_ATTRIBUTE);
+          if ("".equals(rowTitle)) {
+            // Use the last part of the URL if an item doesn't have a title.
+            // The last part of the URL will generally be a filename in this
+            // case.
+            String[] parts = rowUrl.split("/");
+            rowTitle = parts[parts.length - 1];
+          }
           // TODO(ejona): Fix raw string concatenation.
           writer.write("<li><a href=\"" + encodeUrl(rowUrl) + "\">" + rowTitle
               + "</a></li>");
