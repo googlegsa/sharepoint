@@ -767,6 +767,21 @@ xmlns:rs="urn:schemas-microsoft-com:rowset" xmlns:s="http://www.w3.org/2001/XMLS
           <s:any minOccurs="0" maxOccurs="unbounded" processContents="lax"/>
         </s:sequence>
       </s:complexType>
+      <s:element name="scopes">
+        <s:complexType>
+          <s:sequence>
+            <s:element name="scope" minOccurs="0" maxOccurs="unbounded">
+              <s:complexType>
+                <s:sequence>
+                  <s:element name="permission" type="tns:permission"
+                    maxOccurs="unbounded"/>
+                </s:sequence>
+                <s:attribute name="id" type="s:string" use="required"/>
+              </s:complexType>
+            </s:element>
+          </s:sequence>
+        </s:complexType>
+      </s:element>
       <s:complexType name="Policies">
         <s:sequence>
           <s:element maxOccurs="unbounded" name="PolicyUser" type="tns:PolicyUser"/>

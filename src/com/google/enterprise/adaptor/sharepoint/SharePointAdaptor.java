@@ -15,7 +15,11 @@
 package com.google.enterprise.adaptor.sharepoint;
 
 import com.google.common.annotations.VisibleForTesting;
+import com.google.common.cache.CacheBuilder;
+import com.google.common.cache.CacheLoader;
+import com.google.common.cache.LoadingCache;
 import com.google.enterprise.adaptor.AbstractAdaptor;
+import com.google.enterprise.adaptor.Acl;
 import com.google.enterprise.adaptor.AdaptorContext;
 import com.google.enterprise.adaptor.Config;
 import com.google.enterprise.adaptor.DocId;
@@ -31,10 +35,14 @@ import com.microsoft.schemas.sharepoint.soap.ContentDatabases;
 import com.microsoft.schemas.sharepoint.soap.Files;
 import com.microsoft.schemas.sharepoint.soap.FolderData;
 import com.microsoft.schemas.sharepoint.soap.Folders;
+import com.microsoft.schemas.sharepoint.soap.GroupDescription;
+import com.microsoft.schemas.sharepoint.soap.GroupMembership;
 import com.microsoft.schemas.sharepoint.soap.Item;
 import com.microsoft.schemas.sharepoint.soap.ItemData;
 import com.microsoft.schemas.sharepoint.soap.Lists;
 import com.microsoft.schemas.sharepoint.soap.ObjectType;
+import com.microsoft.schemas.sharepoint.soap.Permission;
+import com.microsoft.schemas.sharepoint.soap.PolicyUser;
 import com.microsoft.schemas.sharepoint.soap.SPContentDatabase;
 import com.microsoft.schemas.sharepoint.soap.SPFile;
 import com.microsoft.schemas.sharepoint.soap.SPFolder;
@@ -42,8 +50,11 @@ import com.microsoft.schemas.sharepoint.soap.SPList;
 import com.microsoft.schemas.sharepoint.soap.SPListItem;
 import com.microsoft.schemas.sharepoint.soap.SPSite;
 import com.microsoft.schemas.sharepoint.soap.SPWeb;
+import com.microsoft.schemas.sharepoint.soap.Scopes;
+import com.microsoft.schemas.sharepoint.soap.Site;
 import com.microsoft.schemas.sharepoint.soap.SiteDataSoap;
 import com.microsoft.schemas.sharepoint.soap.Sites;
+import com.microsoft.schemas.sharepoint.soap.UserDescription;
 import com.microsoft.schemas.sharepoint.soap.VirtualServer;
 import com.microsoft.schemas.sharepoint.soap.Web;
 import com.microsoft.schemas.sharepoint.soap.Webs;
@@ -98,6 +109,8 @@ public class SharePointAdaptor extends AbstractAdaptor
   private static final String OWS_TITLE_ATTRIBUTE = "ows_Title";
   private static final String OWS_SERVERURL_ATTRIBUTE = "ows_ServerUrl";
   private static final String OWS_CONTENTTYPEID_ATTRIBUTE = "ows_ContentTypeId";
+  private static final String OWS_SCOPEID_ATTRIBUTE = "ows_ScopeId";
+  private static final String OWS_FILEDIRREF_ATTRIBUTE = "ows_FileDirRef";
   /**
    * As described at http://msdn.microsoft.com/en-us/library/aa543822.aspx .
    */
@@ -105,6 +118,20 @@ public class SharePointAdaptor extends AbstractAdaptor
   private static final String OWS_ATTACHMENTS_ATTRIBUTE = "ows_Attachments";
   private static final Pattern ALTERNATIVE_VALUE_PATTERN
       = Pattern.compile("^\\d+;#");
+  /**
+   * As defined at http://msdn.microsoft.com/en-us/library/ee394878.aspx .
+   */
+  private static final long VIEW_LIST_ITEMS_MASK = 0x0000000000000001;
+  /**
+   * As defined at http://msdn.microsoft.com/en-us/library/ee394878.aspx .
+   */
+  private static final long OPEN_MASK = 0x0000000000010000;
+  /**
+   * As defined at http://msdn.microsoft.com/en-us/library/ee394878.aspx .
+   */
+  private static final long VIEW_PAGES_MASK = 0x0000000000020000;
+  private static final long LIST_ITEM_MASK
+      = OPEN_MASK | VIEW_PAGES_MASK | VIEW_LIST_ITEMS_MASK;
   /**
    * The JAXBContext is expensive to initialize, so we share a copy between
    * instances.
@@ -146,6 +173,16 @@ public class SharePointAdaptor extends AbstractAdaptor
   private final DocId virtualServerDocId = new DocId("");
   private AdaptorContext context;
   private String virtualServer;
+  /**
+   * Cache that provides immutable {@link MemberIdMapping} instances for the
+   * provided site URL key. Since {@code MemberIdMapping} is immutable, updating
+   * the cache creates new mapping instances that replace the previous value.
+   */
+  private LoadingCache<String, MemberIdMapping> memberIdsCache
+      = CacheBuilder.newBuilder()
+        .refreshAfterWrite(30, TimeUnit.MINUTES)
+        .expireAfterWrite(45, TimeUnit.MINUTES)
+        .build(new MemberIdsCacheLoader());
   private final ConcurrentSkipListMap<String, String> contentDatabaseChangeId
       = new ConcurrentSkipListMap<String, String>();
   private final SiteDataFactory siteDataFactory;
@@ -214,7 +251,8 @@ public class SharePointAdaptor extends AbstractAdaptor
     log.entering("SharePointAdaptor", "getDocContent",
         new Object[] {request, response});
     DocId id = request.getDocId();
-    SiteDataClient virtualServerClient = getSiteDataClient(virtualServer);
+    SiteDataClient virtualServerClient
+        = getSiteDataClient(virtualServer, virtualServer);
     if (id.equals(virtualServerDocId)) {
       virtualServerClient.getVirtualServerDocContent(request, response);
     } else {
@@ -242,7 +280,7 @@ public class SharePointAdaptor extends AbstractAdaptor
   public void getModifiedDocIds(DocIdPusher pusher)
       throws InterruptedException, IOException {
     log.entering("SharePointAdaptor", "getModifiedDocIds", pusher);
-    SiteDataClient client = getSiteDataClient(virtualServer);
+    SiteDataClient client = getSiteDataClient(virtualServer, virtualServer);
     VirtualServer vs = null;
     try {
       vs = client.getContentVirtualServer();
@@ -332,20 +370,25 @@ public class SharePointAdaptor extends AbstractAdaptor
     log.exiting("SharePointAdaptor", "getModifiedDocIds", pusher);
   }
 
-  private SiteDataClient getSiteDataClient(String site) {
-    SiteDataClient client = clients.get(site);
+  private SiteDataClient getSiteDataClient(String site, String web) {
+    if (web.endsWith("/")) {
+      // Always end without a '/' for a canonical form.
+      web = web.substring(0, web.length() - 1);
+    }
+    SiteDataClient client = clients.get(web);
     if (client == null) {
-      if (!site.endsWith("/")) {
-        // Always end with a '/' for a canonical form.
-        site = site + "/";
+      if (site.endsWith("/")) {
+        // Always end without a '/' for a canonical form.
+        site = site.substring(0, site.length() - 1);
       }
-      String endpoint = site + "_vti_bin/SiteData.asmx";
+      String endpoint = web + "/_vti_bin/SiteData.asmx";
       ntlmAuthenticator.addToWhitelist(endpoint);
       SiteDataSoap siteDataSoap = siteDataFactory.newSiteData(endpoint);
 
-      client = new SiteDataClient(site, siteDataSoap);
-      clients.putIfAbsent(site, client);
-      client = clients.get(site);
+      client = new SiteDataClient(site, web, siteDataSoap,
+          new MemberIdMappingCallable(site));
+      clients.putIfAbsent(web, client);
+      client = clients.get(web);
     }
     return client;
   }
@@ -358,17 +401,43 @@ public class SharePointAdaptor extends AbstractAdaptor
   class SiteDataClient {
     private final CheckedExceptionSiteDataSoap siteData;
     private final String siteUrl;
+    private final String webUrl;
+    /**
+     * Callable for accessing an up-to-date instance of {@link MemberIdMapping}.
+     * Using a callable instead of accessing {@link #memberIdsCache} directly as
+     * this allows mocking out the cache during testing.
+     */
+    private final Callable<MemberIdMapping> memberIdMappingCallable;
 
-    public SiteDataClient(String site, SiteDataSoap siteDataSoap) {
+    public SiteDataClient(String site, String web, SiteDataSoap siteDataSoap,
+        Callable<MemberIdMapping> memberIdMappingCallable) {
       log.entering("SiteDataClient", "SiteDataClient",
-          new Object[] {site, siteDataSoap});
-      if (!site.endsWith("/")) {
+          new Object[] {site, web, siteDataSoap});
+      if (site.endsWith("/")) {
         throw new AssertionError();
       }
+      if (web.endsWith("/")) {
+        throw new AssertionError();
+      }
+      if (siteDataSoap == null || memberIdMappingCallable == null) {
+        throw new NullPointerException();
+      }
       this.siteUrl = site;
+      this.webUrl = web;
       siteDataSoap = LoggingWSHandler.create(SiteDataSoap.class, siteDataSoap);
       this.siteData = new CheckedExceptionSiteDataSoapAdapter(siteDataSoap);
+      this.memberIdMappingCallable = memberIdMappingCallable;
       log.exiting("SiteDataClient", "SiteDataClient");
+    }
+
+    private MemberIdMapping getMemberIdMapping() throws IOException {
+      try {
+        return memberIdMappingCallable.call();
+      } catch (IOException ex) {
+        throw ex;
+      } catch (Exception ex) {
+        throw new IOException(ex);
+      }
     }
 
     public void getDocContent(Request request, Response response)
@@ -418,11 +487,11 @@ public class SharePointAdaptor extends AbstractAdaptor
           || url.toLowerCase().startsWith("http://")) {
         // Leave as-is.
       } else if (!url.startsWith("/")) {
-        url = siteUrl + url;
+        url = webUrl + "/" + url;
       } else {
         // Rip off everthing after the third slash (including the slash).
         // Get http://example.com from http://example.com/some/folder.
-        String[] parts = siteUrl.split("/", 4);
+        String[] parts = webUrl.split("/", 4);
         url = parts[0] + "//" + parts[2] + url;
       }
       DocId docId = new DocId(url);
@@ -435,6 +504,27 @@ public class SharePointAdaptor extends AbstractAdaptor
       log.entering("SiteDataClient", "getVirtualServerDocContent",
           new Object[] {request, response});
       VirtualServer vs = getContentVirtualServer();
+
+      final long necessaryPermissionMask = LIST_ITEM_MASK;
+      List<String> permitUsers = new ArrayList<String>();
+      List<String> denyUsers = new ArrayList<String>();
+      for (PolicyUser policyUser : vs.getPolicies().getPolicyUser()) {
+        // TODO(ejona): special case NT AUTHORITY\LOCAL SERVICE.
+        String loginName = policyUser.getLoginName();
+        long grant = policyUser.getGrantMask().longValue();
+        if ((necessaryPermissionMask & grant) == necessaryPermissionMask) {
+          permitUsers.add(loginName);
+        }
+        long deny = policyUser.getDenyMask().longValue();
+        // If at least one necessary bit is masked, then deny user.
+        if ((necessaryPermissionMask & deny) != 0) {
+          denyUsers.add(loginName);
+        }
+      }
+      response.setAcl(new Acl.Builder()
+          .setInheritanceType(Acl.InheritanceType.PARENT_OVERRIDES)
+          .setPermitUsers(permitUsers).setDenyUsers(denyUsers).build());
+
       response.setContentType("text/html");
       HtmlResponseWriter writer = createHtmlResponseWriter(response);
       writer.start(request.getDocId(), ObjectType.VIRTUAL_SERVER,
@@ -460,6 +550,15 @@ public class SharePointAdaptor extends AbstractAdaptor
       log.entering("SiteDataClient", "getSiteDocContent",
           new Object[] {request, response, id});
       Web w = getContentWeb(id);
+
+      List<Permission> permissions
+          = w.getACL().getPermissions().getPermission();
+      response.setAcl(generateAcl(permissions, LIST_ITEM_MASK)
+          .setInheritanceType(Acl.InheritanceType.AND_BOTH_PERMIT)
+          .setInheritFrom(siteUrl.equals(webUrl)
+              ? virtualServerDocId : new DocId(siteUrl))
+          .build());
+
       response.setContentType("text/html");
       HtmlResponseWriter writer = createHtmlResponseWriter(response);
       writer.start(request.getDocId(), ObjectType.SITE,
@@ -512,6 +611,14 @@ public class SharePointAdaptor extends AbstractAdaptor
       log.entering("SiteDataClient", "getListDocContent",
           new Object[] {request, response, id});
       com.microsoft.schemas.sharepoint.soap.List l = getContentList(id);
+
+      List<Permission> permissions
+          = l.getACL().getPermissions().getPermission();
+      response.setAcl(generateAcl(permissions, LIST_ITEM_MASK)
+          .setInheritanceType(Acl.InheritanceType.AND_BOTH_PERMIT)
+          .setInheritFrom(new DocId(webUrl))
+          .build());
+
       response.setContentType("text/html");
       HtmlResponseWriter writer = createHtmlResponseWriter(response);
       writer.start(request.getDocId(), ObjectType.LIST,
@@ -560,6 +667,16 @@ public class SharePointAdaptor extends AbstractAdaptor
         if (elementHasName(child, name)) {
           return child;
         }
+      }
+      return null;
+    }
+
+    private <T> T getFirstChildOfType(Xml xml, Class<T> type) {
+      for (Object oChild : xml.getAny()) {
+        if (!type.isInstance(oChild)) {
+          continue;
+        }
+        return type.cast(oChild);
       }
       return null;
     }
@@ -617,6 +734,33 @@ public class SharePointAdaptor extends AbstractAdaptor
       }
     }
 
+    private Acl.Builder generateAcl(List<Permission> permissions,
+        final long necessaryPermissionMask) throws IOException {
+      List<String> permitUsers = new LinkedList<String>();
+      List<String> permitGroups = new LinkedList<String>();
+      MemberIdMapping mapping = getMemberIdMapping();
+      for (Permission permission : permissions) {
+        // Although it is named "mask", this is really a bit-field of
+        // permissions.
+        long mask = permission.getMask().longValue();
+        if ((necessaryPermissionMask & mask) != necessaryPermissionMask) {
+          continue;
+        }
+        Integer id = permission.getMemberid();
+        String userName = mapping.getUserName(id);
+        String groupName = mapping.getGroupName(id);
+        if (userName != null) {
+          permitUsers.add(userName);
+        } else if (groupName != null) {
+          permitGroups.add(groupName);
+        } else {
+          log.log(Level.WARNING, "Could not resolve member id {0}", id);
+        }
+      }
+      return new Acl.Builder().setPermitUsers(permitUsers)
+          .setPermitGroups(permitGroups);
+    }
+
     private void getAspxDocContent(Request request, Response response)
         throws IOException {
       log.entering("SiteDataClient", "getAspxDocContent",
@@ -669,11 +813,48 @@ public class SharePointAdaptor extends AbstractAdaptor
         String listId, String itemId) throws IOException {
       log.entering("SiteDataClient", "getListItemDocContent",
           new Object[] {request, response, listId, itemId});
+      com.microsoft.schemas.sharepoint.soap.List l = getContentList(listId);
       ItemData i = getContentItem(listId, itemId);
-      Xml xml = i.getXml();
 
+      Xml xml = i.getXml();
       Element data = getFirstChildWithName(xml, DATA_ELEMENT);
       Element row = getChildrenWithName(data, ROW_ELEMENT).get(0);
+
+      // This should be in the form of "1234;#{GUID}". We want to extract the
+      // {GUID}.
+      String scopeId
+          = row.getAttribute(OWS_SCOPEID_ATTRIBUTE).split(";#", 2)[1];
+      scopeId = scopeId.toLowerCase(Locale.ENGLISH);
+      // We have to search for the correct scope within the scopes element. The
+      // scope provided in the metadata is for the parent list, not for the item
+      Scopes scopes = getFirstChildOfType(xml, Scopes.class);
+      List<Permission> permissions = null;
+      for (Scopes.Scope scope : scopes.getScope()) {
+        if (scope.getId().toLowerCase(Locale.ENGLISH).equals(scopeId)) {
+          permissions = scope.getPermission();
+          break;
+        }
+      }
+      if (permissions == null) {
+        throw new IOException("Unable to find permission scope for item: "
+            + request.getDocId());
+      }
+      String rawFileDirRef = row.getAttribute(OWS_FILEDIRREF_ATTRIBUTE);
+      // This should be in the form of "1234;#site/list/path". We want to
+      // extract the site/list/path. Path relative to host, even though it
+      // doesn't have a leading '/'.
+      DocId folderDocId = encodeDocId("/" + rawFileDirRef.split(";#")[1]);
+      DocId rootFolderDocId = encodeDocId(l.getMetadata().getRootFolder());
+      DocId listDocId = encodeDocId(l.getMetadata().getDefaultViewUrl());
+      // If the parent is the List, we must use the list's docId instead of
+      // folderDocId, since the root folder is a List and not actually a Folder.
+      DocId parentDocId = folderDocId.equals(rootFolderDocId)
+          ? listDocId : folderDocId;
+      response.setAcl(generateAcl(permissions, LIST_ITEM_MASK)
+          .setInheritanceType(Acl.InheritanceType.AND_BOTH_PERMIT)
+          .setInheritFrom(parentDocId)
+          .build());
+
       // This should be in the form of "1234;#0". We want to extract the 0.
       String type = row.getAttribute(OWS_FSOBJTYPE_ATTRIBUTE).split(";#", 2)[1];
       boolean isFolder = "1".equals(type);
@@ -685,7 +866,6 @@ public class SharePointAdaptor extends AbstractAdaptor
       }
 
       if (isFolder) {
-        com.microsoft.schemas.sharepoint.soap.List l = getContentList(listId);
         String root
             = encodeDocId(l.getMetadata().getRootFolder()).getUniqueId();
         root += "/";
@@ -775,8 +955,18 @@ public class SharePointAdaptor extends AbstractAdaptor
         log.exiting("SiteDataClient", "getAttachmentDocContent", false);
         return false;
       }
+      ItemData itemData = getContentItem(listId, itemId);
+      Xml xml = itemData.getXml();
+      Element data = getFirstChildWithName(xml, DATA_ELEMENT);
+      Element row = getChildrenWithName(data, ROW_ELEMENT).get(0);
+      String listItemUrl = row.getAttribute(OWS_SERVERURL_ATTRIBUTE);
       log.fine("Suspected attachment verified as being a real attachment. "
           + "Proceeding to provide content.");
+      response.setAcl(new Acl.Builder()
+          .setInheritFrom(encodeDocId(listItemUrl))
+          // TODO(ejona): Add setPermitGroups for the special "everyone" group
+          // once it is supported by GSA and Adaptor library.
+          .build());
       getFileDocContent(request, response);
       log.exiting("SiteDataClient", "getAttachmentDocContent", true);
       return true;
@@ -907,6 +1097,23 @@ public class SharePointAdaptor extends AbstractAdaptor
       return !"Unchanged".equals(change) && !"Delete".equals(change);
     }
 
+    private MemberIdMapping retrieveMemberIdMapping() throws IOException {
+      log.entering("SiteDataClient", "retrieveMemberIdMapping");
+      Site site = getContentSite();
+      Map<Integer, String> groupMap = new HashMap<Integer, String>();
+      for (GroupMembership.Group group : site.getGroups().getGroup()) {
+        GroupDescription gd = group.getGroup();
+        groupMap.put(gd.getID(), gd.getName().intern());
+      }
+      Map<Integer, String> userMap = new HashMap<Integer, String>();
+      for (UserDescription user : site.getWeb().getUsers().getUser()) {
+        userMap.put(user.getID(), user.getLoginName().intern());
+      }
+      MemberIdMapping mapping = new MemberIdMapping(userMap, groupMap);
+      log.exiting("SiteDataClient", "retrieveMemberIdMapping", mapping);
+      return mapping;
+    }
+
     private VirtualServer getContentVirtualServer() throws IOException {
       log.entering("SiteDataClient", "getContentVirtualServer");
       Holder<String> result = new Holder<String>();
@@ -931,7 +1138,7 @@ public class SharePointAdaptor extends AbstractAdaptor
         log.exiting("SiteDataClient", "getClientForUrl", null);
         return null;
       }
-      SiteDataClient client = getSiteDataClient(web.value);
+      SiteDataClient client = getSiteDataClient(site.value, web.value);
       log.exiting("SiteDataClient", "getClientForUrl", client);
       return client;
     }
@@ -948,6 +1155,21 @@ public class SharePointAdaptor extends AbstractAdaptor
       ContentDatabase cd = jaxbParse(xml, ContentDatabase.class);
       log.exiting("SiteDataClient", "getContentContentDatabase", cd);
       return cd;
+    }
+
+    private Site getContentSite() throws IOException {
+      log.entering("SiteDataClient", "getContentSite");
+      Holder<String> result = new Holder<String>();
+      final boolean retrieveChildItems = true;
+      // When ObjectType is SITE_COLLECTION, retrieveChildItems is the only
+      // input value consulted.
+      siteData.getContent(ObjectType.SITE_COLLECTION, null, null, null,
+          retrieveChildItems, false, null, result);
+      String xml = result.value;
+      xml = xml.replace("<Site>", "<Site xmlns='" + XMLNS + "'>");
+      Site site = jaxbParse(xml, Site.class);
+      log.exiting("SiteDataClient", "getContentSite", site);
+      return site;
     }
 
     private Web getContentWeb(String id) throws IOException {
@@ -1374,6 +1596,41 @@ public class SharePointAdaptor extends AbstractAdaptor
       } catch (WebServiceException ex) {
         throw new WebServiceIOException(ex);
       }
+    }
+  }
+
+  private class MemberIdMappingCallable implements Callable<MemberIdMapping> {
+    private final String siteUrl;
+
+    public MemberIdMappingCallable(String siteUrl) {
+      if (siteUrl == null) {
+        throw new NullPointerException();
+      }
+      this.siteUrl = siteUrl;
+    }
+
+    @Override
+    public MemberIdMapping call() throws Exception {
+      try {
+        return memberIdsCache.get(siteUrl);
+      } catch (ExecutionException ex) {
+        Throwable cause = ex.getCause();
+        if (cause instanceof Exception) {
+          throw (Exception) cause;
+        } else if (cause instanceof Error) {
+          throw (Error) cause;
+        } else {
+          throw new AssertionError(cause);
+        }
+      }
+    }
+  }
+
+  private class MemberIdsCacheLoader
+      extends CacheLoader<String, MemberIdMapping> {
+    @Override
+    public MemberIdMapping load(String site) throws IOException {
+      return getSiteDataClient(site, site).retrieveMemberIdMapping();
     }
   }
 }
