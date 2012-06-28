@@ -14,6 +14,7 @@
 
 package com.google.enterprise.adaptor.sharepoint;
 
+import static com.google.enterprise.adaptor.sharepoint.SharePointAdaptor.HttpClient;
 import static com.google.enterprise.adaptor.sharepoint.SharePointAdaptor.SiteDataFactory;
 import static org.junit.Assert.*;
 
@@ -39,6 +40,7 @@ import org.junit.*;
 import org.junit.rules.ExpectedException;
 
 import java.io.*;
+import java.net.URL;
 import java.nio.charset.Charset;
 import java.util.concurrent.atomic.AtomicLong;
 
@@ -91,12 +93,19 @@ public class SharePointAdaptorTest {
   @Test
   public void testNullSiteDataFactory() {
     thrown.expect(NullPointerException.class);
-    new SharePointAdaptor(null);
+    new SharePointAdaptor(null, new UnsupportedHttpClient());
+  }
+
+  @Test
+  public void testNullHttpClient() {
+    thrown.expect(NullPointerException.class);
+    new SharePointAdaptor(new UnsupportedSiteDataFactory(), null);
   }
 
   @Test
   public void testInitDestroy() throws IOException {
-    adaptor = new SharePointAdaptor(new UnsupportedSiteDataFactory());
+    adaptor = new SharePointAdaptor(new UnsupportedSiteDataFactory(),
+        new UnsupportedHttpClient());
     adaptor.init(new MockAdaptorContext(config, null));
     adaptor.destroy();
     adaptor = null;
@@ -105,16 +114,9 @@ public class SharePointAdaptorTest {
   @Test
   public void testGetDocContentWrongServer() throws IOException {
     class WrongServerSiteData extends UnsupportedSiteData {
-      private final String endpoint;
-
-      public WrongServerSiteData(String endpoint) {
-        this.endpoint = endpoint;
-      }
-
       @Override
       public void getSiteAndWeb(String strUrl, Holder<Long> getSiteAndWebResult,
           Holder<String> strSite, Holder<String> strWeb) {
-        assertEquals(endpoint, "http://localhost:1/_vti_bin/SiteData.asmx");
         assertEquals("http://wronghost:1/", strUrl);
 
         setValue(getSiteAndWebResult, 1L);
@@ -123,16 +125,55 @@ public class SharePointAdaptorTest {
       }
     }
 
-    adaptor = new SharePointAdaptor(new SiteDataFactory() {
-      @Override
-      public SiteDataSoap newSiteData(String endpoint) {
-        return new WrongServerSiteData(endpoint);
-      }
-    });
+    adaptor = new SharePointAdaptor(
+        new SingleSiteDataFactory(new WrongServerSiteData(),
+          "http://localhost:1/_vti_bin/SiteData.asmx"),
+        new UnsupportedHttpClient());
     adaptor.init(new MockAdaptorContext(config, null));
     ByteArrayOutputStream baos = new ByteArrayOutputStream();
     GetContentsRequest request = new GetContentsRequest(
         new DocId("http://wronghost:1/"));
+    GetContentsResponse response = new GetContentsResponse(baos);
+    adaptor.getDocContent(request, response);
+    assertTrue(response.isNotFound());
+  }
+
+  @Test
+  public void testGetDocContentWrongPage() throws IOException {
+    final String wrongPage = "http://localhost:1/wrongPage";
+    class WrongPageSiteData extends UnsupportedSiteData {
+      @Override
+      public void getSiteAndWeb(String strUrl, Holder<Long> getSiteAndWebResult,
+          Holder<String> strSite, Holder<String> strWeb) {
+        assertEquals(wrongPage, strUrl);
+
+        setValue(getSiteAndWebResult, 0L);
+        setValue(strSite, "http://localhost:1");
+        setValue(strWeb, "http://localhost:1");
+      }
+
+      @Override
+      public void getURLSegments(String strURL,
+          Holder<Boolean> getURLSegmentsResult, Holder<String> strWebID,
+          Holder<String> strBucketID, Holder<String> strListID,
+          Holder<String> strItemID) {
+        assertEquals(wrongPage, strURL);
+
+        setValue(getURLSegmentsResult, false);
+        setValue(strWebID, null);
+        setValue(strBucketID, null);
+        setValue(strListID, null);
+        setValue(strItemID, null);
+      }
+    }
+
+    adaptor = new SharePointAdaptor(
+        new SingleSiteDataFactory(new WrongPageSiteData(),
+          "http://localhost:1/_vti_bin/SiteData.asmx"),
+        new UnsupportedHttpClient());
+    adaptor.init(new MockAdaptorContext(config, null));
+    ByteArrayOutputStream baos = new ByteArrayOutputStream();
+    GetContentsRequest request = new GetContentsRequest(new DocId(wrongPage));
     GetContentsResponse response = new GetContentsResponse(baos);
     adaptor.getDocContent(request, response);
     assertTrue(response.isNotFound());
@@ -190,12 +231,10 @@ public class SharePointAdaptorTest {
       }
     }
 
-    adaptor = new SharePointAdaptor(new SiteDataFactory() {
-      @Override
-      public SiteDataSoap newSiteData(String endpoint) {
-        return new VirtualServerSiteData();
-      }
-    });
+    adaptor = new SharePointAdaptor(
+        new SingleSiteDataFactory(new VirtualServerSiteData(),
+            "http://localhost:1/_vti_bin/SiteData.asmx"),
+        new UnsupportedHttpClient());
     adaptor.init(new MockAdaptorContext(config, null));
     ByteArrayOutputStream baos = new ByteArrayOutputStream();
     GetContentsResponse response = new GetContentsResponse(baos);
@@ -318,7 +357,7 @@ public class SharePointAdaptorTest {
       public SiteDataSoap newSiteData(String endpoint) {
         return new SiteCollectionSiteData(endpoint);
       }
-    });
+    }, new UnsupportedHttpClient());
     adaptor.init(new MockAdaptorContext(config, null));
     ByteArrayOutputStream baos = new ByteArrayOutputStream();
     GetContentsRequest request = new GetContentsRequest(
@@ -345,6 +384,80 @@ public class SharePointAdaptorTest {
         + "<ul><li><a href=\"http://localhost/http://localhost:1/sites/SiteColl"
         + "ection/default.aspx\">default.aspx</a></li></ul>"
         + "</body></html>";
+    assertEquals(golden, responseString);
+  }
+
+  @Test
+  public void testGetDocContentAttachment() throws IOException {
+    final String site = "http://localhost:1";
+    final String attachmentId = site + "/Lists/Custom List/Attachments/2/104600"
+        + "0.pdf";
+    final String listId = site + "/Lists/Custom List/AllItems.aspx";
+    final String listGuid = "{6F33949A-B3FF-4B0C-BA99-93CB518AC2C0}";
+    final String getContentListItemAttachments
+        = "<Item Count=\"1\">"
+        + "<Attachment URL=\"http://localhost:1/Lists/Custom List/Attachments/2"
+        +     "/1046000.pdf\" />"
+        + "</Item>";
+    class ListItemAttachmentsSiteData extends UnsupportedSiteData {
+      @Override
+      public void getSiteAndWeb(String strUrl, Holder<Long> getSiteAndWebResult,
+          Holder<String> strSite, Holder<String> strWeb) {
+        assertEquals(attachmentId, strUrl);
+        setValue(getSiteAndWebResult, 0L);
+        setValue(strSite, site);
+        setValue(strWeb, site);
+      }
+
+      @Override
+      public void getURLSegments(String strURL,
+          Holder<Boolean> getURLSegmentsResult, Holder<String> strWebID,
+          Holder<String> strBucketID, Holder<String> strListID,
+          Holder<String> strItemID) {
+        assertEquals(listId, strURL);
+
+        setValue(getURLSegmentsResult, true);
+        setValue(strWebID, null);
+        setValue(strBucketID, null);
+        setValue(strListID, listGuid);
+        setValue(strItemID, null);
+      }
+
+      @Override
+      public void getContent(ObjectType objectType, String objectId,
+          String folderUrl, String itemId, boolean retrieveChildItems,
+          boolean securityOnly, Holder<String> lastItemIdOnPage,
+          Holder<String> getContentResult) {
+        assertEquals(ObjectType.LIST_ITEM_ATTACHMENTS, objectType);
+        assertEquals(listGuid, objectId);
+        assertEquals("", folderUrl);
+        assertEquals("2", itemId);
+
+        setValue(lastItemIdOnPage, null);
+        setValue(getContentResult, getContentListItemAttachments);
+      }
+    }
+    adaptor = new SharePointAdaptor(
+        new SingleSiteDataFactory(new ListItemAttachmentsSiteData(),
+          "http://localhost:1/_vti_bin/SiteData.asmx"),
+        new HttpClient() {
+      @Override
+      public InputStream issueGetRequest(URL url) {
+        assertEquals(
+          "http://localhost:1/Lists/Custom%20List/Attachments/2/1046000.pdf",
+          url.toString());
+        return new ByteArrayInputStream(
+            "attachment contents".getBytes(charset));
+      }
+    });
+    adaptor.init(new MockAdaptorContext(config, null));
+    ByteArrayOutputStream baos = new ByteArrayOutputStream();
+    GetContentsRequest request = new GetContentsRequest(
+        new DocId(attachmentId));
+    GetContentsResponse response = new GetContentsResponse(baos);
+    adaptor.getDocContent(request, response);
+    String responseString = new String(baos.toByteArray(), charset);
+    final String golden = "attachment contents";
     assertEquals(golden, responseString);
   }
 
@@ -641,16 +754,16 @@ public class SharePointAdaptorTest {
         }
       }
     };
-    SiteDataFactory siteDataFactory = new SingleSiteDataFactory(siteData);
-    adaptor = new SharePointAdaptor(siteDataFactory);
+    adaptor = new SharePointAdaptor(new UnsupportedSiteDataFactory(),
+        new UnsupportedHttpClient());
     adaptor.init(new MockAdaptorContext(config, null));
     ByteArrayOutputStream baos = new ByteArrayOutputStream();
     GetContentsRequest request = new GetContentsRequest(
         new DocId("http://localhost:1/sites/SiteCollection/Lists/Custom List/"
           + "Test Folder/2_.000"));
     GetContentsResponse response = new GetContentsResponse(baos);
-    adaptor.new SiteDataClient("http://localhost:1/sites/SiteCollection",
-        siteDataFactory).getDocContent(request, response);
+    adaptor.new SiteDataClient("http://localhost:1/sites/SiteCollection/",
+        siteData).getDocContent(request, response);
     String responseString = new String(baos.toByteArray(), charset);
     final String golden
         = "<!DOCTYPE html>\n"
@@ -1331,16 +1444,16 @@ public class SharePointAdaptorTest {
         }
       }
     };
-    SiteDataFactory siteDataFactory = new SingleSiteDataFactory(siteData);
-    adaptor = new SharePointAdaptor(siteDataFactory);
+    adaptor = new SharePointAdaptor(new UnsupportedSiteDataFactory(),
+        new UnsupportedHttpClient());
     adaptor.init(new MockAdaptorContext(config, null));
     ByteArrayOutputStream baos = new ByteArrayOutputStream();
     GetContentsRequest request = new GetContentsRequest(
         new DocId("http://localhost:1/sites/SiteCollection/Lists/Custom List/"
           + "Test Folder"));
     GetContentsResponse response = new GetContentsResponse(baos);
-    adaptor.new SiteDataClient("http://localhost:1/sites/SiteCollection",
-        siteDataFactory).getDocContent(request, response);
+    adaptor.new SiteDataClient("http://localhost:1/sites/SiteCollection/",
+        siteData).getDocContent(request, response);
     String responseString = new String(baos.toByteArray(), charset);
     final String golden
         = "<!DOCTYPE html>\n"
@@ -1404,7 +1517,8 @@ public class SharePointAdaptorTest {
 
   @Test
   public void testGetDocIds() throws IOException, InterruptedException {
-    adaptor = new SharePointAdaptor(new UnsupportedSiteDataFactory());
+    adaptor = new SharePointAdaptor(new UnsupportedSiteDataFactory(),
+        new UnsupportedHttpClient());
     AccumulatingDocIdPusher pusher = new AccumulatingDocIdPusher();
     adaptor.init(new MockAdaptorContext(config, pusher));
     assertEquals(0, pusher.getRecords().size());
@@ -1537,8 +1651,10 @@ public class SharePointAdaptorTest {
         }
       }
     };
-    SiteDataFactory siteDataFactory = new SingleSiteDataFactory(siteData);
-    adaptor = new SharePointAdaptor(siteDataFactory);
+    SiteDataFactory siteDataFactory = new SingleSiteDataFactory(siteData,
+          "http://localhost:1/_vti_bin/SiteData.asmx");
+    adaptor = new SharePointAdaptor(siteDataFactory,
+        new UnsupportedHttpClient());
     AccumulatingDocIdPusher pusher = new AccumulatingDocIdPusher();
     adaptor.init(new MockAdaptorContext(config, pusher));
 
@@ -1734,13 +1850,12 @@ public class SharePointAdaptorTest {
         + "</SPWeb>"
         + "</SPSite>"
         + "</SPContentDatabase>";
-    SiteDataFactory siteDataFactory
-        = new SingleSiteDataFactory(new UnsupportedSiteData());
-    adaptor = new SharePointAdaptor(siteDataFactory);
+    adaptor = new SharePointAdaptor(new UnsupportedSiteDataFactory(),
+        new UnsupportedHttpClient());
     AccumulatingDocIdPusher pusher = new AccumulatingDocIdPusher();
     adaptor.init(new MockAdaptorContext(config, pusher));
     SharePointAdaptor.SiteDataClient client = adaptor.new SiteDataClient(
-        "http://localhost:1/sites/SiteCollection", siteDataFactory);
+        "http://localhost:1/sites/SiteCollection/", new UnsupportedSiteData());
 
     SPContentDatabase result
         = parseChanges(client, getChangesContentDatabase);
@@ -1754,11 +1869,11 @@ public class SharePointAdaptorTest {
 
   @Test
   public void testParseError() throws Exception {
-    adaptor = new SharePointAdaptor(new UnsupportedSiteDataFactory());
+    adaptor = new SharePointAdaptor(new UnsupportedSiteDataFactory(),
+        new UnsupportedHttpClient());
     adaptor.init(new MockAdaptorContext(config, null));
     SharePointAdaptor.SiteDataClient client = adaptor.new SiteDataClient(
-        "http://localhost:1/",
-        new SingleSiteDataFactory(new UnsupportedSiteData()));
+        "http://localhost:1/", new UnsupportedSiteData());
     String xml = "<broken";
     thrown.expect(IOException.class);
     client.jaxbParse(xml, SPContentDatabase.class);
@@ -1766,11 +1881,11 @@ public class SharePointAdaptorTest {
 
   @Test
   public void testValidationError() throws Exception {
-    adaptor = new SharePointAdaptor(new UnsupportedSiteDataFactory());
+    adaptor = new SharePointAdaptor(new UnsupportedSiteDataFactory(),
+        new UnsupportedHttpClient());
     adaptor.init(new MockAdaptorContext(config, null));
     SharePointAdaptor.SiteDataClient client = adaptor.new SiteDataClient(
-        "http://localhost:1/",
-        new SingleSiteDataFactory(new UnsupportedSiteData()));
+        "http://localhost:1/", new UnsupportedSiteData());
     // Lacks required child element.
     String xml = "<SPContentDatabase"
         + " xmlns='http://schemas.microsoft.com/sharepoint/soap/'/>";
@@ -1780,11 +1895,11 @@ public class SharePointAdaptorTest {
 
   @Test
   public void testParseUnknownXml() throws Exception {
-    adaptor = new SharePointAdaptor(new UnsupportedSiteDataFactory());
+    adaptor = new SharePointAdaptor(new UnsupportedSiteDataFactory(),
+        new UnsupportedHttpClient());
     adaptor.init(new MockAdaptorContext(config, null));
     SharePointAdaptor.SiteDataClient client = adaptor.new SiteDataClient(
-        "http://localhost:1/",
-        new SingleSiteDataFactory(new UnsupportedSiteData()));
+        "http://localhost:1/", new UnsupportedSiteData());
     // Valid XML, but not any class that we know about.
     String xml = "<html/>";
     thrown.expect(IOException.class);
@@ -1814,14 +1929,25 @@ public class SharePointAdaptorTest {
 
   private static class SingleSiteDataFactory implements SiteDataFactory {
     private final SiteDataSoap siteData;
+    private final String expectedEndpoint;
 
-    public SingleSiteDataFactory(SiteDataSoap siteData) {
+    public SingleSiteDataFactory(SiteDataSoap siteData,
+        String expectedEndpoint) {
       this.siteData = siteData;
+      this.expectedEndpoint = expectedEndpoint;
     }
 
     @Override
     public SiteDataSoap newSiteData(String endpoint) {
+      assertEquals(expectedEndpoint, endpoint);
       return siteData;
+    }
+  }
+
+  private static class UnsupportedHttpClient implements HttpClient {
+    @Override
+    public InputStream issueGetRequest(URL url) {
+      throw new UnsupportedOperationException();
     }
   }
 

@@ -149,18 +149,20 @@ public class SharePointAdaptor extends AbstractAdaptor
   private final ConcurrentSkipListMap<String, String> contentDatabaseChangeId
       = new ConcurrentSkipListMap<String, String>();
   private final SiteDataFactory siteDataFactory;
+  private final HttpClient httpClient;
   private NtlmAuthenticator ntlmAuthenticator;
 
   public SharePointAdaptor() {
-    this(new SiteDataFactoryImpl());
+    this(new SiteDataFactoryImpl(), new HttpClientImpl());
   }
 
   @VisibleForTesting
-  SharePointAdaptor(SiteDataFactory siteDataFactory) {
-    if (siteDataFactory == null) {
+  SharePointAdaptor(SiteDataFactory siteDataFactory, HttpClient httpClient) {
+    if (siteDataFactory == null || httpClient == null) {
       throw new NullPointerException();
     }
     this.siteDataFactory = siteDataFactory;
+    this.httpClient = httpClient;
   }
 
   /**
@@ -332,7 +334,15 @@ public class SharePointAdaptor extends AbstractAdaptor
   private SiteDataClient getSiteDataClient(String site) {
     SiteDataClient client = clients.get(site);
     if (client == null) {
-      client = new SiteDataClient(site, siteDataFactory);
+      if (!site.endsWith("/")) {
+        // Always end with a '/' for a canonical form.
+        site = site + "/";
+      }
+      String endpoint = site + "_vti_bin/SiteData.asmx";
+      ntlmAuthenticator.addToWhitelist(endpoint);
+      SiteDataSoap siteDataSoap = siteDataFactory.newSiteData(endpoint);
+
+      client = new SiteDataClient(site, siteDataSoap);
       clients.putIfAbsent(site, client);
       client = clients.get(site);
     }
@@ -348,17 +358,13 @@ public class SharePointAdaptor extends AbstractAdaptor
     private final CheckedExceptionSiteDataSoap siteData;
     private final String siteUrl;
 
-    public SiteDataClient(String site, SiteDataFactory siteDataFactory) {
+    public SiteDataClient(String site, SiteDataSoap siteDataSoap) {
       log.entering("SiteDataClient", "SiteDataClient",
-          new Object[] {site});
+          new Object[] {site, siteDataSoap});
       if (!site.endsWith("/")) {
-        // Always end with a '/' for a canonical form.
-        site = site + "/";
+        throw new AssertionError();
       }
       this.siteUrl = site;
-      String endpoint = site + "_vti_bin/SiteData.asmx";
-      ntlmAuthenticator.addToWhitelist(endpoint);
-      SiteDataSoap siteDataSoap = siteDataFactory.newSiteData(endpoint);
       siteDataSoap = LoggingWSHandler.create(SiteDataSoap.class, siteDataSoap);
       this.siteData = new CheckedExceptionSiteDataSoapAdapter(siteDataSoap);
       log.exiting("SiteDataClient", "SiteDataClient");
@@ -375,12 +381,14 @@ public class SharePointAdaptor extends AbstractAdaptor
         return;
       }
 
-      Holder<String> webId = new Holder<String>();
       Holder<String> listId = new Holder<String>();
       Holder<String> itemId = new Holder<String>();
-      boolean success = getUrlSegments(request.getDocId().getUniqueId(), webId,
-          listId, itemId);
-      if (!success) {
+      Holder<Boolean> result = new Holder<Boolean>();
+      // No need to retrieve webId, since it isn't populated when you contact a
+      // web's SiteData.asmx page instead of its parent site's.
+      siteData.getURLSegments(request.getDocId().getUniqueId(), result, null,
+          null, listId, itemId);
+      if (!result.value) {
         // It may still be an aspx page.
         if (request.getDocId().getUniqueId().toLowerCase(Locale.ENGLISH)
             .endsWith(".aspx")) {
@@ -392,9 +400,7 @@ public class SharePointAdaptor extends AbstractAdaptor
         log.exiting("SiteDataClient", "getDocContent");
         return;
       }
-      if (webId.value != null) {
-        getSiteDocContent(request, response, webId.value);
-      } else if (itemId.value != null) {
+      if (itemId.value != null) {
         getListItemDocContent(request, response, listId.value, itemId.value);
       } else if (listId.value != null) {
         getListDocContent(request, response, listId.value);
@@ -665,21 +671,22 @@ public class SharePointAdaptor extends AbstractAdaptor
       log.entering("SiteDataClient", "getFileDocContent",
           new Object[] {request, response});
       String url = request.getDocId().getUniqueId();
+      // Because SP is silly, the path of the URI is unencoded, but the rest of
+      // the URI is correct. Thus, we split up the path from the host, and then
+      // turn them into URIs separately, and then turn everything into a
+      // properly-escaped string.
       String[] parts = url.split("/", 4);
+      String host = parts[0] + "/" + parts[1] + "/" + parts[2] + "/";
+      // Host must be properly-encoded already.
+      URI hostUri = URI.create(host);
+      URI pathUri;
       try {
-        url = parts[0] + "/" + parts[1] + "/" + parts[2] + "/" +
-            new URI(null, null, parts[3], null).toASCIIString();
+        pathUri = new URI(null, null, parts[3], null);
       } catch (URISyntaxException ex) {
         throw new IOException(ex);
       }
-      HttpURLConnection conn
-          = (HttpURLConnection) new URL(url).openConnection();
-      conn.setDoInput(true);
-      conn.setDoOutput(false);
-      if (conn.getResponseCode() != HttpURLConnection.HTTP_OK) {
-        throw new IOException("Got status code: " + conn.getResponseCode());
-      }
-      InputStream is = conn.getInputStream();
+      URL finalUrl = hostUri.resolve(pathUri).toURL();
+      InputStream is = httpClient.issueGetRequest(finalUrl);
       IOHelper.copyStream(is, response.getOutputStream());
       is.close();
       log.exiting("SiteDataClient", "getFileDocContent");
@@ -775,8 +782,9 @@ public class SharePointAdaptor extends AbstractAdaptor
       log.log(Level.FINE, "Detected possible attachment: "
           + "listUrl={0}, itemId={1}", new Object[] {listUrl, itemId});
       Holder<String> listIdHolder = new Holder<String>();
-      boolean success = getUrlSegments(listUrl, null, listIdHolder, null);
-      if (!success) {
+      Holder<Boolean> result = new Holder<Boolean>();
+      siteData.getURLSegments(listUrl, result, null, null, listIdHolder, null);
+      if (!result.value) {
         log.fine("Could not get list id from list url");
         log.exiting("SiteDataClient", "getAttachmentDocContent", false);
         return false;
@@ -795,38 +803,14 @@ public class SharePointAdaptor extends AbstractAdaptor
           break;
         }
       }
-      if (verifiedIsAttachment) {
-        log.fine("Suspected attachment verified as being a real attachment. "
-            + "Proceeding to provide content.");
-      } else {
+      if (!verifiedIsAttachment) {
         log.fine("Suspected attachment not listed in item's attachment list");
         log.exiting("SiteDataClient", "getAttachmentDocContent", false);
         return false;
       }
-      // Because SP is silly, the path of the URI is unencoded, but the rest of
-      // the URI is correct. Thus, we split up the path from the host, and then
-      // turn them into URIs separately, and then turn everything into a
-      // properly-escaped string.
-      parts = url.split("/", 4);
-      String host = parts[0] + "/" + parts[1] + "/" + parts[2] + "/";
-      // host must be properly-encoded already.
-      URI hostUri = URI.create(host);
-      URI pathUri;
-      try {
-        pathUri = new URI(null, null, parts[3], null);
-      } catch (URISyntaxException ex) {
-        throw new IOException(ex);
-      }
-      URL finalUrl = hostUri.resolve(pathUri).toURL();
-      HttpURLConnection conn = (HttpURLConnection) finalUrl.openConnection();
-      conn.setDoInput(true);
-      conn.setDoOutput(false);
-      if (conn.getResponseCode() != HttpURLConnection.HTTP_OK) {
-        throw new IOException("Got status code: " + conn.getResponseCode());
-      }
-      InputStream is = conn.getInputStream();
-      IOHelper.copyStream(is, response.getOutputStream());
-      is.close();
+      log.fine("Suspected attachment verified as being a real attachment. "
+          + "Proceeding to provide content.");
+      getFileDocContent(request, response);
       log.exiting("SiteDataClient", "getAttachmentDocContent", true);
       return true;
     }
@@ -866,8 +850,7 @@ public class SharePointAdaptor extends AbstractAdaptor
     private void getModifiedDocIdsSite(SPSite changes, List<DocId> docIds) {
       log.entering("SiteDataClient", "getModifiedDocIdsSite",
           new Object[] {changes, docIds});
-      if (!"Unchanged".equals(changes.getChange())
-          && !"Delete".equals(changes.getChange())) {
+      if (isModified(changes.getChange())) {
         docIds.add(new DocId(changes.getSite().getMetadata().getURL()));
       }
       for (SPWeb web : changes.getSPWeb()) {
@@ -879,8 +862,7 @@ public class SharePointAdaptor extends AbstractAdaptor
     private void getModifiedDocIdsWeb(SPWeb changes, List<DocId> docIds) {
       log.entering("SiteDataClient", "getModifiedDocIdsWeb",
           new Object[] {changes, docIds});
-      if (!"Unchanged".equals(changes.getChange())
-          && !"Delete".equals(changes.getChange())) {
+      if (isModified(changes.getChange())) {
         docIds.add(new DocId(changes.getWeb().getMetadata().getURL()));
       }
       for (Object choice : changes.getSPFolderOrSPListOrSPFile()) {
@@ -900,8 +882,7 @@ public class SharePointAdaptor extends AbstractAdaptor
     private void getModifiedDocIdsFolder(SPFolder changes, List<DocId> docIds) {
       log.entering("SiteDataClient", "getModifiedDocIdsFolder",
           new Object[] {changes, docIds});
-      if (!"Unchanged".equals(changes.getChange())
-          && !"Delete".equals(changes.getChange())) {
+      if (isModified(changes.getChange())) {
         docIds.add(encodeDocId(changes.getDisplayUrl()));
       }
       log.exiting("SiteDataClient", "getModifiedDocIdsFolder");
@@ -910,8 +891,7 @@ public class SharePointAdaptor extends AbstractAdaptor
     private void getModifiedDocIdsList(SPList changes, List<DocId> docIds) {
       log.entering("SiteDataClient", "getModifiedDocIdsList",
           new Object[] {changes, docIds});
-      if (!"Unchanged".equals(changes.getChange())
-          && !"Delete".equals(changes.getChange())) {
+      if (isModified(changes.getChange())) {
         docIds.add(encodeDocId(changes.getDisplayUrl()));
       }
       for (Object choice : changes.getSPViewOrSPListItem()) {
@@ -928,8 +908,7 @@ public class SharePointAdaptor extends AbstractAdaptor
         List<DocId> docIds) {
       log.entering("SiteDataClient", "getModifiedDocIdsListItem",
           new Object[] {changes, docIds});
-      if (!"Unchanged".equals(changes.getChange())
-          && !"Delete".equals(changes.getChange())) {
+      if (isModified(changes.getChange())) {
         Object oData = changes.getListItem().getAny();
         if (!(oData instanceof Element)) {
           log.log(Level.WARNING, "Unexpected object type for data: {0}",
@@ -951,11 +930,14 @@ public class SharePointAdaptor extends AbstractAdaptor
     private void getModifiedDocIdsFile(SPFile changes, List<DocId> docIds) {
       log.entering("SiteDataClient", "getModifiedDocIdsFile",
           new Object[] {changes, docIds});
-      if (!"Unchanged".equals(changes.getChange())
-          && !"Delete".equals(changes.getChange())) {
+      if (isModified(changes.getChange())) {
         docIds.add(encodeDocId(changes.getDisplayUrl()));
       }
       log.exiting("SiteDataClient", "getModifiedDocIdsFile");
+    }
+
+    private boolean isModified(String change) {
+      return !"Unchanged".equals(change) && !"Delete".equals(change);
     }
 
     private VirtualServer getContentVirtualServer() throws IOException {
@@ -985,15 +967,6 @@ public class SharePointAdaptor extends AbstractAdaptor
       SiteDataClient client = getSiteDataClient(web.value);
       log.exiting("SiteDataClient", "getClientForUrl", client);
       return client;
-    }
-
-    private boolean getUrlSegments(String url, Holder<String> webId,
-        Holder<String> listId, Holder<String> itemId) throws IOException {
-      log.entering("SiteDataClient", "getUrlSegments", url);
-      Holder<Boolean> result = new Holder<Boolean>();
-      siteData.getURLSegments(url, result, webId, null, listId, itemId);
-      log.exiting("SiteDataClient", "getUrlSegments", result.value);
-      return result.value;
     }
 
     private ContentDatabase getContentContentDatabase(String id,
@@ -1176,6 +1149,25 @@ public class SharePointAdaptor extends AbstractAdaptor
      * results.
      */
     public C getCursor();
+  }
+
+  @VisibleForTesting
+  interface HttpClient {
+    /** The caller must close() the InputStream after use. */
+    public InputStream issueGetRequest(URL url) throws IOException;
+  }
+
+  private static class HttpClientImpl implements HttpClient {
+    @Override
+    public InputStream issueGetRequest(URL url) throws IOException {
+      HttpURLConnection conn = (HttpURLConnection) url.openConnection();
+      conn.setDoInput(true);
+      conn.setDoOutput(false);
+      if (conn.getResponseCode() != HttpURLConnection.HTTP_OK) {
+        throw new IOException("Got status code: " + conn.getResponseCode());
+      }
+      return conn.getInputStream();
+    }
   }
 
   @VisibleForTesting
