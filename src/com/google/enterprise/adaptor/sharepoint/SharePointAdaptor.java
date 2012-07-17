@@ -429,47 +429,28 @@ public class SharePointAdaptor extends AbstractAdaptor
       return docId;
     }
 
-    private String encodeUrl(String url) {
-      log.entering("SiteDataClient", "encodeUrl", url);
-      URI uri = context.getDocIdEncoder().encodeDocId(encodeDocId(url));
-      String encoded = uri.toASCIIString();
-      log.exiting("SiteDataClient", "encodeUrl", encoded);
-      return encoded;
-    }
-
-    private String liUrl(String url) {
-      // TODO(ejona): Fix raw string concatenation.
-      return "<li><a href=\"" + encodeUrl(url) + "\">" + url + "</a></li>";
-    }
-
     private void getVirtualServerDocContent(Request request, Response response)
         throws IOException {
       log.entering("SiteDataClient", "getVirtualServerDocContent",
           new Object[] {request, response});
       VirtualServer vs = getContentVirtualServer();
       response.setContentType("text/html");
-      Writer writer
-          = new OutputStreamWriter(response.getOutputStream(), CHARSET);
-      writer.write("<!DOCTYPE html>\n"
-          + "<html><head>"
-          + "<title>VirtualServer " + vs.getMetadata().getURL() + "</title>"
-          + "</head>"
-          + "<body>"
-          + "<h1>VirtualServer " + vs.getMetadata().getURL() + "</h1>"
-          + "<p>Sites</p>"
-          + "<ul>");
+      HtmlResponseWriter writer = createHtmlResponseWriter(response);
+      writer.start(request.getDocId(), ObjectType.VIRTUAL_SERVER,
+          vs.getMetadata().getURL());
+
+      writer.startSection(ObjectType.SITE);
       DocIdEncoder encoder = context.getDocIdEncoder();
       for (ContentDatabases.ContentDatabase cdcd
           : vs.getContentDatabases().getContentDatabase()) {
         ContentDatabase cd = getContentContentDatabase(cdcd.getID(), true);
         if (cd.getSites() != null) {
           for (Sites.Site site : cd.getSites().getSite()) {
-            writer.write(liUrl(site.getURL()));
+            writer.addLink(encodeDocId(site.getURL()), null);
           }
         }
       }
-      writer.write("</ul></body></html>");
-      writer.flush();
+      writer.finish();
       log.exiting("SiteDataClient", "getVirtualServerDocContent");
     }
 
@@ -479,58 +460,49 @@ public class SharePointAdaptor extends AbstractAdaptor
           new Object[] {request, response, id});
       Web w = getContentWeb(id);
       response.setContentType("text/html");
-      Writer writer
-          = new OutputStreamWriter(response.getOutputStream(), CHARSET);
-      writer.write("<!DOCTYPE html>\n"
-          + "<html><head>"
-          + "<title>Site " + w.getMetadata().getTitle() + "</title>"
-          + "</head>"
-          + "<body>"
-          + "<h1>Site " + w.getMetadata().getTitle() + "</h1>");
+      HtmlResponseWriter writer = createHtmlResponseWriter(response);
+      writer.start(request.getDocId(), ObjectType.SITE,
+          w.getMetadata().getTitle());
 
       // TODO(ejona): w.getMetadata().getNoIndex()
       DocIdEncoder encoder = context.getDocIdEncoder();
       if (w.getWebs() != null) {
-        writer.write("<p>Sites</p><ul>");
+        writer.startSection(ObjectType.SITE);
         for (Webs.Web web : w.getWebs().getWeb()) {
-          writer.write(liUrl(web.getURL()));
+          writer.addLink(encodeDocId(web.getURL()), web.getURL());
         }
-        writer.write("</ul>");
       }
       if (w.getLists() != null) {
-        writer.write("<p>Lists</p><ul>");
+        writer.startSection(ObjectType.LIST);
         for (Lists.List list : w.getLists().getList()) {
-          writer.write(liUrl(list.getDefaultViewUrl()));
+          writer.addLink(encodeDocId(list.getDefaultViewUrl()),
+              list.getDefaultViewUrl());
         }
-        writer.write("</ul>");
       }
       if (w.getFPFolder() != null) {
         FolderData f = w.getFPFolder();
         if (!f.getFolders().isEmpty()) {
-          writer.write("<p>Folders</p><ul>");
+          writer.startSection(ObjectType.FOLDER);
           for (Folders folders : f.getFolders()) {
             if (folders.getFolder() != null) {
               for (Folders.Folder folder : folders.getFolder()) {
-                writer.write(liUrl(folder.getURL()));
+                writer.addLink(encodeDocId(folder.getURL()), null);
               }
             }
           }
-          writer.write("</ul>");
         }
         if (!f.getFiles().isEmpty()) {
-          writer.write("<p>Files</p><ul>");
+          writer.startSection(ObjectType.LIST_ITEM);
           for (Files files : f.getFiles()) {
             if (files.getFile() != null) {
               for (Files.File file : files.getFile()) {
-                writer.write(liUrl(file.getURL()));
+                writer.addLink(encodeDocId(file.getURL()), null);
               }
             }
           }
-          writer.write("</ul>");
         }
       }
-      writer.write("</body></html>");
-      writer.flush();
+      writer.finish();
       log.exiting("SiteDataClient", "getSiteDocContent");
     }
 
@@ -539,27 +511,26 @@ public class SharePointAdaptor extends AbstractAdaptor
       log.entering("SiteDataClient", "getListDocContent",
           new Object[] {request, response, id});
       com.microsoft.schemas.sharepoint.soap.List l = getContentList(id);
-      processFolder(id, "", response);
+      response.setContentType("text/html");
+      HtmlResponseWriter writer = createHtmlResponseWriter(response);
+      writer.start(request.getDocId(), ObjectType.LIST,
+          l.getMetadata().getTitle());
+      processFolder(id, "", writer);
+      writer.finish();
       log.exiting("SiteDataClient", "getListDocContent");
     }
 
+    /**
+     * {@code writer} should already have had {@link HtmlResponseWriter#start}
+     * called.
+     */
     private void processFolder(String listGuid, String folderPath,
-        Response response) throws IOException {
+        HtmlResponseWriter writer) throws IOException {
       log.entering("SiteDataClient", "processFolder",
-          new Object[] {listGuid, folderPath, response});
-      response.setContentType("text/html");
-      Writer writer
-          = new OutputStreamWriter(response.getOutputStream(), CHARSET);
-      writer.write("<!DOCTYPE html>\n"
-          + "<html><head>"
-          + "<title>Folder " + folderPath + "</title>"
-          + "</head>"
-          + "<body>"
-          + "<h1>Folder " + folderPath + "</h1>");
-
+          new Object[] {listGuid, folderPath, writer});
       Paginator<ItemData> folderPaginator
           = getContentFolder(listGuid, folderPath);
-      writer.write("<p>List items</p><ul>");
+      writer.startSection(ObjectType.LIST_ITEM);
       ItemData folder;
       while ((folder = folderPaginator.next()) != null) {
         Xml xml = folder.getXml();
@@ -568,22 +539,9 @@ public class SharePointAdaptor extends AbstractAdaptor
         for (Element row : getChildrenWithName(data, ROW_ELEMENT)) {
           String rowUrl = row.getAttribute(OWS_SERVERURL_ATTRIBUTE);
           String rowTitle = row.getAttribute(OWS_TITLE_ATTRIBUTE);
-          if ("".equals(rowTitle)) {
-            // Use the last part of the URL if an item doesn't have a title.
-            // The last part of the URL will generally be a filename in this
-            // case.
-            String[] parts = rowUrl.split("/");
-            rowTitle = parts[parts.length - 1];
-          }
-          // TODO(ejona): Fix raw string concatenation.
-          writer.write("<li><a href=\"" + encodeUrl(rowUrl) + "\">" + rowTitle
-              + "</a></li>");
+          writer.addLink(encodeDocId(rowUrl), rowTitle);
         }
       }
-      writer.write("</ul>");
-
-      writer.write("</body></html>");
-      writer.flush();
       log.exiting("SiteDataClient", "processFolder");
     }
 
@@ -712,9 +670,6 @@ public class SharePointAdaptor extends AbstractAdaptor
       String type = row.getAttribute(OWS_FSOBJTYPE_ATTRIBUTE).split(";#", 2)[1];
       boolean isFolder = "1".equals(type);
       String title = row.getAttribute(OWS_TITLE_ATTRIBUTE);
-      if (title == null) {
-        title = "Unknown title";
-      }
       String serverUrl = row.getAttribute(OWS_SERVERURL_ATTRIBUTE);
 
       for (Attr attribute : getAllAttributes(row)) {
@@ -729,7 +684,11 @@ public class SharePointAdaptor extends AbstractAdaptor
         if (!folder.startsWith(root)) {
           throw new AssertionError();
         }
-        processFolder(listId, folder.substring(root.length()), response);
+        response.setContentType("text/html");
+        HtmlResponseWriter writer = createHtmlResponseWriter(response);
+        writer.start(request.getDocId(), ObjectType.FOLDER, null);
+        processFolder(listId, folder.substring(root.length()), writer);
+        writer.finish();
         log.exiting("SiteDataClient", "getListItemDocContent");
         return;
       }
@@ -742,27 +701,19 @@ public class SharePointAdaptor extends AbstractAdaptor
       } else {
         // Some list item.
         response.setContentType("text/html");
-        Writer writer
-            = new OutputStreamWriter(response.getOutputStream(), CHARSET);
-        writer.write("<!DOCTYPE html>\n"
-            + "<html><head>"
-            + "<title>List Item " + title + "</title>"
-            + "</head>"
-            + "<body>"
-            + "<h1>List Item " + title + "</h1>");
+        HtmlResponseWriter writer = createHtmlResponseWriter(response);
+        writer.start(request.getDocId(), ObjectType.LIST_ITEM, title);
         String strAttachments = row.getAttribute(OWS_ATTACHMENTS_ATTRIBUTE);
         int attachments = strAttachments == null
             ? 0 : Integer.parseInt(strAttachments);
         if (attachments > 0) {
-          writer.write("<p>Attachments</p><ul>");
+          writer.startSection(ObjectType.LIST_ITEM_ATTACHMENTS);
           Item item = getContentListItemAttachments(listId, itemId);
           for (Item.Attachment attachment : item.getAttachment()) {
-            writer.write(liUrl(attachment.getURL()));
+            writer.addLink(encodeDocId(attachment.getURL()), null);
           }
-          writer.write("</ul>");
         }
-        writer.write("</body></html>");
-        writer.flush();
+        writer.finish();
       }
       log.exiting("SiteDataClient", "getListItemDocContent");
     }
@@ -1116,6 +1067,15 @@ public class SharePointAdaptor extends AbstractAdaptor
       } catch (JAXBException ex) {
         throw new XmlProcessingException(ex, xml);
       }
+    }
+
+    private HtmlResponseWriter createHtmlResponseWriter(Response response)
+        throws IOException {
+      Writer writer
+          = new OutputStreamWriter(response.getOutputStream(), CHARSET);
+      // TODO(ejona): Get locale from request.
+      return new HtmlResponseWriter(writer, context.getDocIdEncoder(),
+          Locale.ENGLISH);
     }
   }
 

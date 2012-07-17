@@ -241,15 +241,14 @@ public class SharePointAdaptorTest {
     adaptor.getDocContent(new GetContentsRequest(new DocId("")), response);
     String responseString = new String(baos.toByteArray(), charset);
     final String golden = "<!DOCTYPE html>\n"
-        + "<html><head><title>VirtualServer http://localhost:1/</title></head>"
-        + "<body><h1>VirtualServer http://localhost:1/</h1>"
+        + "<html><head><title>Virtual Server http://localhost:1/</title></head>"
+        + "<body><h1>Virtual Server http://localhost:1/</h1>"
         + "<p>Sites</p><ul>"
-        + "<li><a href=\"http://localhost/http://localhost:1\">"
-        + "http://localhost:1</a></li>"
-        + "<li>"
-        + "<a href=\"http://localhost/http://localhost:1/sites/SiteCollection\""
-        + ">"
-        + "http://localhost:1/sites/SiteCollection</a></li>"
+        // These are relative URLs to DocIds that are URLs, and thus the "./"
+        // prefix is correct.
+        + "<li><a href=\"./http://localhost:1\">localhost:1</a></li>"
+        + "<li><a href=\"./http://localhost:1/sites/SiteCollection\">"
+        + "SiteCollection</a></li>"
         + "</ul></body></html>";
     assertEquals(golden, responseString);
   }
@@ -369,20 +368,19 @@ public class SharePointAdaptorTest {
         + "<html><head><title>Site chinese1</title></head>"
         + "<body><h1>Site chinese1</h1>"
         + "<p>Sites</p>"
-        + "<ul><li><a href=\"http://localhost/http://localhost:1/somesite\">"
+        + "<ul><li><a href=\"../somesite\">"
         + "http://localhost:1/somesite</a></li></ul>"
         + "<p>Lists</p>"
-        + "<ul><li><a href=\"http://localhost/http://localhost:1/Lists/Announce"
-        + "ments/AllItems.aspx\">/Lists/Announcements/AllItems.aspx</a></li>"
-        + "<li><a href=\"http://localhost/http://localhost:1/Shared%20Documents"
-        + "/Forms/AllItems.aspx\">/Shared Documents/Forms/AllItems.aspx</a>"
+        + "<ul><li><a href=\"../Lists/Announcements/AllItems.aspx\">"
+        + "/Lists/Announcements/AllItems.aspx</a></li>"
+        + "<li><a href=\"../Shared%20Documents/Forms/AllItems.aspx\">"
+        + "/Shared Documents/Forms/AllItems.aspx</a>"
         + "</li></ul>"
         + "<p>Folders</p>"
-        + "<ul><li><a href=\"http://localhost/http://localhost:1/sites/SiteColl"
-        + "ection/Lists\">Lists</a></li></ul>"
-        + "<p>Files</p>"
-        + "<ul><li><a href=\"http://localhost/http://localhost:1/sites/SiteColl"
-        + "ection/default.aspx\">default.aspx</a></li></ul>"
+        + "<ul><li><a href=\"SiteCollection/Lists\">Lists</a></li></ul>"
+        + "<p>List Items</p>"
+        + "<ul><li><a href=\"SiteCollection/default.aspx\">"
+        + "default.aspx</a></li></ul>"
         + "</body></html>";
     assertEquals(golden, responseString);
   }
@@ -770,10 +768,7 @@ public class SharePointAdaptorTest {
         + "<html><head><title>List Item Inside Folder</title></head>"
         + "<body><h1>List Item Inside Folder</h1>"
         + "<p>Attachments</p><ul>"
-        + "<li><a href=\"http://localhost/http://localhost:1/sites/SiteCollecti"
-        +   "on/Lists/Custom%20List/Attachments/2/1046000.pdf\">"
-        + "http://localhost:1/sites/SiteCollection/Lists/Custom List/Attachment"
-        +   "s/2/1046000.pdf</a></li>"
+        + "<li><a href=\"../Attachments/2/1046000.pdf\">1046000.pdf</a></li>"
         + "</ul></body></html>";
     final Metadata goldenMetadata;
     {
@@ -1457,14 +1452,12 @@ public class SharePointAdaptorTest {
     String responseString = new String(baos.toByteArray(), charset);
     final String golden
         = "<!DOCTYPE html>\n"
-        + "<html><head><title>Folder /Test Folder</title></head>"
-        + "<body><h1>Folder /Test Folder</h1>"
-        + "<p>List items</p>"
+        + "<html><head><title>Folder Test Folder</title></head>"
+        + "<body><h1>Folder Test Folder</h1>"
+        + "<p>List Items</p>"
         + "<ul>"
-        + "<li><a href=\"http://localhost/http://localhost:1/sites/SiteCollecti"
-        + "on/Lists/Custom%20List/Test%20Folder/2_.000\">Inside Folder</a></li>"
-        + "<li><a href=\"http://localhost/http://localhost:1/sites/SiteCollecti"
-        + "on/Lists/Custom%20List/Test%20Folder/testing\">testing</a></li>"
+        + "<li><a href=\"Test%20Folder/2_.000\">Inside Folder</a></li>"
+        + "<li><a href=\"Test%20Folder/testing\">testing</a></li>"
         + "</ul></body></html>";
     final Metadata goldenMetadata;
     {
