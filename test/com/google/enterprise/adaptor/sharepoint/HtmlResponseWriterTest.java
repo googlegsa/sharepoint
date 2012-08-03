@@ -18,16 +18,19 @@ import static org.junit.Assert.*;
 
 import com.google.enterprise.adaptor.Config;
 import com.google.enterprise.adaptor.DocId;
+import com.google.enterprise.adaptor.DocIdPusher;
 
 import com.microsoft.schemas.sharepoint.soap.ObjectType;
 
 import org.junit.*;
 import org.junit.rules.ExpectedException;
 
-import java.io.StringWriter;
+import java.io.ByteArrayOutputStream;
 import java.net.URI;
 import java.net.URISyntaxException;
-import java.util.Locale;
+import java.nio.charset.Charset;
+import java.util.*;
+import java.util.concurrent.ExecutorService;
 
 /**
  * Test cases for {@link HtmlResponseWriter}.
@@ -36,28 +39,95 @@ public class HtmlResponseWriterTest {
   @Rule
   public ExpectedException thrown = ExpectedException.none();
 
+  private DocIdPusher docIdPusher = new UnsupportedDocIdPusher();
   private MockAdaptorContext context = new MockAdaptorContext(
-      new Config(), new AccumulatingDocIdPusher());
-  private StringWriter stringWriter = new StringWriter();
-  private HtmlResponseWriter writer = new HtmlResponseWriter(stringWriter,
-      context.getDocIdEncoder(), Locale.ENGLISH);
+      new Config(), docIdPusher);
+  private ExecutorService executor = new CallerRunsExecutor();
+  private Charset charset = Charset.forName("UTF-8");
+  private ByteArrayOutputStream baos = new ByteArrayOutputStream();
+  private HtmlResponseWriter writer = new HtmlResponseWriter(baos, charset,
+      context.getDocIdEncoder(), Locale.ENGLISH, 1024 * 1024, docIdPusher,
+      executor);
+
+  @After
+  public void shutdown() {
+    executor.shutdownNow();
+  }
 
   @Test
-  public void testConstructorNullWriter() {
+  public void testConstructorNullOutputStream() {
     thrown.expect(NullPointerException.class);
-    new HtmlResponseWriter(null, context.getDocIdEncoder(), Locale.ENGLISH);
+    new HtmlResponseWriter(null, charset, context.getDocIdEncoder(),
+        Locale.ENGLISH, 1024 * 1024, docIdPusher, executor);
+  }
+
+  @Test(expected = NullPointerException.class)
+  public void testConstructorNullCharset() {
+    new HtmlResponseWriter(baos, null, context.getDocIdEncoder(),
+        Locale.ENGLISH, 1024 * 1024, docIdPusher, executor);
   }
 
   @Test
   public void testConstructorNullDocIdEncoder() {
     thrown.expect(NullPointerException.class);
-    new HtmlResponseWriter(new StringWriter(), null, Locale.ENGLISH);
+    new HtmlResponseWriter(baos, charset, null,
+        Locale.ENGLISH, 1024 * 1024, docIdPusher, executor);
   }
 
   @Test
   public void testConstructorNullLocale() {
     thrown.expect(NullPointerException.class);
-    new HtmlResponseWriter(new StringWriter(), context.getDocIdEncoder(), null);
+    new HtmlResponseWriter(baos, charset, context.getDocIdEncoder(),
+        null, 1024 * 1024, docIdPusher, executor);
+  }
+
+  @Test(expected = NullPointerException.class)
+  public void testConstructorNullPusher() {
+    new HtmlResponseWriter(baos, charset, context.getDocIdEncoder(),
+        Locale.ENGLISH, 1024 * 1024, null, executor);
+  }
+
+  @Test(expected = NullPointerException.class)
+  public void testConstructorNullExecutor() {
+    new HtmlResponseWriter(baos, charset, context.getDocIdEncoder(),
+        Locale.ENGLISH, 1024 * 1024, docIdPusher, null);
+  }
+
+  @Test
+  public void testBasicFlow() throws Exception {
+    final String golden = "<!DOCTYPE html>\n"
+        + "<html><head><title>Site s</title></head>"
+        + "<body><h1>Site s</h1>"
+        + "<p>Lists</p>"
+        + "<ul><li><a href=\"s/l\">My List</a></li></ul>"
+        + "</body></html>";
+    writer.start(new DocId("s"), ObjectType.SITE, null);
+    writer.startSection(ObjectType.LIST);
+    writer.addLink(new DocId("s/l"), "My List");
+    writer.finish();
+    assertEquals(golden, new String(baos.toByteArray(), charset));
+  }
+
+  @Test
+  public void testOverflowToDocIdPusher() throws Exception {
+    final String golden = "<!DOCTYPE html>\n"
+        + "<html><head><title>Site s</title></head>"
+        + "<body><h1>Site s</h1>"
+        + "<p>Lists</p>"
+        + "<ul><li><a href=\"s/l\">My List</a></li></ul>"
+        + "</body></html>";
+    final List<DocIdPusher.Record> goldenRecords = Arrays.asList(
+        new DocIdPusher.Record.Builder(new DocId("s/l")).build());
+    AccumulatingDocIdPusher docIdPusher = new AccumulatingDocIdPusher();
+    writer = new HtmlResponseWriter(baos, charset,
+        context.getDocIdEncoder(), Locale.ENGLISH, 1, docIdPusher,
+        executor);
+    writer.start(new DocId("s"), ObjectType.SITE, null);
+    writer.startSection(ObjectType.LIST);
+    writer.addLink(new DocId("s/l"), "My List");
+    writer.finish();
+    assertEquals(golden, new String(baos.toByteArray(), charset));
+    assertEquals(goldenRecords, docIdPusher.getRecords());
   }
 
   @Test
@@ -101,7 +171,7 @@ public class HtmlResponseWriterTest {
     writer.start(new DocId("a"), ObjectType.SITE, "");
     writer.finish();
     writer.close();
-    assertEquals(golden, stringWriter.toString());
+    assertEquals(golden, new String(baos.toByteArray(), charset));
   }
 
   @Test

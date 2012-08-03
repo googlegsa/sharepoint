@@ -15,20 +15,32 @@
 package com.google.enterprise.adaptor.sharepoint;
 
 import com.google.common.annotations.VisibleForTesting;
+import com.google.common.io.CountingOutputStream;
 import com.google.enterprise.adaptor.DocId;
 import com.google.enterprise.adaptor.DocIdEncoder;
+import com.google.enterprise.adaptor.DocIdPusher;
 
 import com.microsoft.schemas.sharepoint.soap.ObjectType;
 
 import java.io.*;
 import java.net.URI;
 import java.net.URISyntaxException;
+import java.nio.charset.Charset;
 import java.text.MessageFormat;
+import java.util.ArrayList;
+import java.util.Collection;
 import java.util.Locale;
+import java.util.concurrent.Executor;
 import java.util.logging.Level;
 import java.util.logging.Logger;
 
 class HtmlResponseWriter implements Closeable {
+  /**
+   * The number of bytes that may be buffered within the streams. It should
+   * error on the side of being too large.
+   */
+  private static final long POSSIBLY_BUFFERED_BYTES = 1024;
+
   private static final Logger log
       = Logger.getLogger(HtmlResponseWriter.class.getName());
 
@@ -51,13 +63,22 @@ class HtmlResponseWriter implements Closeable {
   private final Writer writer;
   private final DocIdEncoder docIdEncoder;
   private final Locale locale;
+  private final long thresholdBytes;
+  private final CountingOutputStream countingOutputStream;
+  private final DocIdPusher pusher;
+  private final Executor executor;
   private DocId docId;
   private URI docUri;
   private State state = State.INITIAL;
+  private final Collection<DocId> overflowDocIds = new ArrayList<DocId>(1024);
 
-  public HtmlResponseWriter(Writer writer, DocIdEncoder docIdEncoder,
-      Locale locale) {
-    if (writer == null) {
+  public HtmlResponseWriter(OutputStream os, Charset charset,
+      DocIdEncoder docIdEncoder, Locale locale, long thresholdBytes,
+      DocIdPusher pusher, Executor executor) {
+    if (os == null) {
+      throw new NullPointerException();
+    }
+    if (charset == null) {
       throw new NullPointerException();
     }
     if (docIdEncoder == null) {
@@ -66,9 +87,19 @@ class HtmlResponseWriter implements Closeable {
     if (locale == null) {
       throw new NullPointerException();
     }
-    this.writer = writer;
+    if (pusher == null) {
+      throw new NullPointerException();
+    }
+    if (executor == null) {
+      throw new NullPointerException();
+    }
+    countingOutputStream = new CountingOutputStream(os);
+    this.writer = new OutputStreamWriter(countingOutputStream, charset);
     this.docIdEncoder = docIdEncoder;
     this.locale = locale;
+    this.thresholdBytes = thresholdBytes;
+    this.pusher = pusher;
+    this.executor = executor;
   }
 
   /**
@@ -124,6 +155,10 @@ class HtmlResponseWriter implements Closeable {
     if (doc == null) {
       throw new NullPointerException();
     }
+    if (countingOutputStream.getCount() + POSSIBLY_BUFFERED_BYTES
+        > thresholdBytes) {
+      overflowDocIds.add(doc);
+    }
     writer.write("<li><a href=\"");
     writer.write(escapeAttributeValue(encodeDocId(doc)));
     writer.write("\">");
@@ -138,6 +173,18 @@ class HtmlResponseWriter implements Closeable {
     log.entering("HtmlResponseWriter", "finish");
     if (state != State.STARTED && state != State.IN_SECTION) {
       throw new IllegalStateException("In unexpected state: " + state);
+    }
+    if (!overflowDocIds.isEmpty()) {
+      executor.execute(new Runnable() {
+        @Override
+        public void run() {
+          try {
+            pusher.pushDocIds(overflowDocIds);
+          } catch (InterruptedException ex) {
+            Thread.currentThread().interrupt();
+          }
+        }
+      });
     }
     checkAndCloseSection();
     writer.write("</body></html>");

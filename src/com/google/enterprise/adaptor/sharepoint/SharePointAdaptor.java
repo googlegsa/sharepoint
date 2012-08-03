@@ -99,8 +99,6 @@ public class SharePointAdaptor extends AbstractAdaptor
     implements PollingIncrementalAdaptor {
   /** Charset used in generated HTML responses. */
   private static final Charset CHARSET = Charset.forName("UTF-8");
-  private static final String GENERATED_HTML_CONTENT_TYPE
-      = "text/html; charset=utf-8";
   private static final String XMLNS_DIRECTORY
       = "http://schemas.microsoft.com/sharepoint/soap/directory/";
 
@@ -228,6 +226,7 @@ public class SharePointAdaptor extends AbstractAdaptor
   private final Callable<ExecutorService> executorFactory;
   private ExecutorService executor;
   private boolean xmlValidation;
+  private long maxIndexableSize;
   /** Authenticator instance that authenticates with SP. */
   /**
    * Cached value of whether we are talking to a SP 2010 server or not. This
@@ -280,6 +279,9 @@ public class SharePointAdaptor extends AbstractAdaptor
     // allow us to improve the schema itself, but also allow enable users to
     // enable checking as a form of debugging.
     config.addKey("sharepoint.xmlValidation", "false");
+    // 2 MB. We need to know how much of the generated HTML the GSA will index,
+    // because the GSA won't see links outside of that content.
+    config.addKey("sharepoint.maxIndexableSize", "2097152");
   }
 
   @Override
@@ -292,6 +294,8 @@ public class SharePointAdaptor extends AbstractAdaptor
         config.getValue("sharepoint.password"));
     xmlValidation = Boolean.parseBoolean(
         config.getValue("sharepoint.xmlValidation"));
+    maxIndexableSize = Integer.parseInt(
+        config.getValue("sharepoint.maxIndexableSize"));
 
     log.log(Level.CONFIG, "VirtualServer: {0}", virtualServer);
     log.log(Level.CONFIG, "Username: {0}", username);
@@ -714,7 +718,6 @@ public class SharePointAdaptor extends AbstractAdaptor
           .setPermitUsers(permitUsers).setPermitGroups(permitGroups)
           .setDenyUsers(denyUsers).setDenyGroups(denyGroups).build());
 
-      response.setContentType(GENERATED_HTML_CONTENT_TYPE);
       HtmlResponseWriter writer = createHtmlResponseWriter(response);
       writer.start(request.getDocId(), ObjectType.VIRTUAL_SERVER,
           vs.getMetadata().getURL());
@@ -822,7 +825,6 @@ public class SharePointAdaptor extends AbstractAdaptor
       }
 
       response.setDisplayUrl(spUrlToUri(w.getMetadata().getURL()));
-      response.setContentType(GENERATED_HTML_CONTENT_TYPE);
       HtmlResponseWriter writer = createHtmlResponseWriter(response);
       writer.start(request.getDocId(), ObjectType.SITE,
           w.getMetadata().getTitle());
@@ -916,7 +918,6 @@ public class SharePointAdaptor extends AbstractAdaptor
 
       response.setDisplayUrl(sharePointUrlToUri(
           l.getMetadata().getDefaultViewUrl()));
-      response.setContentType(GENERATED_HTML_CONTENT_TYPE);
       HtmlResponseWriter writer = createHtmlResponseWriter(response);
       writer.start(request.getDocId(), ObjectType.LIST,
           l.getMetadata().getTitle());
@@ -1003,7 +1004,8 @@ public class SharePointAdaptor extends AbstractAdaptor
       return attrs;
     }
 
-    private void addMetadata(Response response, String name, String value) {
+    private long addMetadata(Response response, String name, String value) {
+      long size = 0;
       if (name.startsWith("ows_")) {
         name = name.substring("ows_".length());
       }
@@ -1016,6 +1018,9 @@ public class SharePointAdaptor extends AbstractAdaptor
             continue;
           }
           response.addMetadata(name, parts[i]);
+          // +30 for per-metadata-possible overhead, just to make sure that we
+          // don't count too few.
+          size += name.length() + parts[i].length() + 30;
         }
       } else if (value.startsWith(";#") && value.endsWith(";#")) {
         // This is a multi-choice field. Values will be in the form:
@@ -1025,10 +1030,17 @@ public class SharePointAdaptor extends AbstractAdaptor
             continue;
           }
           response.addMetadata(name, part);
+          // +30 for per-metadata-possible overhead, just to make sure that we
+          // don't count too few.
+          size += name.length() + part.length() + 30;
         }
       } else {
         response.addMetadata(name, value);
+        // +30 for per-metadata-possible overhead, just to make sure that we
+        // don't count too few.
+        size += name.length() + value.length() + 30;
       }
+      return size;
     }
 
     private Acl.Builder generateAcl(List<Permission> permissions,
@@ -1356,8 +1368,10 @@ public class SharePointAdaptor extends AbstractAdaptor
       String title = row.getAttribute(OWS_TITLE_ATTRIBUTE);
       String serverUrl = row.getAttribute(OWS_SERVERURL_ATTRIBUTE);
 
+      long metadataLength = 0;
       for (Attr attribute : getAllAttributes(row)) {
-        addMetadata(response, attribute.getName(), attribute.getValue());
+        metadataLength
+            += addMetadata(response, attribute.getName(), attribute.getValue());
       }
 
       if (isFolder) {
@@ -1383,8 +1397,8 @@ public class SharePointAdaptor extends AbstractAdaptor
         } catch (URISyntaxException ex) {
           throw new IOException(ex);
         }
-        response.setContentType(GENERATED_HTML_CONTENT_TYPE);
-        HtmlResponseWriter writer = createHtmlResponseWriter(response);
+        HtmlResponseWriter writer
+            = createHtmlResponseWriter(response, metadataLength);
         writer.start(request.getDocId(), ObjectType.FOLDER, null);
         processFolder(listId, folder.substring(root.length()), writer);
         writer.finish();
@@ -1407,8 +1421,8 @@ public class SharePointAdaptor extends AbstractAdaptor
         } catch (URISyntaxException ex) {
           throw new IOException(ex);
         }
-        response.setContentType(GENERATED_HTML_CONTENT_TYPE);
-        HtmlResponseWriter writer = createHtmlResponseWriter(response);
+        HtmlResponseWriter writer
+            = createHtmlResponseWriter(response, metadataLength);
         writer.start(request.getDocId(), ObjectType.LIST_ITEM, title);
         String strAttachments = row.getAttribute(OWS_ATTACHMENTS_ATTRIBUTE);
         int attachments = (strAttachments == null || "".equals(strAttachments))
@@ -1734,11 +1748,17 @@ public class SharePointAdaptor extends AbstractAdaptor
 
     private HtmlResponseWriter createHtmlResponseWriter(Response response)
         throws IOException {
-      Writer writer
-          = new OutputStreamWriter(response.getOutputStream(), CHARSET);
+      return createHtmlResponseWriter(response, 0);
+    }
+
+    private HtmlResponseWriter createHtmlResponseWriter(
+        Response response, long metadataLength) throws IOException {
+      response.setContentType("text/html; charset=utf-8");
       // TODO(ejona): Get locale from request.
-      return new HtmlResponseWriter(writer, context.getDocIdEncoder(),
-          Locale.ENGLISH);
+      return new HtmlResponseWriter(response.getOutputStream(), CHARSET,
+          context.getDocIdEncoder(), Locale.ENGLISH,
+          maxIndexableSize - metadataLength, context.getDocIdPusher(),
+          executor);
     }
 
     public SiteDataClient getSiteDataClient() {
