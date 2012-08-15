@@ -457,6 +457,7 @@ xmlns:rs="urn:schemas-microsoft-com:rowset" xmlns:s="http://www.w3.org/2001/XMLS
         <s:attribute name="RootFolder" type="s:string" use="required"/>
         <s:attribute name="ReadSecurity" type="s:int" use="required"/>
         <s:attribute name="NoIndex" type="tns:TrueFalseType" use="required"/>
+        <s:attribute name="UseFormsForDisplay" type="tns:TrueFalseType" use="optional"/>
         <s:attribute name="BaseType" type="tns:ListBaseType" use="required"/>
         <s:attribute name="BaseTemplate" type="tns:ListBaseTemplate" use="required"/>
         <s:attribute name="Author" type="s:string" use="required"/>
@@ -937,6 +938,7 @@ xmlns:rs="urn:schemas-microsoft-com:rowset" xmlns:s="http://www.w3.org/2001/XMLS
         <s:attribute name='Notes' type='s:string' use='required' />
         <s:attribute name='ID' type='s:int' use='required' />
         <s:attribute name='IsSiteAdmin' type= 'tns:TrueFalseType' use='required'/>
+        <s:attribute name='Flags' type='s:int' use='optional'/>
       </s:complexType>
 
       <s:complexType name="Lists">
