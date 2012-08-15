@@ -687,6 +687,7 @@ public class SharePointAdaptor extends AbstractAdaptor
         com.microsoft.schemas.sharepoint.soap.List l = getContentList(listId);
         String root
             = encodeDocId(l.getMetadata().getRootFolder()).getUniqueId();
+        root += "/";
         String folder = encodeDocId(serverUrl).getUniqueId();
         if (!folder.startsWith(root)) {
           throw new AssertionError();

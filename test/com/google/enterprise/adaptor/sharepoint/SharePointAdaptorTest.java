@@ -1437,7 +1437,7 @@ public class SharePointAdaptorTest {
           assertEquals(false, securityOnly);
           assertEquals("{6F33949A-B3FF-4B0C-BA99-93CB518AC2C0}", objectId);
           assertEquals(null, itemId);
-          assertEquals("/Test Folder", folderUrl);
+          assertEquals("Test Folder", folderUrl);
           setValue(getContentResult, getContentFolderResponse);
           setValue(lastItemIdOnPage, null);
         } else {
