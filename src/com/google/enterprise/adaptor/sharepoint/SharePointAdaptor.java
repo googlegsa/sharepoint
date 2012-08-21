@@ -186,7 +186,8 @@ public class SharePointAdaptor extends AbstractAdaptor
     Config config = context.getConfig();
     virtualServer = config.getValue("sharepoint.server");
     String username = config.getValue("sharepoint.username");
-    String password = config.getValue("sharepoint.password");
+    String password = context.getSensitiveValueDecoder().decodeValue(
+        config.getValue("sharepoint.password"));
 
     log.log(Level.CONFIG, "VirtualServer: {0}", virtualServer);
     log.log(Level.CONFIG, "Username: {0}", username);

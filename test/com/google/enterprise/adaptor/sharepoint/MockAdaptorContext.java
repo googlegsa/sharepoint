@@ -45,6 +45,13 @@ class MockAdaptorContext implements AdaptorContext {
   };
   private final Config config;
   private final DocIdPusher pusher;
+  private final SensitiveValueDecoder sensitiveValueDecoder
+      = new SensitiveValueDecoder() {
+    @Override
+    public String decodeValue(String nonReadable) {
+      return nonReadable;
+    }
+  };
 
   public MockAdaptorContext(Config config, DocIdPusher pusher) {
     if (config == null) {
@@ -85,7 +92,7 @@ class MockAdaptorContext implements AdaptorContext {
 
   @Override
   public SensitiveValueDecoder getSensitiveValueDecoder() {
-    throw new UnsupportedOperationException();
+    return sensitiveValueDecoder;
   }
 
   @Override
