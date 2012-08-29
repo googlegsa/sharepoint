@@ -651,9 +651,16 @@ public class SharePointAdaptor extends AbstractAdaptor
         throw new IOException(ex);
       }
       URL finalUrl = hostUri.resolve(pathUri).toURL();
-      InputStream is = httpClient.issueGetRequest(finalUrl);
-      IOHelper.copyStream(is, response.getOutputStream());
-      is.close();
+      FileInfo fi = httpClient.issueGetRequest(finalUrl);
+      try {
+        String contentType = fi.getFirstHeaderWithName("Content-Type");
+        if (contentType != null) {
+          response.setContentType(contentType);
+        }
+        IOHelper.copyStream(fi.getContents(), response.getOutputStream());
+      } finally {
+        fi.getContents().close();
+      }
       log.exiting("SiteDataClient", "getFileDocContent");
     }
 
@@ -1119,21 +1126,114 @@ public class SharePointAdaptor extends AbstractAdaptor
   }
 
   @VisibleForTesting
+  static class FileInfo {
+    /** Non-null contents. */
+    private final InputStream contents;
+    /** Non-null headers. */
+    private final List<String> headers;
+
+    private FileInfo(InputStream contents, List<String> headers) {
+      this.contents = contents;
+      this.headers = headers;
+    }
+
+    public InputStream getContents() {
+      return contents;
+    }
+
+    public int getHeaderCount() {
+      return headers.size() / 2;
+    }
+
+    public String getHeaderName(int i) {
+      return headers.get(2 * i);
+    }
+
+    public String getHeaderValue(int i) {
+      return headers.get(2 * i + 1);
+    }
+
+    /**
+     * Find the first header with {@code name}, ignoring case.
+     */
+    public String getFirstHeaderWithName(String name) {
+      String nameLowerCase = name.toLowerCase(Locale.ENGLISH);
+      for (int i = 0; i < getHeaderCount(); i++) {
+        String headerNameLowerCase
+            = getHeaderName(i).toLowerCase(Locale.ENGLISH);
+        if (headerNameLowerCase.equals(nameLowerCase)) {
+          return getHeaderValue(i);
+        }
+      }
+      return null;
+    }
+
+    public static class Builder {
+      private InputStream contents;
+      private List<String> headers = Collections.emptyList();
+
+      public Builder(InputStream contents) {
+        setContents(contents);
+      }
+
+      public Builder setContents(InputStream contents) {
+        if (contents == null) {
+          throw new NullPointerException();
+        }
+        this.contents = contents;
+        return this;
+      }
+
+      public Builder setHeaders(List<String> headers) {
+        if (headers == null) {
+          throw new NullPointerException();
+        }
+        if (headers.size() % 2 != 0) {
+          throw new IllegalArgumentException(
+              "headers must have an even number of elements");
+        }
+        this.headers = Collections.unmodifiableList(
+            new ArrayList<String>(headers));
+        return this;
+      }
+
+      public FileInfo build() {
+        return new FileInfo(contents, headers);
+      }
+    }
+  }
+
+  @VisibleForTesting
   interface HttpClient {
-    /** The caller must close() the InputStream after use. */
-    public InputStream issueGetRequest(URL url) throws IOException;
+    /**
+     * The caller must call {@code fileInfo.getContents().close()} after use.
+     */
+    public FileInfo issueGetRequest(URL url) throws IOException;
   }
 
   private static class HttpClientImpl implements HttpClient {
     @Override
-    public InputStream issueGetRequest(URL url) throws IOException {
+    public FileInfo issueGetRequest(URL url) throws IOException {
       HttpURLConnection conn = (HttpURLConnection) url.openConnection();
       conn.setDoInput(true);
       conn.setDoOutput(false);
       if (conn.getResponseCode() != HttpURLConnection.HTTP_OK) {
         throw new IOException("Got status code: " + conn.getResponseCode());
       }
-      return conn.getInputStream();
+      List<String> headers = new LinkedList<String>();
+      // Start at 1 since index 0 is special.
+      for (int i = 1;; i++) {
+        String key = conn.getHeaderFieldKey(i);
+        if (key == null) {
+          break;
+        }
+        String value = conn.getHeaderField(i);
+        headers.add(key);
+        headers.add(value);
+      }
+      log.log(Level.FINER, "Response HTTP headers: {0}", headers);
+      return new FileInfo.Builder(conn.getInputStream()).setHeaders(headers)
+          .build();
     }
   }
 

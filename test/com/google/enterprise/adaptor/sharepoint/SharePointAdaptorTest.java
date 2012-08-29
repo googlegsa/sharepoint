@@ -14,6 +14,7 @@
 
 package com.google.enterprise.adaptor.sharepoint;
 
+import static com.google.enterprise.adaptor.sharepoint.SharePointAdaptor.FileInfo;
 import static com.google.enterprise.adaptor.sharepoint.SharePointAdaptor.HttpClient;
 import static com.google.enterprise.adaptor.sharepoint.SharePointAdaptor.SiteDataFactory;
 import static org.junit.Assert.*;
@@ -42,6 +43,7 @@ import org.junit.rules.ExpectedException;
 import java.io.*;
 import java.net.URL;
 import java.nio.charset.Charset;
+import java.util.*;
 import java.util.concurrent.atomic.AtomicLong;
 
 import javax.xml.ws.Holder;
@@ -435,17 +437,22 @@ public class SharePointAdaptorTest {
         setValue(getContentResult, getContentListItemAttachments);
       }
     }
+    final String goldenContents = "attachment contents";
+    final String goldenContentType = "fake/type";
     adaptor = new SharePointAdaptor(
         new SingleSiteDataFactory(new ListItemAttachmentsSiteData(),
           "http://localhost:1/_vti_bin/SiteData.asmx"),
         new HttpClient() {
       @Override
-      public InputStream issueGetRequest(URL url) {
+      public FileInfo issueGetRequest(URL url) {
         assertEquals(
           "http://localhost:1/Lists/Custom%20List/Attachments/2/1046000.pdf",
           url.toString());
-        return new ByteArrayInputStream(
-            "attachment contents".getBytes(charset));
+        InputStream contents = new ByteArrayInputStream(
+            goldenContents.getBytes(charset));
+        List<String> headers = Arrays.asList("not-the-Content-Type", "early",
+            "conTent-TypE", goldenContentType, "Content-Type", "late");
+        return new FileInfo.Builder(contents).setHeaders(headers).build();
       }
     });
     adaptor.init(new MockAdaptorContext(config, null));
@@ -455,8 +462,8 @@ public class SharePointAdaptorTest {
     GetContentsResponse response = new GetContentsResponse(baos);
     adaptor.getDocContent(request, response);
     String responseString = new String(baos.toByteArray(), charset);
-    final String golden = "attachment contents";
-    assertEquals(golden, responseString);
+    assertEquals(goldenContents, responseString);
+    assertEquals(goldenContentType, response.getContentType());
   }
 
   @Test
@@ -1899,6 +1906,36 @@ public class SharePointAdaptorTest {
     client.jaxbParse(xml, SPContentDatabase.class);
   }
 
+  @Test
+  public void testFileInfoGetFirstHeaderWithNameMissing() {
+    FileInfo fi = new FileInfo.Builder(new ByteArrayInputStream(new byte[0]))
+        .setHeaders(Arrays.asList("Some-Header", "somevalue")).build();
+    assertEquals("somevalue", fi.getFirstHeaderWithName("some-heaDer"));
+    assertNull(fi.getFirstHeaderWithName("Missing-Header"));
+  }
+
+  @Test
+  public void testFileInfoNullContents() {
+    thrown.expect(NullPointerException.class);
+    new FileInfo.Builder(null);
+  }
+
+  @Test
+  public void testFileInfoNullHeaders() {
+    FileInfo.Builder builder
+        = new FileInfo.Builder(new ByteArrayInputStream(new byte[0]));
+    thrown.expect(NullPointerException.class);
+    builder.setHeaders(null);
+  }
+
+  @Test
+  public void testFileInfoOddHeadersLength() {
+    FileInfo.Builder builder
+        = new FileInfo.Builder(new ByteArrayInputStream(new byte[0]));
+    thrown.expect(IllegalArgumentException.class);
+    builder.setHeaders(Arrays.asList("odd-length"));
+  }
+
   private <T> void setValue(Holder<T> holder, T value) {
     if (holder != null) {
       holder.value = value;
@@ -1939,7 +1976,7 @@ public class SharePointAdaptorTest {
 
   private static class UnsupportedHttpClient implements HttpClient {
     @Override
-    public InputStream issueGetRequest(URL url) {
+    public FileInfo issueGetRequest(URL url) {
       throw new UnsupportedOperationException();
     }
   }
