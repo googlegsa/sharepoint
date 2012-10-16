@@ -18,6 +18,8 @@
   <property name="resource.dir" location="resources"/>
   <property name="lib.dir" location="lib"/>
   <property name="junit.jar" location="${lib.dir}/junit-4.8.2.jar"/>
+  <property name="adaptor.class"
+    value="com.google.enterprise.adaptor.sharepoint.SharePointAdaptor"/>
   <property name="adaptor.args" value=""/>
   <property name="cobertura.dir" value="${basedir}/../cobertura/"/>
   <!-- Adaptor suffix for distribution files. Useful for placing version numbers
@@ -162,6 +164,52 @@ lib/plexi submodule or add the the command line argument
     <mkdir dir="${build.dir}/dist"/>
     <mkdir dir="${build.dir}/dist/staging"/>
     <mkdir dir="${dist.dir}"/>
+
+    <!-- adaptor-sharepoint.jar -->
+    <!-- Concatenate dependent JARs together into a comma-delimited list. -->
+    <pathconvert pathsep=" " refid="adaptor.run.classpath"
+      property="tmp.adaptor.classpath">
+      <mapper type="flatten"/>
+      <map from="" to="lib/"/>
+    </pathconvert>
+    <jar destfile="${dist.staging.dir}/adaptor-sharepoint${adaptor.suffix}.jar"
+      basedir="${build-src.dir}">
+      <fileset dir="${build-generate.dir}"/>
+      <manifest>
+        <attribute name="Main-Class" value="${adaptor.class}"/>
+        <attribute name="Class-Path" value="${tmp.adaptor.classpath}"/>
+      </manifest>
+    </jar>
+
+    <!-- lib/ -->
+    <!-- Concatenate dependent JARs together into a comma-delimited list. -->
+    <pathconvert pathsep="," refid="adaptor.run.classpath"
+      property="tmp.adaptor.fileset">
+      <!-- We remove the lib.dir from the paths to prevent trouble with comma
+           and space in lib.dir. It also makes it nicer <echo>ing
+           tmp.adaptorlib.fileset. -->
+      <map from="${lib.dir}/" to=""/>
+    </pathconvert>
+    <copy todir="${dist.staging.dir}/lib" flatten="true">
+      <fileset dir="${lib.dir}" includes="${tmp.adaptor.fileset}"/>
+    </copy>
+
+    <!-- adaptor-sharepoint-withlib.jar -->
+    <jar filesetmanifest="mergewithoutmain"
+      destfile="${dist.staging.dir}/adaptor-sharepoint${adaptor.suffix}-withlib.jar">
+      <zipfileset
+        src="${dist.staging.dir}/adaptor-sharepoint${adaptor.suffix}.jar"/>
+      <zipgroupfileset dir="${dist.staging.dir}/lib"/>
+      <manifest>
+        <attribute name="Main-Class" value="${adaptor.class}"/>
+      </manifest>
+    </jar>
+
+    <!-- adaptor-bin.zip -->
+    <move file="${dist.staging.dir}"
+      tofile="${build.dir}/dist/adaptor-sharepoint${adaptor.suffix}"/>
+    <zip destfile="${dist.dir}/adaptor-sharepoint${adaptor.suffix}-bin.zip"
+      basedir="${build.dir}/dist/adaptor-sharepoint${adaptor.suffix}"/>
   </target>
 
   <target name="clean" description="Remove build output">
@@ -170,8 +218,7 @@ lib/plexi submodule or add the the command line argument
   </target>
 
   <target name="run" depends="build" description="Run default adaptor">
-    <java classpath="${build-src.dir}" fork="true"
-      classname="com.google.enterprise.adaptor.sharepoint.SharePointAdaptor">
+    <java classpath="${build-src.dir}" fork="true" classname="${adaptor.class}">
       <classpath refid="adaptor.run.classpath"/>
       <classpath location="${build-generate.dir}"/>
       <sysproperty key="java.util.logging.config.file"
