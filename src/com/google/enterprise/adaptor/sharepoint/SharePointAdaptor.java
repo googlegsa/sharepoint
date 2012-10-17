@@ -825,20 +825,35 @@ public class SharePointAdaptor extends AbstractAdaptor
       String scopeId
           = row.getAttribute(OWS_SCOPEID_ATTRIBUTE).split(";#", 2)[1];
       scopeId = scopeId.toLowerCase(Locale.ENGLISH);
-      // We have to search for the correct scope within the scopes element. The
-      // scope provided in the metadata is for the parent list, not for the item
-      Scopes scopes = getFirstChildOfType(xml, Scopes.class);
+
       List<Permission> permissions = null;
-      for (Scopes.Scope scope : scopes.getScope()) {
-        if (scope.getId().toLowerCase(Locale.ENGLISH).equals(scopeId)) {
-          permissions = scope.getPermission();
-          break;
+      if (i.getMetadata().getScope().getId().toLowerCase(Locale.ENGLISH)
+          .equals(scopeId)) {
+        // The list and item share the same scope. The scope won't always be
+        // within the <xml> tag and thus we are forced to check this location as
+        // well.
+        permissions
+            = i.getMetadata().getScope().getPermissions().getPermission();
+      }
+
+      if (permissions == null) {
+        // We have to search for the correct scope within the scopes element.
+        // The scope provided in the metadata is for the parent list, not for
+        // the item
+        Scopes scopes = getFirstChildOfType(xml, Scopes.class);
+        for (Scopes.Scope scope : scopes.getScope()) {
+          if (scope.getId().toLowerCase(Locale.ENGLISH).equals(scopeId)) {
+            permissions = scope.getPermission();
+            break;
+          }
         }
       }
+
       if (permissions == null) {
         throw new IOException("Unable to find permission scope for item: "
             + request.getDocId());
       }
+
       String rawFileDirRef = row.getAttribute(OWS_FILEDIRREF_ATTRIBUTE);
       // This should be in the form of "1234;#site/list/path". We want to
       // extract the site/list/path. Path relative to host, even though it
