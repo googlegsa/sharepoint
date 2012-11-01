@@ -797,6 +797,10 @@ public class SharePointAdaptor extends AbstractAdaptor
       }
       URL finalUrl = hostUri.resolve(pathUri).toURL();
       FileInfo fi = httpClient.issueGetRequest(finalUrl);
+      if (fi == null) {
+        response.respondNotFound();
+        return;
+      }
       try {
         String contentType = fi.getFirstHeaderWithName("Content-Type");
         if (contentType != null) {
@@ -1449,6 +1453,8 @@ public class SharePointAdaptor extends AbstractAdaptor
   interface HttpClient {
     /**
      * The caller must call {@code fileInfo.getContents().close()} after use.
+     *
+     * @return {@code null} if not found, {@code FileInfo} instance otherwise
      */
     public FileInfo issueGetRequest(URL url) throws IOException;
   }
@@ -1459,6 +1465,9 @@ public class SharePointAdaptor extends AbstractAdaptor
       HttpURLConnection conn = (HttpURLConnection) url.openConnection();
       conn.setDoInput(true);
       conn.setDoOutput(false);
+      if (conn.getResponseCode() == HttpURLConnection.HTTP_NOT_FOUND) {
+        return null;
+      }
       if (conn.getResponseCode() != HttpURLConnection.HTTP_OK) {
         throw new IOException("Got status code: " + conn.getResponseCode());
       }
