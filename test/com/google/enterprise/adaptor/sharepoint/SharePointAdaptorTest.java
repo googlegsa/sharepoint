@@ -3030,6 +3030,96 @@ public class SharePointAdaptorTest {
   }
 
   @Test
+  public void testModifiedGetDocIdsBrokenSP2010() throws IOException,
+         InterruptedException {
+    final String getContentVirtualServer
+        = "<VirtualServer>"
+        + "<Metadata URL=\"http://localhost:1/\" />"
+        + "<ContentDatabases>"
+        + "<ContentDatabase ID=\"{4fb7dea1-2912-4927-9eda-1ea2f0977cf8}\" />"
+        + "</ContentDatabases>"
+        + "<Policies AnonymousGrantMask=\"0\" AnonymousDenyMask=\"0\">"
+        + "<PolicyUser LoginName=\"NT AUTHORITY\\LOCAL SERVICE\""
+        + " Sid=\"S-1-5-19\" GrantMask=\"4611686224789442657\" DenyMask=\"0\"/>"
+        + "<PolicyUser LoginName=\"GDC-PSL\\spuser1\""
+        + " Sid=\"S-1-5-21-736914693-3137354690-2813686979-1130\""
+        + " GrantMask=\"4611686224789442657\" DenyMask=\"0\"/>"
+        + "<PolicyUser LoginName=\"GDC-PSL\\Administrator\""
+        + " Sid=\"S-1-5-21-736914693-3137354690-2813686979-500\""
+        + " GrantMask=\"9223372036854775807\" DenyMask=\"0\"/>"
+        + "</Policies></VirtualServer>";
+    final String getContentContentDatabase4fb
+        = "<ContentDatabase>"
+        + "<Metadata ChangeId=\"1;0;4fb7dea1-2912-4927-9eda-1ea2f0977cf8;634727"
+        +   "056594000000;603\""
+        + " ID=\"{4fb7dea1-2912-4927-9eda-1ea2f0977cf8}\" />"
+        + "</ContentDatabase>";
+    final String getChangesContentDatabase4fb
+        = "<SPContentDatabase Change=\"Unchanged\" ItemCount=\"0\">"
+        + "<ContentDatabase>"
+        + "<Metadata ChangeId=\"1;0;4fb7dea1-2912-4927-9eda-1ea2f0977cf9;634727"
+        +   "056595000000;604\""
+        + " ID=\"{4fb7dea1-2912-4927-9eda-1ea2f0977cf8}\" />"
+        + "</ContentDatabase></SPContentDatabase>";
+    final AtomicLong atomicNumberGetChangesCalls = new AtomicLong(0);
+    SiteDataSoap siteData = new UnsupportedSiteData() {
+      @Override
+      public void getContent(ObjectType objectType, String objectId,
+          String folderUrl, String itemId, boolean retrieveChildItems,
+          boolean securityOnly, Holder<String> lastItemIdOnPage,
+          Holder<String> getContentResult) {
+        setValue(lastItemIdOnPage, null);
+        if (ObjectType.VIRTUAL_SERVER.equals(objectType)) {
+          assertEquals(true, retrieveChildItems);
+          assertEquals(false, securityOnly);
+          setValue(getContentResult, getContentVirtualServer);
+        } else if (ObjectType.CONTENT_DATABASE.equals(objectType)) {
+          assertEquals("{4fb7dea1-2912-4927-9eda-1ea2f0977cf8}", objectId);
+          assertEquals(false, retrieveChildItems);
+          assertEquals(false, securityOnly);
+          setValue(getContentResult, getContentContentDatabase4fb);
+        } else {
+          throw new AssertionError();
+        }
+      }
+
+      @Override
+      public void getChanges(ObjectType objectType, String contentDatabaseId,
+          Holder<String> lastChangeId, Holder<String> currentChangeId,
+          Integer timeout, Holder<String> getChangesResult,
+          Holder<Boolean> moreChanges) {
+        atomicNumberGetChangesCalls.getAndIncrement();
+        assertEquals(ObjectType.CONTENT_DATABASE, objectType);
+        assertEquals("{4fb7dea1-2912-4927-9eda-1ea2f0977cf8}",
+            contentDatabaseId);
+        assertEquals(
+            "1;0;4fb7dea1-2912-4927-9eda-1ea2f0977cf8;634727056594000000;603",
+            lastChangeId.value);
+        // Purposefully make lastChangeId != currentChangeId, because SP 2010
+        // has been known to do this.
+        setValue(currentChangeId, "1;0;4fb7dea1-2912-4927-9eda-1ea2f0977cf9;634"
+            + "727056595000000;604");
+        setValue(getChangesResult, getChangesContentDatabase4fb);
+        setValue(moreChanges, false);
+      }
+    };
+    SiteDataFactory siteDataFactory = new SingleSiteDataFactory(siteData,
+          "http://localhost:1/_vti_bin/SiteData.asmx");
+    adaptor = new SharePointAdaptor(siteDataFactory,
+        new UnsupportedHttpClient());
+    AccumulatingDocIdPusher pusher = new AccumulatingDocIdPusher();
+    adaptor.init(new MockAdaptorContext(config, pusher));
+
+    // Initialize changeIds.
+    adaptor.getModifiedDocIds(pusher);
+    assertEquals(0, atomicNumberGetChangesCalls.get());
+
+    // Check for changes. This should not go into an infinite loop.
+    adaptor.getModifiedDocIds(pusher);
+    assertEquals(1, atomicNumberGetChangesCalls.get());
+  }
+
+  @Test
   public void testModifiedGetDocIdsClient() throws IOException,
       InterruptedException {
     final String getChangesContentDatabase
