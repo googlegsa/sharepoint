@@ -210,6 +210,10 @@ xmlns:rs="urn:schemas-microsoft-com:rowset" xmlns:s="http://www.w3.org/2001/XMLS
         <s:enumeration value="Categories"/>
         <s:enumeration value="IssueTracking"/>
         <s:enumeration value="AdminTasks"/>
+        <s:enumeration value="Circulation"/>
+        <s:enumeration value="CallTrack"/>
+        <s:enumeration value="Whereabouts"/>
+        <s:enumeration value="Facility"/>
         </s:restriction>
       </s:simpleType>
       <s:complexType name="ArrayOf_sProperty">
@@ -774,7 +778,7 @@ xmlns:rs="urn:schemas-microsoft-com:rowset" xmlns:s="http://www.w3.org/2001/XMLS
               <s:complexType>
                 <s:sequence>
                   <s:element name="permission" type="tns:permission"
-                    maxOccurs="unbounded"/>
+                    minOccurs="0" maxOccurs="unbounded"/>
                 </s:sequence>
                 <s:attribute name="id" type="s:string" use="required"/>
               </s:complexType>

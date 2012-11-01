@@ -908,7 +908,7 @@ public class SharePointAdaptor extends AbstractAdaptor
         HtmlResponseWriter writer = createHtmlResponseWriter(response);
         writer.start(request.getDocId(), ObjectType.LIST_ITEM, title);
         String strAttachments = row.getAttribute(OWS_ATTACHMENTS_ATTRIBUTE);
-        int attachments = strAttachments == null
+        int attachments = (strAttachments == null || "".equals(strAttachments))
             ? 0 : Integer.parseInt(strAttachments);
         if (attachments > 0) {
           writer.startSection(ObjectType.LIST_ITEM_ATTACHMENTS);
