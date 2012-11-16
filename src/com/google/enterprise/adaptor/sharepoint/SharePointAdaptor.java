@@ -1280,18 +1280,22 @@ public class SharePointAdaptor extends AbstractAdaptor
       log.entering("SiteDataClient", "getChangesContentDatabase",
           new Object[] {contentDatabaseGuid, startChangeId});
       final Holder<String> lastChangeId = new Holder<String>(startChangeId);
+      final Holder<String> lastLastChangeId = new Holder<String>();
       final Holder<String> currentChangeId = new Holder<String>();
       final Holder<Boolean> moreChanges = new Holder<Boolean>(true);
       log.exiting("SiteDataClient", "getChangesContentDatabase");
       return new CursorPaginator<SPContentDatabase, String>() {
         @Override
         public SPContentDatabase next() throws IOException {
-          // SharePoint 2010 (at least sometimes) does not set
-          // lastChangeId = currentChangeId when paging is complete, even
-          // though this is a "MUST" requirement in the documentation.
-          if (!moreChanges.value) {
+          // SharePoint 2010 sometimes does not set lastChangeId=currentChangeId
+          // nor moreChanges=false when paging is complete, even though both of
+          // these conditions are a "MUST" requirement in the documentation.
+          // Thus, we make sure that each call changes the lastChangeId.
+          if (!moreChanges.value
+              || lastChangeId.value.equals(lastLastChangeId.value)) {
             return null;
           }
+          lastLastChangeId.value = lastChangeId.value;
           Holder<String> result = new Holder<String>();
           siteData.getChanges(ObjectType.CONTENT_DATABASE, contentDatabaseGuid,
               lastChangeId, currentChangeId, 15, result, moreChanges);

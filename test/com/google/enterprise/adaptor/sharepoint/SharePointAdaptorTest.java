@@ -3100,7 +3100,9 @@ public class SharePointAdaptorTest {
         setValue(currentChangeId, "1;0;4fb7dea1-2912-4927-9eda-1ea2f0977cf9;634"
             + "727056595000000;604");
         setValue(getChangesResult, getChangesContentDatabase4fb);
-        setValue(moreChanges, false);
+        // Purposefully make moreChanges=true even though there are no more
+        // pages, because SP 2010 has been known to do this.
+        setValue(moreChanges, true);
       }
     };
     SiteDataFactory siteDataFactory = new SingleSiteDataFactory(siteData,
