@@ -27,6 +27,8 @@ class GetContentsResponse implements Response {
   private String contentType;
   private Metadata metadata = new Metadata();
   private Acl acl;
+  private boolean secure;
+  private Date lastModified;
   private List<URI> anchorUris = new ArrayList<URI>();
   private List<String> anchorTexts = new ArrayList<String>();
   private boolean notFound;
@@ -66,6 +68,16 @@ class GetContentsResponse implements Response {
   @Override
   public void setAcl(Acl acl) {
     this.acl = acl;
+  }
+
+  @Override
+  public void setSecure(boolean secure) {
+    this.secure = secure;
+  }
+
+  @Override
+  public void setLastModified(Date lastModified) {
+    this.lastModified = lastModified;
   }
 
   @Override
