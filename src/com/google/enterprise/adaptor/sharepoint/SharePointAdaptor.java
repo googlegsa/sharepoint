@@ -101,23 +101,61 @@ import javax.xml.ws.WebServiceException;
  */
 public class SharePointAdaptor extends AbstractAdaptor
     implements PollingIncrementalAdaptor {
+  /** Charset used in generated HTML responses. */
   private static final Charset CHARSET = Charset.forName("UTF-8");
+  /** SharePoint's namespace. */
   private static final String XMLNS
       = "http://schemas.microsoft.com/sharepoint/soap/";
+  /**
+   * The data element within a self-describing XML blob. See
+   * http://msdn.microsoft.com/en-us/library/windows/desktop/ms675943.aspx .
+   */
   private static final QName DATA_ELEMENT
       = new QName("urn:schemas-microsoft-com:rowset", "data");
+  /**
+   * The row element within a self-describing XML blob. See
+   * http://msdn.microsoft.com/en-us/library/windows/desktop/ms675943.aspx .
+   */
   private static final QName ROW_ELEMENT = new QName("#RowsetSchema", "row");
+  /**
+   * Row attribute guaranteed to be in ListItem responses. See
+   * http://msdn.microsoft.com/en-us/library/dd929205.aspx . Provides ability to
+   * distinguish between folders and other list items.
+   */
   private static final String OWS_FSOBJTYPE_ATTRIBUTE = "ows_FSObjType";
+  /** Row attribute that contains the title of the List Item. */
   private static final String OWS_TITLE_ATTRIBUTE = "ows_Title";
+  /**
+   * Row attribute that contains a URL-like string identifying the object.
+   * Sometimes this can be modified (by turning spaces into %20 and the like) to
+   * access the object. In general, this in the string we provide to SP to
+   * resolve information about the object.
+   */
   private static final String OWS_SERVERURL_ATTRIBUTE = "ows_ServerUrl";
+  /**
+   * Row attribute that contains a hierarchial hex number that describes the
+   * type of object. See http://msdn.microsoft.com/en-us/library/aa543822.aspx
+   * for more information about content type IDs.
+   */
   private static final String OWS_CONTENTTYPEID_ATTRIBUTE = "ows_ContentTypeId";
+  /**
+   * Row attribute guaranteed to be in ListItem responses. See
+   * http://msdn.microsoft.com/en-us/library/dd929205.aspx . Provides scope id
+   * used for permissions. Note that the casing is different than documented;
+   * this is simply because of a documentation bug.
+   */
   private static final String OWS_SCOPEID_ATTRIBUTE = "ows_ScopeId";
   private static final String OWS_FILEDIRREF_ATTRIBUTE = "ows_FileDirRef";
   /**
    * As described at http://msdn.microsoft.com/en-us/library/aa543822.aspx .
    */
   private static final String CONTENTTYPEID_DOCUMENT_PREFIX = "0x0101";
+  /** Provides the number of attachments the list item has. */
   private static final String OWS_ATTACHMENTS_ATTRIBUTE = "ows_Attachments";
+  /**
+   * Matches a SP-encoded value that contains one or more values. See {@link
+   * SiteDataClient.addMetadata}.
+   */
   private static final Pattern ALTERNATIVE_VALUE_PATTERN
       = Pattern.compile("^\\d+;#");
   /**
@@ -139,6 +177,10 @@ public class SharePointAdaptor extends AbstractAdaptor
    * instances.
    */
   private static final JAXBContext jaxbContext;
+  /**
+   * XML Schema of requests and responses. Used to validate responses match
+   * expectations.
+   */
   private static final Schema schema;
 
   static {
@@ -170,10 +212,18 @@ public class SharePointAdaptor extends AbstractAdaptor
   private static final Logger log
       = Logger.getLogger(SharePointAdaptor.class.getName());
 
+  /**
+   * Map from Site or Web URL to SiteDataClient object used to communicate with
+   * that Site/Web.
+   */
   private final ConcurrentMap<String, SiteDataClient> clients
       = new ConcurrentSkipListMap<String, SiteDataClient>();
   private final DocId virtualServerDocId = new DocId("");
   private AdaptorContext context;
+  /**
+   * The URL of the top-level Virtual Server that we use to bootstrap our
+   * SP instance knowledge.
+   */
   private String virtualServer;
   /**
    * Cache that provides immutable {@link MemberIdMapping} instances for the
@@ -185,11 +235,15 @@ public class SharePointAdaptor extends AbstractAdaptor
         .refreshAfterWrite(30, TimeUnit.MINUTES)
         .expireAfterWrite(45, TimeUnit.MINUTES)
         .build(new MemberIdsCacheLoader());
+  /** Map from Content Database GUID to last known Change Token for that DB. */
   private final ConcurrentSkipListMap<String, String> contentDatabaseChangeId
       = new ConcurrentSkipListMap<String, String>();
+  /** Production factory for all SiteDataSoap communication objects. */
   private final SiteDataFactory siteDataFactory;
+  /** Client for initiating raw HTTP connections. */
   private final HttpClient httpClient;
   private boolean xmlValidation;
+  /** Authenticator instance that authenticates with SP. */
   private NtlmAuthenticator ntlmAuthenticator;
   /**
    * Cached value of whether we are talking to a SP 2010 server or not. This
@@ -1475,6 +1529,11 @@ public class SharePointAdaptor extends AbstractAdaptor
     }
   }
 
+  /**
+   * An object that can be paged through.
+   *
+   * @param <E> element type returned by {@link #next}
+   */
   private interface Paginator<E> {
     /**
      * Get the next page of the series. If an exception is thrown, the state of
@@ -1485,6 +1544,13 @@ public class SharePointAdaptor extends AbstractAdaptor
     public E next() throws IOException;
   }
 
+  /**
+   * An object that can be paged through, but also provide a cursor for learning
+   * its current position.
+   *
+   * @param <E> element type returned by {@link #next}
+   * @param <C> cursor type
+   */
   private interface CursorPaginator<E, C> extends Paginator<E> {
     /**
      * Provides a cursor for the current position. The intent is that you could
