@@ -256,10 +256,11 @@ public class SharePointAdaptorTest {
         + "SiteCollection</a></li>"
         + "</ul></body></html>";
     assertEquals(golden, responseString);
+    List<String> permit = Arrays.asList("GDC-PSL\\Administrator",
+        "GDC-PSL\\spuser1", "NT AUTHORITY\\LOCAL SERVICE");
     assertEquals(new Acl.Builder()
         .setInheritanceType(Acl.InheritanceType.PARENT_OVERRIDES)
-        .setPermitUsers(Arrays.asList("GDC-PSL\\Administrator",
-            "GDC-PSL\\spuser1", "NT AUTHORITY\\LOCAL SERVICE")).build(),
+        .setPermitUsers(permit).setPermitGroups(permit).build(),
         response.getAcl());
   }
 

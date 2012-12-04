@@ -506,24 +506,28 @@ public class SharePointAdaptor extends AbstractAdaptor
       VirtualServer vs = getContentVirtualServer();
 
       final long necessaryPermissionMask = LIST_ITEM_MASK;
-      List<String> permitUsers = new ArrayList<String>();
-      List<String> denyUsers = new ArrayList<String>();
+      // A PolicyUser is either a user or group, but we aren't provided with
+      // which. Thus, we treat PolicyUsers as both a user and a group in ACLs
+      // and understand that only one of the two entries will have an effect.
+      List<String> permitIds = new ArrayList<String>();
+      List<String> denyIds = new ArrayList<String>();
       for (PolicyUser policyUser : vs.getPolicies().getPolicyUser()) {
         // TODO(ejona): special case NT AUTHORITY\LOCAL SERVICE.
         String loginName = policyUser.getLoginName();
         long grant = policyUser.getGrantMask().longValue();
         if ((necessaryPermissionMask & grant) == necessaryPermissionMask) {
-          permitUsers.add(loginName);
+          permitIds.add(loginName);
         }
         long deny = policyUser.getDenyMask().longValue();
         // If at least one necessary bit is masked, then deny user.
         if ((necessaryPermissionMask & deny) != 0) {
-          denyUsers.add(loginName);
+          denyIds.add(loginName);
         }
       }
       response.setAcl(new Acl.Builder()
           .setInheritanceType(Acl.InheritanceType.PARENT_OVERRIDES)
-          .setPermitUsers(permitUsers).setDenyUsers(denyUsers).build());
+          .setPermitUsers(permitIds).setPermitGroups(permitIds)
+          .setDenyUsers(denyIds).setDenyGroups(denyIds).build());
 
       response.setContentType("text/html");
       HtmlResponseWriter writer = createHtmlResponseWriter(response);
