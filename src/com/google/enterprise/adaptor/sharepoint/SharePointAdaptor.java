@@ -1383,7 +1383,7 @@ public class SharePointAdaptor extends AbstractAdaptor
   static class FileInfo {
     /** Non-null contents. */
     private final InputStream contents;
-    /** Non-null headers. */
+    /** Non-null headers. Alternates between header name and header value. */
     private final List<String> headers;
 
     private FileInfo(InputStream contents, List<String> headers) {
@@ -1393,6 +1393,10 @@ public class SharePointAdaptor extends AbstractAdaptor
 
     public InputStream getContents() {
       return contents;
+    }
+
+    public List<String> getHeaders() {
+      return headers;
     }
 
     public int getHeaderCount() {
@@ -1438,6 +1442,10 @@ public class SharePointAdaptor extends AbstractAdaptor
         return this;
       }
 
+      /**
+       * Sets the headers recieved as a response. List must alternate between
+       * header name and header value.
+       */
       public Builder setHeaders(List<String> headers) {
         if (headers == null) {
           throw new NullPointerException();
@@ -1467,7 +1475,7 @@ public class SharePointAdaptor extends AbstractAdaptor
     public FileInfo issueGetRequest(URL url) throws IOException;
   }
 
-  private static class HttpClientImpl implements HttpClient {
+  static class HttpClientImpl implements HttpClient {
     @Override
     public FileInfo issueGetRequest(URL url) throws IOException {
       HttpURLConnection conn = (HttpURLConnection) url.openConnection();
@@ -1501,7 +1509,7 @@ public class SharePointAdaptor extends AbstractAdaptor
     public SiteDataSoap newSiteData(String endpoint);
   }
 
-  private static class SiteDataFactoryImpl implements SiteDataFactory {
+  static class SiteDataFactoryImpl implements SiteDataFactory {
     private final Service siteDataService;
 
     public SiteDataFactoryImpl() {
