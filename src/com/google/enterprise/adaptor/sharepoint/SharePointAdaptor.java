@@ -187,6 +187,7 @@ public class SharePointAdaptor extends AbstractAdaptor
       = new ConcurrentSkipListMap<String, String>();
   private final SiteDataFactory siteDataFactory;
   private final HttpClient httpClient;
+  private boolean xmlValidation;
   private NtlmAuthenticator ntlmAuthenticator;
 
   public SharePointAdaptor() {
@@ -215,6 +216,7 @@ public class SharePointAdaptor extends AbstractAdaptor
     config.addKey("sharepoint.server", null);
     config.addKey("sharepoint.username", null);
     config.addKey("sharepoint.password", null);
+    config.addKey("sharepoint.xmlValidation", "true");
   }
 
   @Override
@@ -225,6 +227,8 @@ public class SharePointAdaptor extends AbstractAdaptor
     String username = config.getValue("sharepoint.username");
     String password = context.getSensitiveValueDecoder().decodeValue(
         config.getValue("sharepoint.password"));
+    xmlValidation = Boolean.parseBoolean(
+        config.getValue("sharepoint.xmlValidation"));
 
     log.log(Level.CONFIG, "VirtualServer: {0}", virtualServer);
     log.log(Level.CONFIG, "Username: {0}", username);
@@ -1323,7 +1327,9 @@ public class SharePointAdaptor extends AbstractAdaptor
       Source source = new StreamSource(new StringReader(xml));
       try {
         Unmarshaller unmarshaller = jaxbContext.createUnmarshaller();
-        unmarshaller.setSchema(schema);
+        if (xmlValidation) {
+          unmarshaller.setSchema(schema);
+        }
         return unmarshaller.unmarshal(source, klass).getValue();
       } catch (JAXBException ex) {
         throw new XmlProcessingException(ex, xml);

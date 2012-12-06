@@ -3334,6 +3334,22 @@ public class SharePointAdaptorTest {
   }
 
   @Test
+  public void testDisabledValidation() throws Exception {
+    adaptor = new SharePointAdaptor(new UnsupportedSiteDataFactory(),
+        new UnsupportedHttpClient());
+    config.overrideKey("sharepoint.xmlValidation", "false");
+    adaptor.init(new MockAdaptorContext(config, null));
+    SharePointAdaptor.SiteDataClient client = adaptor.new SiteDataClient(
+        "http://localhost:1", "http://localhost:1",
+        new UnsupportedSiteData(), new UnsupportedCallable<MemberIdMapping>());
+    // Lacks required child element.
+    String xml = "<SPContentDatabase"
+        + " xmlns='http://schemas.microsoft.com/sharepoint/soap/'/>";
+    assertNotNull(client.jaxbParse(xml, SPContentDatabase.class));
+  }
+
+
+  @Test
   public void testParseUnknownXml() throws Exception {
     adaptor = new SharePointAdaptor(new UnsupportedSiteDataFactory(),
         new UnsupportedHttpClient());
