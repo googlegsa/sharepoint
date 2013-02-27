@@ -482,7 +482,7 @@ public class SharePointAdaptor extends AbstractAdaptor
         getListDocContent(request, response, listId.value);
       } else {
         // Assume it is a top-level site.
-        getSiteDocContent(request, response, null);
+        getSiteDocContent(request, response);
       }
       log.exiting("SiteDataClient", "getDocContent");
     }
@@ -559,18 +559,46 @@ public class SharePointAdaptor extends AbstractAdaptor
       log.exiting("SiteDataClient", "getVirtualServerDocContent");
     }
 
-    private void getSiteDocContent(Request request, Response response,
-        String id) throws IOException {
+    private void getSiteDocContent(Request request, Response response)
+        throws IOException {
       log.entering("SiteDataClient", "getSiteDocContent",
-          new Object[] {request, response, id});
-      Web w = getContentWeb(id);
+          new Object[] {request, response});
+      Web w = getContentWeb();
 
-      List<Permission> permissions
-          = w.getACL().getPermissions().getPermission();
-      response.setAcl(generateAcl(permissions, LIST_ITEM_MASK)
-          .setInheritanceType(Acl.InheritanceType.AND_BOTH_PERMIT)
-          .setInheritFrom(siteUrl.equals(webUrl)
-              ? virtualServerDocId : new DocId(siteUrl))
+      if (webUrl.endsWith("/")) {
+        throw new AssertionError();
+      }
+      int slashIndex = webUrl.lastIndexOf("/");
+      // The parentUrl is not the same as the siteUrl, since there may be
+      // multiple levels of webs.
+      String parentUrl = webUrl.substring(0, slashIndex);
+
+      boolean isSiteCollection = siteUrl.equals(webUrl);
+      final boolean includePermissions;
+
+      if (isSiteCollection) {
+        includePermissions = true;
+      } else {
+        SiteDataClient parentClient = getClientForUrl(parentUrl);
+        Web parentW = parentClient.getContentWeb();
+        String parentScopeId
+            = parentW.getMetadata().getScopeID().toLowerCase(Locale.ENGLISH);
+        String scopeId
+            = w.getMetadata().getScopeID().toLowerCase(Locale.ENGLISH);
+        includePermissions = !scopeId.equals(parentScopeId);
+      }
+
+      Acl.Builder acl;
+      if (includePermissions) {
+        List<Permission> permissions
+            = w.getACL().getPermissions().getPermission();
+        acl = generateAcl(permissions, LIST_ITEM_MASK)
+            .setInheritFrom(virtualServerDocId);
+      } else {
+        acl = new Acl.Builder().setInheritFrom(new DocId(parentUrl));
+      }
+      response.setAcl(acl
+          .setInheritanceType(Acl.InheritanceType.PARENT_OVERRIDES)
           .build());
 
       response.setContentType("text/html");
@@ -625,12 +653,23 @@ public class SharePointAdaptor extends AbstractAdaptor
       log.entering("SiteDataClient", "getListDocContent",
           new Object[] {request, response, id});
       com.microsoft.schemas.sharepoint.soap.List l = getContentList(id);
+      Web w = getContentWeb();
 
-      List<Permission> permissions
-          = l.getACL().getPermissions().getPermission();
-      response.setAcl(generateAcl(permissions, LIST_ITEM_MASK)
-          .setInheritanceType(Acl.InheritanceType.AND_BOTH_PERMIT)
-          .setInheritFrom(new DocId(webUrl))
+      String scopeId = l.getMetadata().getScopeID().toLowerCase(Locale.ENGLISH);
+      String webScopeId
+          = w.getMetadata().getScopeID().toLowerCase(Locale.ENGLISH);
+
+      Acl.Builder acl;
+      if (scopeId.equals(webScopeId)) {
+        acl = new Acl.Builder().setInheritFrom(new DocId(webUrl));
+      } else {
+        List<Permission> permissions
+            = l.getACL().getPermissions().getPermission();
+        acl = generateAcl(permissions, LIST_ITEM_MASK)
+            .setInheritFrom(virtualServerDocId);
+      }
+      response.setAcl(acl
+          .setInheritanceType(Acl.InheritanceType.PARENT_OVERRIDES)
           .build());
 
       response.setContentType("text/html");
@@ -651,7 +690,7 @@ public class SharePointAdaptor extends AbstractAdaptor
       log.entering("SiteDataClient", "processFolder",
           new Object[] {listGuid, folderPath, writer});
       Paginator<ItemData> folderPaginator
-          = getContentFolder(listGuid, folderPath);
+          = getContentFolderChildren(listGuid, folderPath);
       writer.startSection(ObjectType.LIST_ITEM);
       ItemData folder;
       while ((folder = folderPaginator.next()) != null) {
@@ -844,48 +883,85 @@ public class SharePointAdaptor extends AbstractAdaptor
           = row.getAttribute(OWS_SCOPEID_ATTRIBUTE).split(";#", 2)[1];
       scopeId = scopeId.toLowerCase(Locale.ENGLISH);
 
-      List<Permission> permissions = null;
-      if (i.getMetadata().getScope().getId().toLowerCase(Locale.ENGLISH)
-          .equals(scopeId)) {
-        // The list and item share the same scope. The scope won't always be
-        // within the <xml> tag and thus we are forced to check this location as
-        // well.
-        permissions
-            = i.getMetadata().getScope().getPermissions().getPermission();
+      DocId parentDocId;
+      boolean listIsParent;
+      String parentScopeId;
+      {
+        String rawFileDirRef = row.getAttribute(OWS_FILEDIRREF_ATTRIBUTE);
+        // This should be in the form of "1234;#site/list/path". We want to
+        // extract the site/list/path. Path relative to host, even though it
+        // doesn't have a leading '/'.
+        DocId folderDocId = encodeDocId("/" + rawFileDirRef.split(";#")[1]);
+        DocId rootFolderDocId = encodeDocId(l.getMetadata().getRootFolder());
+        DocId listDocId = encodeDocId(l.getMetadata().getDefaultViewUrl());
+        // If the parent is the List, we must use the list's docId instead of
+        // folderDocId, since the root folder is a List and not actually a
+        // Folder.
+        boolean parentIsList = folderDocId.equals(rootFolderDocId);
+        parentDocId = parentIsList ? listDocId : folderDocId;
+        String listScopeId = l.getMetadata().getScopeID()
+            .toLowerCase(Locale.ENGLISH);
+        // If a folder doesn't inherit its list's scope, then all of the
+        // folder's descendent list items are guaranteed to have a different
+        // scope than the list. We use this knowledge as a performance
+        // optimization to prevent issuing requests to discover the folder's
+        // scopeId when a child list item and list have the same scope.
+        if (parentIsList || scopeId.equals(listScopeId)) {
+          parentScopeId = listScopeId;
+        } else {
+          // Instead of using getURLSegments and getContent(ListItem), we could
+          // use just getContent(Folder). However, getContent(Folder) always
+          // returns children which could make the call very expensive. In
+          // addition, getContent(ListItem) returns all the metadata for the
+          // folder instead of just its scope so if in the future we need more
+          // metadata we will already have it. GetContentEx(Folder) may provide
+          // a way to get the folder's scope without its children, but it wasn't
+          // investigated.
+          Holder<String> folderListId = new Holder<String>();
+          Holder<String> folderItemId = new Holder<String>();
+          Holder<Boolean> result = new Holder<Boolean>();
+          siteData.getURLSegments(folderDocId.getUniqueId(), result, null,
+              null, folderListId, folderItemId);
+          if (!result.value) {
+            throw new IOException("Could not find parent folder's itemId");
+          }
+          if (!listId.equals(folderListId.value)) {
+            throw new AssertionError("Unexpected listId value");
+          }
+          ItemData folderItem = getContentItem(listId, folderItemId.value);
+          Element folderData = getFirstChildWithName(
+              folderItem.getXml(), DATA_ELEMENT);
+          Element folderRow
+              = getChildrenWithName(folderData, ROW_ELEMENT).get(0);
+          parentScopeId = folderRow.getAttribute(OWS_SCOPEID_ATTRIBUTE)
+              .split(";#", 2)[1].toLowerCase(Locale.ENGLISH);
+        }
       }
 
-      if (permissions == null) {
+      Acl.Builder acl = null;
+      if (scopeId.equals(parentScopeId)) {
+        acl = new Acl.Builder().setInheritFrom(parentDocId);
+      } else {
         // We have to search for the correct scope within the scopes element.
         // The scope provided in the metadata is for the parent list, not for
         // the item
         Scopes scopes = getFirstChildOfType(xml, Scopes.class);
         for (Scopes.Scope scope : scopes.getScope()) {
           if (scope.getId().toLowerCase(Locale.ENGLISH).equals(scopeId)) {
-            permissions = scope.getPermission();
+            acl = generateAcl(scope.getPermission(), LIST_ITEM_MASK)
+                .setInheritFrom(virtualServerDocId);
             break;
           }
         }
+
+        if (acl == null) {
+          throw new IOException("Unable to find permission scope for item: "
+              + request.getDocId());
+        }
       }
 
-      if (permissions == null) {
-        throw new IOException("Unable to find permission scope for item: "
-            + request.getDocId());
-      }
-
-      String rawFileDirRef = row.getAttribute(OWS_FILEDIRREF_ATTRIBUTE);
-      // This should be in the form of "1234;#site/list/path". We want to
-      // extract the site/list/path. Path relative to host, even though it
-      // doesn't have a leading '/'.
-      DocId folderDocId = encodeDocId("/" + rawFileDirRef.split(";#")[1]);
-      DocId rootFolderDocId = encodeDocId(l.getMetadata().getRootFolder());
-      DocId listDocId = encodeDocId(l.getMetadata().getDefaultViewUrl());
-      // If the parent is the List, we must use the list's docId instead of
-      // folderDocId, since the root folder is a List and not actually a Folder.
-      DocId parentDocId = folderDocId.equals(rootFolderDocId)
-          ? listDocId : folderDocId;
-      response.setAcl(generateAcl(permissions, LIST_ITEM_MASK)
-          .setInheritanceType(Acl.InheritanceType.AND_BOTH_PERMIT)
-          .setInheritFrom(parentDocId)
+      response.setAcl(acl
+          .setInheritanceType(Acl.InheritanceType.PARENT_OVERRIDES)
           .build());
 
       // This should be in the form of "1234;#0". We want to extract the 0.
@@ -997,8 +1073,6 @@ public class SharePointAdaptor extends AbstractAdaptor
           + "Proceeding to provide content.");
       response.setAcl(new Acl.Builder()
           .setInheritFrom(encodeDocId(listItemUrl))
-          // TODO(ejona): Add setPermitGroups for the special "everyone" group
-          // once it is supported by GSA and Adaptor library.
           .build());
       getFileDocContent(request, response);
       log.exiting("SiteDataClient", "getAttachmentDocContent", true);
@@ -1205,10 +1279,10 @@ public class SharePointAdaptor extends AbstractAdaptor
       return site;
     }
 
-    private Web getContentWeb(String id) throws IOException {
-      log.entering("SiteDataClient", "getContentWeb", id);
+    private Web getContentWeb() throws IOException {
+      log.entering("SiteDataClient", "getContentWeb");
       Holder<String> result = new Holder<String>();
-      siteData.getContent(ObjectType.SITE, id, null, null, true, false, null,
+      siteData.getContent(ObjectType.SITE, null, null, null, true, false, null,
           result);
       String xml = result.value;
       xml = xml.replace("<Web>", "<Web xmlns='" + XMLNS + "'>");
@@ -1246,12 +1320,12 @@ public class SharePointAdaptor extends AbstractAdaptor
       return data;
     }
 
-    private Paginator<ItemData> getContentFolder(final String guid,
+    private Paginator<ItemData> getContentFolderChildren(final String guid,
         final String url) {
-      log.entering("SiteDataClient", "getContentFolder",
+      log.entering("SiteDataClient", "getContentFolderChildren",
           new Object[] {guid, url});
       final Holder<String> lastItemIdOnPage = new Holder<String>("");
-      log.exiting("SiteDataClient", "getContentFolder");
+      log.exiting("SiteDataClient", "getContentFolderChildren");
       return new Paginator<ItemData>() {
         @Override
         public ItemData next() throws IOException {
@@ -1266,6 +1340,21 @@ public class SharePointAdaptor extends AbstractAdaptor
           return jaxbParse(xml, ItemData.class);
         }
       };
+    }
+
+    private ItemData getContentFolder(final String guid,
+        final String url) throws IOException {
+      log.entering("SiteDataClient", "getContentFolder",
+          new Object[] {guid, url});
+      final Holder<String> lastItemIdOnPage = new Holder<String>("");
+      Holder<String> result = new Holder<String>();
+      siteData.getContent(ObjectType.FOLDER, guid, url, null, false, true,
+          lastItemIdOnPage, result);
+      String xml = result.value;
+      xml = xml.replace("<Folder>", "<Folder xmlns='" + XMLNS + "'>");
+      ItemData data = jaxbParse(xml, ItemData.class);
+      log.exiting("SiteDataClient", "getContentFolder", data);
+      return data;
     }
 
     private Item getContentListItemAttachments(String listId, String itemId)
