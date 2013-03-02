@@ -187,6 +187,7 @@ public class SharePointAdaptor extends AbstractAdaptor
       = new ConcurrentSkipListMap<String, String>();
   private final SiteDataFactory siteDataFactory;
   private final HttpClient httpClient;
+  private boolean xmlValidation;
   private NtlmAuthenticator ntlmAuthenticator;
 
   public SharePointAdaptor() {
@@ -215,6 +216,7 @@ public class SharePointAdaptor extends AbstractAdaptor
     config.addKey("sharepoint.server", null);
     config.addKey("sharepoint.username", null);
     config.addKey("sharepoint.password", null);
+    config.addKey("sharepoint.xmlValidation", "true");
   }
 
   @Override
@@ -225,6 +227,8 @@ public class SharePointAdaptor extends AbstractAdaptor
     String username = config.getValue("sharepoint.username");
     String password = context.getSensitiveValueDecoder().decodeValue(
         config.getValue("sharepoint.password"));
+    xmlValidation = Boolean.parseBoolean(
+        config.getValue("sharepoint.xmlValidation"));
 
     log.log(Level.CONFIG, "VirtualServer: {0}", virtualServer);
     log.log(Level.CONFIG, "Username: {0}", username);
@@ -506,24 +510,28 @@ public class SharePointAdaptor extends AbstractAdaptor
       VirtualServer vs = getContentVirtualServer();
 
       final long necessaryPermissionMask = LIST_ITEM_MASK;
-      List<String> permitUsers = new ArrayList<String>();
-      List<String> denyUsers = new ArrayList<String>();
+      // A PolicyUser is either a user or group, but we aren't provided with
+      // which. Thus, we treat PolicyUsers as both a user and a group in ACLs
+      // and understand that only one of the two entries will have an effect.
+      List<String> permitIds = new ArrayList<String>();
+      List<String> denyIds = new ArrayList<String>();
       for (PolicyUser policyUser : vs.getPolicies().getPolicyUser()) {
         // TODO(ejona): special case NT AUTHORITY\LOCAL SERVICE.
         String loginName = policyUser.getLoginName();
         long grant = policyUser.getGrantMask().longValue();
         if ((necessaryPermissionMask & grant) == necessaryPermissionMask) {
-          permitUsers.add(loginName);
+          permitIds.add(loginName);
         }
         long deny = policyUser.getDenyMask().longValue();
         // If at least one necessary bit is masked, then deny user.
         if ((necessaryPermissionMask & deny) != 0) {
-          denyUsers.add(loginName);
+          denyIds.add(loginName);
         }
       }
       response.setAcl(new Acl.Builder()
           .setInheritanceType(Acl.InheritanceType.PARENT_OVERRIDES)
-          .setPermitUsers(permitUsers).setDenyUsers(denyUsers).build());
+          .setPermitUsers(permitIds).setPermitGroups(permitIds)
+          .setDenyUsers(denyIds).setDenyGroups(denyIds).build());
 
       response.setContentType("text/html");
       HtmlResponseWriter writer = createHtmlResponseWriter(response);
@@ -1280,18 +1288,22 @@ public class SharePointAdaptor extends AbstractAdaptor
       log.entering("SiteDataClient", "getChangesContentDatabase",
           new Object[] {contentDatabaseGuid, startChangeId});
       final Holder<String> lastChangeId = new Holder<String>(startChangeId);
+      final Holder<String> lastLastChangeId = new Holder<String>();
       final Holder<String> currentChangeId = new Holder<String>();
       final Holder<Boolean> moreChanges = new Holder<Boolean>(true);
       log.exiting("SiteDataClient", "getChangesContentDatabase");
       return new CursorPaginator<SPContentDatabase, String>() {
         @Override
         public SPContentDatabase next() throws IOException {
-          // SharePoint 2010 (at least sometimes) does not set
-          // lastChangeId = currentChangeId when paging is complete, even
-          // though this is a "MUST" requirement in the documentation.
-          if (!moreChanges.value) {
+          // SharePoint 2010 sometimes does not set lastChangeId=currentChangeId
+          // nor moreChanges=false when paging is complete, even though both of
+          // these conditions are a "MUST" requirement in the documentation.
+          // Thus, we make sure that each call changes the lastChangeId.
+          if (!moreChanges.value
+              || lastChangeId.value.equals(lastLastChangeId.value)) {
             return null;
           }
+          lastLastChangeId.value = lastChangeId.value;
           Holder<String> result = new Holder<String>();
           siteData.getChanges(ObjectType.CONTENT_DATABASE, contentDatabaseGuid,
               lastChangeId, currentChangeId, 15, result, moreChanges);
@@ -1315,7 +1327,9 @@ public class SharePointAdaptor extends AbstractAdaptor
       Source source = new StreamSource(new StringReader(xml));
       try {
         Unmarshaller unmarshaller = jaxbContext.createUnmarshaller();
-        unmarshaller.setSchema(schema);
+        if (xmlValidation) {
+          unmarshaller.setSchema(schema);
+        }
         return unmarshaller.unmarshal(source, klass).getValue();
       } catch (JAXBException ex) {
         throw new XmlProcessingException(ex, xml);
@@ -1375,7 +1389,7 @@ public class SharePointAdaptor extends AbstractAdaptor
   static class FileInfo {
     /** Non-null contents. */
     private final InputStream contents;
-    /** Non-null headers. */
+    /** Non-null headers. Alternates between header name and header value. */
     private final List<String> headers;
 
     private FileInfo(InputStream contents, List<String> headers) {
@@ -1385,6 +1399,10 @@ public class SharePointAdaptor extends AbstractAdaptor
 
     public InputStream getContents() {
       return contents;
+    }
+
+    public List<String> getHeaders() {
+      return headers;
     }
 
     public int getHeaderCount() {
@@ -1430,6 +1448,10 @@ public class SharePointAdaptor extends AbstractAdaptor
         return this;
       }
 
+      /**
+       * Sets the headers recieved as a response. List must alternate between
+       * header name and header value.
+       */
       public Builder setHeaders(List<String> headers) {
         if (headers == null) {
           throw new NullPointerException();
@@ -1459,7 +1481,7 @@ public class SharePointAdaptor extends AbstractAdaptor
     public FileInfo issueGetRequest(URL url) throws IOException;
   }
 
-  private static class HttpClientImpl implements HttpClient {
+  static class HttpClientImpl implements HttpClient {
     @Override
     public FileInfo issueGetRequest(URL url) throws IOException {
       HttpURLConnection conn = (HttpURLConnection) url.openConnection();
@@ -1493,7 +1515,7 @@ public class SharePointAdaptor extends AbstractAdaptor
     public SiteDataSoap newSiteData(String endpoint);
   }
 
-  private static class SiteDataFactoryImpl implements SiteDataFactory {
+  static class SiteDataFactoryImpl implements SiteDataFactory {
     private final Service siteDataService;
 
     public SiteDataFactoryImpl() {

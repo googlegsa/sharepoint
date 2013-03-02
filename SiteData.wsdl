@@ -943,7 +943,7 @@ xmlns:rs="urn:schemas-microsoft-com:rowset" xmlns:s="http://www.w3.org/2001/XMLS
 
       <s:complexType name='permissionsForACL'>
         <s:sequence >
-          <s:element name='permission' type='tns:permission' maxOccurs='unbounded' />
+          <s:element name='permission' type='tns:permission' minOccurs='0' maxOccurs='unbounded' />
         </s:sequence>
       </s:complexType>
 

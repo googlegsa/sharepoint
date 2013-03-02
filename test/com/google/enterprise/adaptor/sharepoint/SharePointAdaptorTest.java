@@ -256,10 +256,11 @@ public class SharePointAdaptorTest {
         + "SiteCollection</a></li>"
         + "</ul></body></html>";
     assertEquals(golden, responseString);
+    List<String> permit = Arrays.asList("GDC-PSL\\Administrator",
+        "GDC-PSL\\spuser1", "NT AUTHORITY\\LOCAL SERVICE");
     assertEquals(new Acl.Builder()
         .setInheritanceType(Acl.InheritanceType.PARENT_OVERRIDES)
-        .setPermitUsers(Arrays.asList("GDC-PSL\\Administrator",
-            "GDC-PSL\\spuser1", "NT AUTHORITY\\LOCAL SERVICE")).build(),
+        .setPermitUsers(permit).setPermitGroups(permit).build(),
         response.getAcl());
   }
 
@@ -3100,7 +3101,9 @@ public class SharePointAdaptorTest {
         setValue(currentChangeId, "1;0;4fb7dea1-2912-4927-9eda-1ea2f0977cf9;634"
             + "727056595000000;604");
         setValue(getChangesResult, getChangesContentDatabase4fb);
-        setValue(moreChanges, false);
+        // Purposefully make moreChanges=true even though there are no more
+        // pages, because SP 2010 has been known to do this.
+        setValue(moreChanges, true);
       }
     };
     SiteDataFactory siteDataFactory = new SingleSiteDataFactory(siteData,
@@ -3329,6 +3332,22 @@ public class SharePointAdaptorTest {
     thrown.expect(IOException.class);
     client.jaxbParse(xml, SPContentDatabase.class);
   }
+
+  @Test
+  public void testDisabledValidation() throws Exception {
+    adaptor = new SharePointAdaptor(new UnsupportedSiteDataFactory(),
+        new UnsupportedHttpClient());
+    config.overrideKey("sharepoint.xmlValidation", "false");
+    adaptor.init(new MockAdaptorContext(config, null));
+    SharePointAdaptor.SiteDataClient client = adaptor.new SiteDataClient(
+        "http://localhost:1", "http://localhost:1",
+        new UnsupportedSiteData(), new UnsupportedCallable<MemberIdMapping>());
+    // Lacks required child element.
+    String xml = "<SPContentDatabase"
+        + " xmlns='http://schemas.microsoft.com/sharepoint/soap/'/>";
+    assertNotNull(client.jaxbParse(xml, SPContentDatabase.class));
+  }
+
 
   @Test
   public void testParseUnknownXml() throws Exception {
