@@ -20,6 +20,8 @@
   <property name="junit.jar" location="${lib.dir}/junit-4.8.2.jar"/>
   <property name="adaptor.class"
     value="com.google.enterprise.adaptor.sharepoint.SharePointAdaptor"/>
+  <property name="adaptor2.class"
+    value="com.google.enterprise.adaptor.sharepoint.SharePointUserProfileAdaptor"/>
   <property name="adaptor.args" value=""/>
   <property name="cobertura.dir" value="${basedir}/../cobertura/"/>
   <!-- Adaptor suffix for distribution files. Useful for placing version numbers
@@ -96,8 +98,9 @@ lib/plexi submodule or add the the command line argument
   </target>
 
   <target name="-generate-test-uptodate">
-    <uptodate property="generate.uptodate" srcfile="SiteData.wsdl"
+    <uptodate property="generate.uptodate"
       targetfile="${build-generate.dir}/com/microsoft/schemas/sharepoint/soap/SiteData.wsdl">
+      <srcfiles dir="${basedir}" includes="*.wsdl"/>
     </uptodate>
   </target>
 
@@ -117,9 +120,31 @@ lib/plexi submodule or add the the command line argument
       <arg value="SiteData.wsdl"/>
       <arg value="SiteData.wsdl"/>
     </exec>
+    <exec executable="wsimport">
+      <arg value="-s"/>
+      <arg value="${generate.dir}"/>
+      <arg value="-d"/>
+      <arg value="${build-generate.dir}"/>
+      <arg value="-wsdllocation"/>
+      <arg value="UserProfileService.wsdl"/>
+      <arg value="UserProfileService.wsdl"/>
+    </exec>
+    <exec executable="wsimport">
+      <arg value="-s"/>
+      <arg value="${generate.dir}"/>
+      <arg value="-d"/>
+      <arg value="${build-generate.dir}"/>
+      <arg value="-wsdllocation"/>
+      <arg value="UserProfileChangeService.wsdl"/>
+      <arg value="UserProfileChangeService.wsdl"/>
+    </exec>
 
     <copy file="SiteData.wsdl"
       todir="${build-generate.dir}/com/microsoft/schemas/sharepoint/soap/"/>
+    <copy file="UserProfileService.wsdl"
+      todir="${build-generate.dir}/com/microsoft/webservices/sharepointportalserver/userprofileservice/"/>
+    <copy file="UserProfileChangeService.wsdl"
+      todir="${build-generate.dir}/com/microsoft/webservices/sharepointportalserver/userprofilechangeservice/"/>
   </target>
 
   <target name="-real-build" depends="-plexi-build,-generate">
@@ -219,6 +244,22 @@ lib/plexi submodule or add the the command line argument
 
   <target name="run" depends="build" description="Run default adaptor">
     <java classpath="${build-src.dir}" fork="true" classname="${adaptor.class}">
+      <classpath refid="adaptor.run.classpath"/>
+      <classpath location="${build-generate.dir}"/>
+      <sysproperty key="java.util.logging.config.file"
+        value="logging.properties"/>
+      <sysproperty key="javax.net.ssl.keyStore" file="keys.jks"/>
+      <sysproperty key="javax.net.ssl.keyStoreType" value="jks"/>
+      <sysproperty key="javax.net.ssl.keyStorePassword" value="changeit"/>
+      <sysproperty key="javax.net.ssl.trustStore" file="cacerts.jks"/>
+      <sysproperty key="javax.net.ssl.trustStoreType" value="jks"/>
+      <sysproperty key="javax.net.ssl.trustStorePassword" value="changeit"/>
+      <arg line="${adaptor.args}"/>
+    </java>
+  </target>
+
+  <target name="run-profile" depends="build" description="Run profile adaptor">
+    <java classpath="${build-src.dir}" fork="true" classname="${adaptor2.class}">
       <classpath refid="adaptor.run.classpath"/>
       <classpath location="${build-generate.dir}"/>
       <sysproperty key="java.util.logging.config.file"

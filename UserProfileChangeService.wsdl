@@ -1,0 +1,370 @@
+<?xml version="1.0" encoding="utf-8"?>
+<wsdl:definitions xmlns:soap="http://schemas.xmlsoap.org/wsdl/soap/" xmlns:tm="http://microsoft.com/wsdl/mime/textMatching/" xmlns:soapenc="http://schemas.xmlsoap.org/soap/encoding/" xmlns:mime="http://schemas.xmlsoap.org/wsdl/mime/" xmlns:tns="http://microsoft.com/webservices/SharePointPortalServer/UserProfileChangeService" xmlns:s1="http://microsoft.com/wsdl/types/" xmlns:s="http://www.w3.org/2001/XMLSchema" xmlns:soap12="http://schemas.xmlsoap.org/wsdl/soap12/" xmlns:http="http://schemas.xmlsoap.org/wsdl/http/" targetNamespace="http://microsoft.com/webservices/SharePointPortalServer/UserProfileChangeService" xmlns:wsdl="http://schemas.xmlsoap.org/wsdl/">
+  <wsdl:types>
+    <s:schema elementFormDefault="qualified" targetNamespace="http://microsoft.com/webservices/SharePointPortalServer/UserProfileChangeService">
+      <s:import namespace="http://microsoft.com/wsdl/types/" />
+      <s:element name="GetAllChanges">
+        <s:complexType />
+      </s:element>
+      <s:element name="GetAllChangesResponse">
+        <s:complexType>
+          <s:sequence>
+            <s:element minOccurs="0" maxOccurs="1" name="GetAllChangesResult" type="tns:UserProfileChangeDataContainer" />
+          </s:sequence>
+        </s:complexType>
+      </s:element>
+      <s:complexType name="UserProfileChangeDataContainer">
+        <s:sequence>
+          <s:element minOccurs="0" maxOccurs="1" name="Changes" type="tns:ArrayOfUserProfileChangeData" />
+          <s:element minOccurs="0" maxOccurs="1" name="ChangeToken" type="s:string" />
+          <s:element minOccurs="1" maxOccurs="1" name="HasExceededCountLimit" type="s:boolean" />
+        </s:sequence>
+      </s:complexType>
+      <s:complexType name="ArrayOfUserProfileChangeData">
+        <s:sequence>
+          <s:element minOccurs="0" maxOccurs="unbounded" name="UserProfileChangeData" nillable="true" type="tns:UserProfileChangeData" />
+        </s:sequence>
+      </s:complexType>
+      <s:complexType name="UserProfileChangeData">
+        <s:sequence>
+          <s:element minOccurs="1" maxOccurs="1" name="Id" type="s:long" />
+          <s:element minOccurs="0" maxOccurs="1" name="UserAccountName" type="s:string" />
+          <s:element minOccurs="0" maxOccurs="1" name="UserRemotePersonalSiteHostUrl" type="s:string" />
+          <s:element minOccurs="1" maxOccurs="1" name="ChangeType" type="tns:ChangeTypes" />
+          <s:element minOccurs="1" maxOccurs="1" name="ObjectType" type="tns:ObjectTypes" />
+          <s:element minOccurs="1" maxOccurs="1" name="EventTime" type="s:dateTime" />
+          <s:element minOccurs="0" maxOccurs="1" name="Value" />
+          <s:element minOccurs="1" maxOccurs="1" name="PolicyId" type="s1:guid" />
+          <s:element minOccurs="0" maxOccurs="1" name="PropertyName" type="s:string" />
+        </s:sequence>
+      </s:complexType>
+      <s:simpleType name="ChangeTypes">
+        <s:list>
+          <s:simpleType>
+            <s:restriction base="s:string">
+              <s:enumeration value="None" />
+              <s:enumeration value="Add" />
+              <s:enumeration value="Modify" />
+              <s:enumeration value="Delete" />
+              <s:enumeration value="Metadata" />
+              <s:enumeration value="All" />
+            </s:restriction>
+          </s:simpleType>
+        </s:list>
+      </s:simpleType>
+      <s:simpleType name="ObjectTypes">
+        <s:list>
+          <s:simpleType>
+            <s:restriction base="s:string">
+              <s:enumeration value="None" />
+              <s:enumeration value="SingleValueProperty" />
+              <s:enumeration value="MultiValueProperty" />
+              <s:enumeration value="Anniversary" />
+              <s:enumeration value="DLMembership" />
+              <s:enumeration value="SiteMembership" />
+              <s:enumeration value="QuickLink" />
+              <s:enumeration value="Colleague" />
+              <s:enumeration value="PersonalizationSite" />
+              <s:enumeration value="UserProfile" />
+              <s:enumeration value="WebLog" />
+              <s:enumeration value="Custom" />
+              <s:enumeration value="OrganizationProfile" />
+              <s:enumeration value="OrganizationMembership" />
+              <s:enumeration value="All" />
+            </s:restriction>
+          </s:simpleType>
+        </s:list>
+      </s:simpleType>
+      <s:element name="GetChanges">
+        <s:complexType>
+          <s:sequence>
+            <s:element minOccurs="0" maxOccurs="1" name="changeToken" type="s:string" />
+            <s:element minOccurs="0" maxOccurs="1" name="changeQuery" type="tns:UserProfileChangeQuery" />
+          </s:sequence>
+        </s:complexType>
+      </s:element>
+      <s:complexType name="UserProfileChangeQuery">
+        <s:complexContent mixed="false">
+          <s:extension base="tns:ProfileBaseChangeQuery">
+            <s:sequence>
+          <s:element minOccurs="1" maxOccurs="1" name="Anniversary" type="s:boolean" />
+          <s:element minOccurs="1" maxOccurs="1" name="DistributionListMembership" type="s:boolean" />
+          <s:element minOccurs="1" maxOccurs="1" name="SiteMembership" type="s:boolean" />
+          <s:element minOccurs="1" maxOccurs="1" name="QuickLink" type="s:boolean" />
+          <s:element minOccurs="1" maxOccurs="1" name="Colleague" type="s:boolean" />
+              <s:element minOccurs="1" maxOccurs="1" name="WebLog" type="s:boolean" />
+          <s:element minOccurs="1" maxOccurs="1" name="PersonalizationSite" type="s:boolean" />
+          <s:element minOccurs="1" maxOccurs="1" name="UserProfile" type="s:boolean" />
+              <s:element minOccurs="1" maxOccurs="1" name="OrganizationMembership" type="s:boolean" />
+            </s:sequence>
+          </s:extension>
+        </s:complexContent>
+      </s:complexType>
+      <s:complexType name="ProfileBaseChangeQuery">
+        <s:sequence>
+          <s:element minOccurs="1" maxOccurs="1" name="SingleValueProperty" type="s:boolean" />
+          <s:element minOccurs="1" maxOccurs="1" name="MultiValueProperty" type="s:boolean" />
+          <s:element minOccurs="1" maxOccurs="1" name="Custom" type="s:boolean" />
+          <s:element minOccurs="1" maxOccurs="1" name="Add" type="s:boolean" />
+          <s:element minOccurs="1" maxOccurs="1" name="Update" type="s:boolean" />
+          <s:element minOccurs="1" maxOccurs="1" name="UpdateMetadata" type="s:boolean" />
+          <s:element minOccurs="1" maxOccurs="1" name="Delete" type="s:boolean" />
+          <s:element minOccurs="0" maxOccurs="1" name="ChangeTokenStart" type="tns:UserProfileChangeToken" />
+        </s:sequence>
+      </s:complexType>
+      <s:complexType name="UserProfileChangeToken" />
+      <s:element name="GetChangesResponse">
+        <s:complexType>
+          <s:sequence>
+            <s:element minOccurs="0" maxOccurs="1" name="GetChangesResult" type="tns:UserProfileChangeDataContainer" />
+          </s:sequence>
+        </s:complexType>
+      </s:element>
+      <s:element name="GetCurrentChangeToken">
+        <s:complexType />
+      </s:element>
+      <s:element name="GetCurrentChangeTokenResponse">
+        <s:complexType>
+          <s:sequence>
+            <s:element minOccurs="0" maxOccurs="1" name="GetCurrentChangeTokenResult" type="s:string" />
+          </s:sequence>
+        </s:complexType>
+      </s:element>
+      <s:element name="GetUserAllChanges">
+        <s:complexType>
+          <s:sequence>
+            <s:element minOccurs="0" maxOccurs="1" name="userAccountName" type="s:string" />
+          </s:sequence>
+        </s:complexType>
+      </s:element>
+      <s:element name="GetUserAllChangesResponse">
+        <s:complexType>
+          <s:sequence>
+            <s:element minOccurs="0" maxOccurs="1" name="GetUserAllChangesResult" type="tns:UserProfileChangeDataContainer" />
+          </s:sequence>
+        </s:complexType>
+      </s:element>
+      <s:element name="GetUserChanges">
+        <s:complexType>
+          <s:sequence>
+            <s:element minOccurs="0" maxOccurs="1" name="userAccountName" type="s:string" />
+            <s:element minOccurs="0" maxOccurs="1" name="changeToken" type="s:string" />
+            <s:element minOccurs="0" maxOccurs="1" name="changeQuery" type="tns:UserProfileChangeQuery" />
+          </s:sequence>
+        </s:complexType>
+      </s:element>
+      <s:element name="GetUserChangesResponse">
+        <s:complexType>
+          <s:sequence>
+            <s:element minOccurs="0" maxOccurs="1" name="GetUserChangesResult" type="tns:UserProfileChangeDataContainer" />
+          </s:sequence>
+        </s:complexType>
+      </s:element>     
+      <s:element name="GetUserCurrentChangeToken">
+        <s:complexType>
+          <s:sequence>
+            <s:element minOccurs="0" maxOccurs="1" name="userAccountName" type="s:string" />
+          </s:sequence>
+        </s:complexType>
+      </s:element>
+      <s:element name="GetUserCurrentChangeTokenResponse">
+        <s:complexType>
+          <s:sequence>
+            <s:element minOccurs="0" maxOccurs="1" name="GetUserCurrentChangeTokenResult" type="s:string" />
+          </s:sequence>
+        </s:complexType>
+      </s:element>
+    </s:schema>
+    <s:schema elementFormDefault="qualified" targetNamespace="http://microsoft.com/wsdl/types/">
+      <s:simpleType name="guid">
+        <s:restriction base="s:string">
+          <s:pattern value="[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}" />
+        </s:restriction>
+      </s:simpleType>
+    </s:schema>
+  </wsdl:types>
+  <wsdl:message name="GetAllChangesSoapIn">
+    <wsdl:part name="parameters" element="tns:GetAllChanges" />
+  </wsdl:message>
+  <wsdl:message name="GetAllChangesSoapOut">
+    <wsdl:part name="parameters" element="tns:GetAllChangesResponse" />
+  </wsdl:message>
+  <wsdl:message name="GetChangesSoapIn">
+    <wsdl:part name="parameters" element="tns:GetChanges" />
+  </wsdl:message>
+  <wsdl:message name="GetChangesSoapOut">
+    <wsdl:part name="parameters" element="tns:GetChangesResponse" />
+  </wsdl:message>
+  <wsdl:message name="GetCurrentChangeTokenSoapIn">
+    <wsdl:part name="parameters" element="tns:GetCurrentChangeToken" />
+  </wsdl:message>
+  <wsdl:message name="GetCurrentChangeTokenSoapOut">
+    <wsdl:part name="parameters" element="tns:GetCurrentChangeTokenResponse" />
+  </wsdl:message>
+  <wsdl:message name="GetUserAllChangesSoapIn">
+    <wsdl:part name="parameters" element="tns:GetUserAllChanges" />
+  </wsdl:message>
+  <wsdl:message name="GetUserAllChangesSoapOut">
+    <wsdl:part name="parameters" element="tns:GetUserAllChangesResponse" />
+  </wsdl:message>
+  <wsdl:message name="GetUserChangesSoapIn">
+    <wsdl:part name="parameters" element="tns:GetUserChanges" />
+  </wsdl:message>
+  <wsdl:message name="GetUserChangesSoapOut">
+    <wsdl:part name="parameters" element="tns:GetUserChangesResponse" />
+  </wsdl:message>
+  <wsdl:message name="GetUserCurrentChangeTokenSoapIn">
+    <wsdl:part name="parameters" element="tns:GetUserCurrentChangeToken" />
+  </wsdl:message>
+  <wsdl:message name="GetUserCurrentChangeTokenSoapOut">
+    <wsdl:part name="parameters" element="tns:GetUserCurrentChangeTokenResponse" />
+  </wsdl:message>
+  <wsdl:portType name="UserProfileChangeServiceSoap">
+    <wsdl:operation name="GetAllChanges">
+      <wsdl:input message="tns:GetAllChangesSoapIn" />
+      <wsdl:output message="tns:GetAllChangesSoapOut" />
+    </wsdl:operation>
+    <wsdl:operation name="GetChanges">
+      <wsdl:input message="tns:GetChangesSoapIn" />
+      <wsdl:output message="tns:GetChangesSoapOut" />
+    </wsdl:operation>
+    <wsdl:operation name="GetCurrentChangeToken">
+      <wsdl:input message="tns:GetCurrentChangeTokenSoapIn" />
+      <wsdl:output message="tns:GetCurrentChangeTokenSoapOut" />
+    </wsdl:operation>
+    <wsdl:operation name="GetUserAllChanges">
+      <wsdl:input message="tns:GetUserAllChangesSoapIn" />
+      <wsdl:output message="tns:GetUserAllChangesSoapOut" />
+    </wsdl:operation>
+    <wsdl:operation name="GetUserChanges">
+      <wsdl:input message="tns:GetUserChangesSoapIn" />
+      <wsdl:output message="tns:GetUserChangesSoapOut" />
+    </wsdl:operation>
+    <wsdl:operation name="GetUserCurrentChangeToken">
+      <wsdl:input message="tns:GetUserCurrentChangeTokenSoapIn" />
+      <wsdl:output message="tns:GetUserCurrentChangeTokenSoapOut" />
+    </wsdl:operation>
+  </wsdl:portType>
+  <wsdl:binding name="UserProfileChangeServiceSoap" type="tns:UserProfileChangeServiceSoap">
+    <soap:binding transport="http://schemas.xmlsoap.org/soap/http" />
+    <wsdl:operation name="GetAllChanges">
+      <soap:operation soapAction="http://microsoft.com/webservices/SharePointPortalServer/UserProfileChangeService/GetAllChanges" style="document" />
+      <wsdl:input>
+        <soap:body use="literal" />
+      </wsdl:input>
+      <wsdl:output>
+        <soap:body use="literal" />
+      </wsdl:output>
+    </wsdl:operation>
+    <wsdl:operation name="GetChanges">
+      <soap:operation soapAction="http://microsoft.com/webservices/SharePointPortalServer/UserProfileChangeService/GetChanges" style="document" />
+      <wsdl:input>
+        <soap:body use="literal" />
+      </wsdl:input>
+      <wsdl:output>
+        <soap:body use="literal" />
+      </wsdl:output>
+    </wsdl:operation>
+    <wsdl:operation name="GetCurrentChangeToken">
+      <soap:operation soapAction="http://microsoft.com/webservices/SharePointPortalServer/UserProfileChangeService/GetCurrentChangeToken" style="document" />
+      <wsdl:input>
+        <soap:body use="literal" />
+      </wsdl:input>
+      <wsdl:output>
+        <soap:body use="literal" />
+      </wsdl:output>
+    </wsdl:operation>
+    <wsdl:operation name="GetUserAllChanges">
+      <soap:operation soapAction="http://microsoft.com/webservices/SharePointPortalServer/UserProfileChangeService/GetUserAllChanges" style="document" />
+      <wsdl:input>
+        <soap:body use="literal" />
+      </wsdl:input>
+      <wsdl:output>
+        <soap:body use="literal" />
+      </wsdl:output>
+    </wsdl:operation>
+    <wsdl:operation name="GetUserChanges">
+      <soap:operation soapAction="http://microsoft.com/webservices/SharePointPortalServer/UserProfileChangeService/GetUserChanges" style="document" />
+      <wsdl:input>
+        <soap:body use="literal" />
+      </wsdl:input>
+      <wsdl:output>
+        <soap:body use="literal" />
+      </wsdl:output>
+    </wsdl:operation>
+    <wsdl:operation name="GetUserCurrentChangeToken">
+      <soap:operation soapAction="http://microsoft.com/webservices/SharePointPortalServer/UserProfileChangeService/GetUserCurrentChangeToken" style="document" />
+      <wsdl:input>
+        <soap:body use="literal" />
+      </wsdl:input>
+      <wsdl:output>
+        <soap:body use="literal" />
+      </wsdl:output>
+    </wsdl:operation>
+  </wsdl:binding>
+  <wsdl:binding name="UserProfileChangeServiceSoap12" type="tns:UserProfileChangeServiceSoap">
+    <soap12:binding transport="http://schemas.xmlsoap.org/soap/http" />
+    <wsdl:operation name="GetAllChanges">
+      <soap12:operation soapAction="http://microsoft.com/webservices/SharePointPortalServer/UserProfileChangeService/GetAllChanges" style="document" />
+      <wsdl:input>
+        <soap12:body use="literal" />
+      </wsdl:input>
+      <wsdl:output>
+        <soap12:body use="literal" />
+      </wsdl:output>
+    </wsdl:operation>
+    <wsdl:operation name="GetChanges">
+      <soap12:operation soapAction="http://microsoft.com/webservices/SharePointPortalServer/UserProfileChangeService/GetChanges" style="document" />
+      <wsdl:input>
+        <soap12:body use="literal" />
+      </wsdl:input>
+      <wsdl:output>
+        <soap12:body use="literal" />
+      </wsdl:output>
+    </wsdl:operation>
+    <wsdl:operation name="GetCurrentChangeToken">
+      <soap12:operation soapAction="http://microsoft.com/webservices/SharePointPortalServer/UserProfileChangeService/GetCurrentChangeToken" style="document" />
+      <wsdl:input>
+        <soap12:body use="literal" />
+      </wsdl:input>
+      <wsdl:output>
+        <soap12:body use="literal" />
+      </wsdl:output>
+    </wsdl:operation>
+    <wsdl:operation name="GetUserAllChanges">
+      <soap12:operation soapAction="http://microsoft.com/webservices/SharePointPortalServer/UserProfileChangeService/GetUserAllChanges" style="document" />
+      <wsdl:input>
+        <soap12:body use="literal" />
+      </wsdl:input>
+      <wsdl:output>
+        <soap12:body use="literal" />
+      </wsdl:output>
+    </wsdl:operation>
+    <wsdl:operation name="GetUserChanges">
+      <soap12:operation soapAction="http://microsoft.com/webservices/SharePointPortalServer/UserProfileChangeService/GetUserChanges" style="document" />
+      <wsdl:input>
+        <soap12:body use="literal" />
+      </wsdl:input>
+      <wsdl:output>
+        <soap12:body use="literal" />
+      </wsdl:output>
+    </wsdl:operation>
+    <wsdl:operation name="GetUserCurrentChangeToken">
+      <soap12:operation soapAction="http://microsoft.com/webservices/SharePointPortalServer/UserProfileChangeService/GetUserCurrentChangeToken" style="document" />
+      <wsdl:input>
+        <soap12:body use="literal" />
+      </wsdl:input>
+      <wsdl:output>
+        <soap12:body use="literal" />
+      </wsdl:output>
+    </wsdl:operation>
+  </wsdl:binding>
+   <wsdl:service name="UserProfileChangeService">
+    <wsdl:port name="UserProfileChangeServiceSoap" binding="tns:UserProfileChangeServiceSoap">
+      <soap:address location="http://entpoint05/_vti_bin/UserProfileChangeService.asmx" />
+    </wsdl:port>
+    <wsdl:port name="UserProfileChangeServiceSoap12" binding="tns:UserProfileChangeServiceSoap12">
+      <soap12:address location="http://entpoint05/_vti_bin/UserProfileChangeService.asmx" />
+    </wsdl:port>
+  </wsdl:service>
+</wsdl:definitions>
