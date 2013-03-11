@@ -8,6 +8,7 @@ import com.google.enterprise.adaptor.AdaptorContext;
 import com.google.enterprise.adaptor.Config;
 import com.google.enterprise.adaptor.DocId;
 import com.google.enterprise.adaptor.DocIdPusher;
+import com.google.enterprise.adaptor.GroupPrincipal;
 import com.google.enterprise.adaptor.PollingIncrementalAdaptor;
 import com.google.enterprise.adaptor.Request;
 import com.google.enterprise.adaptor.Response;
@@ -457,8 +458,9 @@ public class SharePointUserProfileAdaptor extends AbstractAdaptor
         }
       }
       if (setAcl) {
-        List<String> permitGroups = new ArrayList<String>();
-        permitGroups.add("NT AUTHORITY\\Authenticated Users");
+        List<GroupPrincipal> permitGroups = new ArrayList<GroupPrincipal>();
+        permitGroups.add(
+            new GroupPrincipal("NT AUTHORITY\\Authenticated Users"));
         response.setAcl(new Acl.Builder()
             .setInheritanceType(Acl.InheritanceType.LEAF_NODE)
             .setPermitGroups(permitGroups).build());

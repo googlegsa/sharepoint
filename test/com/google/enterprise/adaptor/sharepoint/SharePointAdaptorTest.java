@@ -24,7 +24,9 @@ import com.google.enterprise.adaptor.Acl;
 import com.google.enterprise.adaptor.Config;
 import com.google.enterprise.adaptor.DocId;
 import com.google.enterprise.adaptor.DocIdPusher;
+import com.google.enterprise.adaptor.GroupPrincipal;
 import com.google.enterprise.adaptor.Metadata;
+import com.google.enterprise.adaptor.UserPrincipal;
 
 import com.microsoft.schemas.sharepoint.soap.ArrayOfSFPUrl;
 import com.microsoft.schemas.sharepoint.soap.ArrayOfSList;
@@ -88,6 +90,22 @@ public class SharePointAdaptorTest {
     if (adaptor != null) {
       adaptor.destroy();
     }
+  }
+
+  public List<UserPrincipal> users(String... names) {
+    List<UserPrincipal> users = new ArrayList<UserPrincipal>();
+    for (String name : names) {
+      users.add(new UserPrincipal(name));
+    }
+    return users;
+  }
+
+  public List<GroupPrincipal> groups(String... names) {
+    List<GroupPrincipal> groups = new ArrayList<GroupPrincipal>();
+    for (String name : names) {
+      groups.add(new GroupPrincipal(name));
+    }
+    return groups;
   }
 
   @Test
@@ -256,11 +274,11 @@ public class SharePointAdaptorTest {
         + "SiteCollection</a></li>"
         + "</ul></body></html>";
     assertEquals(golden, responseString);
-    List<String> permit = Arrays.asList("GDC-PSL\\Administrator",
-        "GDC-PSL\\spuser1", "NT AUTHORITY\\LOCAL SERVICE");
+    String[] permit = new String[] {"GDC-PSL\\Administrator",
+        "GDC-PSL\\spuser1", "NT AUTHORITY\\LOCAL SERVICE"};
     assertEquals(new Acl.Builder()
         .setInheritanceType(Acl.InheritanceType.PARENT_OVERRIDES)
-        .setPermitUsers(permit).setPermitGroups(permit).build(),
+        .setPermitUsers(users(permit)).setPermitGroups(groups(permit)).build(),
         response.getAcl());
   }
 
@@ -494,9 +512,9 @@ public class SharePointAdaptorTest {
     assertEquals(new Acl.Builder()
         .setInheritFrom(new DocId(""))
         .setInheritanceType(Acl.InheritanceType.AND_BOTH_PERMIT)
-        .setPermitGroups(Arrays.asList("chinese1 Members", "chinese1 Owners",
+        .setPermitGroups(groups("chinese1 Members", "chinese1 Owners",
             "chinese1 Visitors"))
-        .setPermitUsers(Arrays.asList("GDC-PSL\\spuser1")).build(),
+        .setPermitUsers(users("GDC-PSL\\spuser1")).build(),
         response.getAcl());
   }
 
@@ -898,7 +916,7 @@ public class SharePointAdaptorTest {
     assertEquals(new Acl.Builder()
         .setInheritFrom(new DocId("http://localhost:1/sites/SiteCollection"))
         .setInheritanceType(Acl.InheritanceType.AND_BOTH_PERMIT)
-        .setPermitGroups(Arrays.asList("SiteCollection Members",
+        .setPermitGroups(groups("SiteCollection Members",
             "SiteCollection Owners", "SiteCollection Visitors")).build(),
         response.getAcl());
   }
@@ -1671,9 +1689,9 @@ public class SharePointAdaptorTest {
         .setInheritFrom(new DocId("http://localhost:1/sites/SiteCollection/"
             + "Lists/Custom List/Test Folder"))
         .setInheritanceType(Acl.InheritanceType.AND_BOTH_PERMIT)
-        .setPermitGroups(Arrays.asList("SiteCollection Members",
+        .setPermitGroups(groups("SiteCollection Members",
             "SiteCollection Owners", "SiteCollection Visitors"))
-        .setPermitUsers(Arrays.asList("GDC-PSL\\administrator")).build(),
+        .setPermitUsers(users("GDC-PSL\\administrator")).build(),
         response.getAcl());
   }
 
@@ -2853,9 +2871,9 @@ public class SharePointAdaptorTest {
         .setInheritFrom(new DocId("http://localhost:1/sites/SiteCollection/"
             + "Lists/Custom List/AllItems.aspx"))
         .setInheritanceType(Acl.InheritanceType.AND_BOTH_PERMIT)
-        .setPermitGroups(Arrays.asList("SiteCollection Members",
+        .setPermitGroups(groups("SiteCollection Members",
             "SiteCollection Owners", "SiteCollection Visitors"))
-        .setPermitUsers(Arrays.asList("GDC-PSL\\administrator")).build(),
+        .setPermitUsers(users("GDC-PSL\\administrator")).build(),
         response.getAcl());
   }
 

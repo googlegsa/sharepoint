@@ -25,10 +25,12 @@ import com.google.enterprise.adaptor.Config;
 import com.google.enterprise.adaptor.DocId;
 import com.google.enterprise.adaptor.DocIdEncoder;
 import com.google.enterprise.adaptor.DocIdPusher;
+import com.google.enterprise.adaptor.GroupPrincipal;
 import com.google.enterprise.adaptor.IOHelper;
 import com.google.enterprise.adaptor.PollingIncrementalAdaptor;
 import com.google.enterprise.adaptor.Request;
 import com.google.enterprise.adaptor.Response;
+import com.google.enterprise.adaptor.UserPrincipal;
 
 import com.microsoft.schemas.sharepoint.soap.ContentDatabase;
 import com.microsoft.schemas.sharepoint.soap.ContentDatabases;
@@ -513,25 +515,29 @@ public class SharePointAdaptor extends AbstractAdaptor
       // A PolicyUser is either a user or group, but we aren't provided with
       // which. Thus, we treat PolicyUsers as both a user and a group in ACLs
       // and understand that only one of the two entries will have an effect.
-      List<String> permitIds = new ArrayList<String>();
-      List<String> denyIds = new ArrayList<String>();
+      List<UserPrincipal> permitUsers = new ArrayList<UserPrincipal>();
+      List<GroupPrincipal> permitGroups = new ArrayList<GroupPrincipal>();
+      List<UserPrincipal> denyUsers = new ArrayList<UserPrincipal>();
+      List<GroupPrincipal> denyGroups = new ArrayList<GroupPrincipal>();
       for (PolicyUser policyUser : vs.getPolicies().getPolicyUser()) {
         // TODO(ejona): special case NT AUTHORITY\LOCAL SERVICE.
         String loginName = policyUser.getLoginName();
         long grant = policyUser.getGrantMask().longValue();
         if ((necessaryPermissionMask & grant) == necessaryPermissionMask) {
-          permitIds.add(loginName);
+          permitUsers.add(new UserPrincipal(loginName));
+          permitGroups.add(new GroupPrincipal(loginName));
         }
         long deny = policyUser.getDenyMask().longValue();
         // If at least one necessary bit is masked, then deny user.
         if ((necessaryPermissionMask & deny) != 0) {
-          denyIds.add(loginName);
+          denyUsers.add(new UserPrincipal(loginName));
+          denyGroups.add(new GroupPrincipal(loginName));
         }
       }
       response.setAcl(new Acl.Builder()
           .setInheritanceType(Acl.InheritanceType.PARENT_OVERRIDES)
-          .setPermitUsers(permitIds).setPermitGroups(permitIds)
-          .setDenyUsers(denyIds).setDenyGroups(denyIds).build());
+          .setPermitUsers(permitUsers).setPermitGroups(permitGroups)
+          .setDenyUsers(denyUsers).setDenyGroups(denyGroups).build());
 
       response.setContentType("text/html");
       HtmlResponseWriter writer = createHtmlResponseWriter(response);
@@ -744,8 +750,8 @@ public class SharePointAdaptor extends AbstractAdaptor
 
     private Acl.Builder generateAcl(List<Permission> permissions,
         final long necessaryPermissionMask) throws IOException {
-      List<String> permitUsers = new LinkedList<String>();
-      List<String> permitGroups = new LinkedList<String>();
+      List<UserPrincipal> permitUsers = new LinkedList<UserPrincipal>();
+      List<GroupPrincipal> permitGroups = new LinkedList<GroupPrincipal>();
       MemberIdMapping mapping = getMemberIdMapping();
       for (Permission permission : permissions) {
         // Although it is named "mask", this is really a bit-field of
@@ -758,9 +764,9 @@ public class SharePointAdaptor extends AbstractAdaptor
         String userName = mapping.getUserName(id);
         String groupName = mapping.getGroupName(id);
         if (userName != null) {
-          permitUsers.add(userName);
+          permitUsers.add(new UserPrincipal(userName));
         } else if (groupName != null) {
-          permitGroups.add(groupName);
+          permitGroups.add(new GroupPrincipal(groupName));
         } else {
           log.log(Level.WARNING, "Could not resolve member id {0}", id);
         }

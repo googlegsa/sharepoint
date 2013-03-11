@@ -21,7 +21,12 @@ import com.google.enterprise.adaptor.DocIdEncoder;
 import com.google.enterprise.adaptor.DocIdPusher;
 import com.google.enterprise.adaptor.GetDocIdsErrorHandler;
 import com.google.enterprise.adaptor.SensitiveValueDecoder;
+import com.google.enterprise.adaptor.Session;
 import com.google.enterprise.adaptor.StatusSource;
+
+import com.sun.net.httpserver.HttpContext;
+import com.sun.net.httpserver.HttpExchange;
+import com.sun.net.httpserver.HttpHandler;
 
 import java.net.URI;
 import java.net.URISyntaxException;
@@ -86,7 +91,7 @@ class MockAdaptorContext implements AdaptorContext {
   }
 
   @Override
-  public GetDocIdsErrorHandler getGetDocIdsErrorHandler() {
+  public GetDocIdsErrorHandler getGetDocIdsFullErrorHandler() {
     throw new UnsupportedOperationException();
   }
 
@@ -101,7 +106,27 @@ class MockAdaptorContext implements AdaptorContext {
   }
 
   @Override
-  public void setGetDocIdsErrorHandler(GetDocIdsErrorHandler handler) {
+  public void setGetDocIdsFullErrorHandler(GetDocIdsErrorHandler handler) {
+    throw new UnsupportedOperationException();
+  }
+
+  @Override
+  public Session getUserSession(HttpExchange ex, boolean create) {
+    throw new UnsupportedOperationException();
+  }
+
+  @Override
+  public HttpContext createHttpContext(String path, HttpHandler handler) {
+    throw new UnsupportedOperationException();
+  }
+
+  @Override
+  public GetDocIdsErrorHandler getGetDocIdsIncrementalErrorHandler() {
+    throw new UnsupportedOperationException();
+  }
+
+  @Override
+  public void setGetDocIdsIncrementalErrorHandler(GetDocIdsErrorHandler h) {
     throw new UnsupportedOperationException();
   }
 }
