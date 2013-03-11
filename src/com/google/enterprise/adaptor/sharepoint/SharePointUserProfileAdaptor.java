@@ -27,6 +27,14 @@ import com.microsoft.webservices.sharepointportalserver.userprofileservice.Prope
 import com.microsoft.webservices.sharepointportalserver.userprofileservice.UserProfileServiceSoap;
 import com.microsoft.webservices.sharepointportalserver.userprofileservice.ValueData;
 
+import org.w3c.dom.DOMException;
+import org.w3c.dom.DOMImplementation;
+import org.w3c.dom.Document;
+import org.w3c.dom.Element;
+import org.w3c.dom.ls.DOMImplementationLS;
+import org.w3c.dom.ls.LSOutput;
+import org.w3c.dom.ls.LSSerializer;
+
 import java.io.IOException;
 import java.io.OutputStream;
 import java.io.StringReader;
@@ -55,14 +63,6 @@ import javax.xml.transform.stream.StreamSource;
 import javax.xml.ws.EndpointReference;
 import javax.xml.ws.Service;
 import javax.xml.ws.WebServiceException;
-
-import org.w3c.dom.DOMException;
-import org.w3c.dom.DOMImplementation;
-import org.w3c.dom.Element;
-import org.w3c.dom.ls.DOMImplementationLS;
-import org.w3c.dom.ls.LSOutput;
-import org.w3c.dom.ls.LSSerializer;
-import org.w3c.dom.Document;
 
 /**
  * An adaptor for obtaining user profile information from SharePoint.
@@ -274,7 +274,8 @@ public class SharePointUserProfileAdaptor extends AbstractAdaptor
     }
   }
 
-  public static interface UserProfileServiceWS {
+  @VisibleForTesting
+  static interface UserProfileServiceWS {
 
     public GetUserProfileByIndexResult getUserProfileByIndex(int index)
         throws WebServiceException;
