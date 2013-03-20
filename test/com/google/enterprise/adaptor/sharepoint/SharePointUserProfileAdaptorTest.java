@@ -45,13 +45,13 @@ import javax.xml.parsers.DocumentBuilderFactory;
 
 import javax.xml.ws.WebServiceException;
 
-
+/** Test cases for {@link SharePointUserProfileAdaptor}. */
 public class SharePointUserProfileAdaptorTest {
 
   private Config config;
   private SharePointUserProfileAdaptor adaptor;
 
-@Before
+  @Before
   public void setup() {
     config = new Config();
     new SharePointUserProfileAdaptor().initConfig(config);
@@ -95,23 +95,23 @@ public class SharePointUserProfileAdaptorTest {
     poulateProfileProperties(profile,
         SharePointUserProfileAdaptor.PROFILE_ACCOUNTNAME_PROPERTY,
         new String[] {"user1"});
-    serviceFactory.AddUserProfileToCollection(1, 2, "user1", profile, null);
+    serviceFactory.addUserProfileToCollection(1, 2, "user1", profile, null);
 
     profile = new ArrayOfPropertyData();
     poulateProfileProperties(profile,
         SharePointUserProfileAdaptor.PROFILE_ACCOUNTNAME_PROPERTY,
         new String[] {"user2"});
-    serviceFactory.AddUserProfileToCollection(2, 4, "user2", profile, null);
+    serviceFactory.addUserProfileToCollection(2, 4, "user2", profile, null);
 
     profile = new ArrayOfPropertyData();
     poulateProfileProperties(profile,
         SharePointUserProfileAdaptor.PROFILE_ACCOUNTNAME_PROPERTY,
         new String[] {"user3"});
-    serviceFactory.AddUserProfileToCollection(4, 5, "user3", profile, null);
+    serviceFactory.addUserProfileToCollection(4, 5, "user3", profile, null);
 
     // Last record should be discarded by Adaptor
     // since profile properties are null
-    serviceFactory.AddUserProfileToCollection(5, 6, "user4", null, null);
+    serviceFactory.addUserProfileToCollection(5, 6, "user4", null, null);
 
     adaptor = new SharePointUserProfileAdaptor(serviceFactory);
     AccumulatingDocIdPusher pusher = new AccumulatingDocIdPusher();
@@ -174,7 +174,7 @@ public class SharePointUserProfileAdaptorTest {
     cPrivate.setName("Private Colleague");
     colleaguesData.getContactData().add(cPrivate);
 
-    serviceFactory.AddUserProfileToCollection(1, 2, "user1", profile, colleaguesData);
+    serviceFactory.addUserProfileToCollection(1, 2, "user1", profile, colleaguesData);
     adaptor = new SharePointUserProfileAdaptor(serviceFactory);
 
     AccumulatingDocIdPusher pusher = new AccumulatingDocIdPusher();
@@ -223,7 +223,8 @@ public class SharePointUserProfileAdaptorTest {
     assertEquals("public group", URLDecoder.decode(group, "UTF-8"));
     String name = pubContact.getAttributes().getNamedItem("gsa:name").getNodeValue();
     assertEquals("Public Colleague", URLDecoder.decode(name, "UTF-8"));
-    String isInWorkGroup = pubContact.getAttributes().getNamedItem("gsa:isinworkinggroup").getNodeValue();
+    String isInWorkGroup
+        = pubContact.getAttributes().getNamedItem("gsa:isinworkinggroup").getNodeValue();
     assertEquals("true", URLDecoder.decode(isInWorkGroup, "UTF-8"));
 
 
@@ -250,7 +251,7 @@ public class SharePointUserProfileAdaptorTest {
 
     ByteArrayOutputStream baos = new ByteArrayOutputStream();
     GetContentsRequest request = new GetContentsRequest(
-        new DocId( SharePointUserProfileAdaptor.SOCIAL_ID_PREFIX + "user1"));
+        new DocId(SharePointUserProfileAdaptor.SOCIAL_ID_PREFIX + "user1"));
     GetContentsResponse response = new GetContentsResponse(baos);
     adaptor.getDocContent(request, response);
     assertTrue(response.isNotFound());
@@ -264,7 +265,7 @@ public class SharePointUserProfileAdaptorTest {
     poulateProfileProperties(profile,
         SharePointUserProfileAdaptor.PROFILE_ACCOUNTNAME_PROPERTY,
         new String[] {"user1"});
-    serviceFactory.AddUserProfileToCollection(1, 2, "user1", profile, null);
+    serviceFactory.addUserProfileToCollection(1, 2, "user1", profile, null);
     adaptor = new SharePointUserProfileAdaptor(serviceFactory);
 
     AccumulatingDocIdPusher pusher = new AccumulatingDocIdPusher();
@@ -337,23 +338,23 @@ public class SharePointUserProfileAdaptorTest {
             "new token");
     //Test will use Pagination size of 3
     //batch 1 - user1,user2
-    serviceFactory.AddChangeLogForUser("user1");
-    serviceFactory.AddChangeLogForUser("user2");
-    serviceFactory.AddChangeLogForUser("user2");
+    serviceFactory.addChangeLogForUser("user1");
+    serviceFactory.addChangeLogForUser("user2");
+    serviceFactory.addChangeLogForUser("user2");
     // batch 2 - user4, user3, user5
-    serviceFactory.AddChangeLogForUser("user4");
-    serviceFactory.AddChangeLogForUser("user3");
-    serviceFactory.AddChangeLogForUser("user5");
+    serviceFactory.addChangeLogForUser("user4");
+    serviceFactory.addChangeLogForUser("user3");
+    serviceFactory.addChangeLogForUser("user5");
     //batch 3 -user3, user4
-    serviceFactory.AddChangeLogForUser("user3");
-    serviceFactory.AddChangeLogForUser("user4");
-    serviceFactory.AddChangeLogForUser("user4");
+    serviceFactory.addChangeLogForUser("user3");
+    serviceFactory.addChangeLogForUser("user4");
+    serviceFactory.addChangeLogForUser("user4");
     //batch 4 -user6
-    serviceFactory.AddChangeLogForUser("user6");
-    serviceFactory.AddChangeLogForUser("user6");
-    serviceFactory.AddChangeLogForUser("user6");
+    serviceFactory.addChangeLogForUser("user6");
+    serviceFactory.addChangeLogForUser("user6");
+    serviceFactory.addChangeLogForUser("user6");
     //batch 5 -user6
-    serviceFactory.AddChangeLogForUser("user6");
+    serviceFactory.addChangeLogForUser("user6");
 
     adaptor = new SharePointUserProfileAdaptor(serviceFactory);
     AccumulatingDocIdPusher pusher = new AccumulatingDocIdPusher();
@@ -447,7 +448,7 @@ public class SharePointUserProfileAdaptorTest {
   }
 
   private static class MockUserProfileServiceWS
-  implements UserProfileServiceWS {
+      implements UserProfileServiceWS {
     Map<Integer, GetUserProfileByIndexResult> userProfileCollectionByIndex =
         new HashMap<Integer, GetUserProfileByIndexResult>();
     Map<String, GetUserProfileByIndexResult> userProfileCollectionByName =
@@ -506,7 +507,7 @@ public class SharePointUserProfileAdaptorTest {
 
     @Override
     public String getCurrentChangeToken() throws WebServiceException {
-      // TODO Auto-generated method stub
+      // TODO(tvartak) Auto-generated method stub
       return newChangeToken;
     }
 
@@ -540,7 +541,7 @@ public class SharePointUserProfileAdaptorTest {
       return changeContainer;
     }
 
-    public void AddUserProfileToCollection(int index, int nextIndex,
+    public void addUserProfileToCollection(int index, int nextIndex,
         String userAccountName, ArrayOfPropertyData profileProperties,
         ArrayOfContactData colleagues) {
       GetUserProfileByIndexResult userProfile =
@@ -552,7 +553,7 @@ public class SharePointUserProfileAdaptorTest {
       userProfileCollectionByName.put(userAccountName, userProfile);
     }
 
-    public void AddChangeLogForUser(String userName) {
+    public void addChangeLogForUser(String userName) {
       UserProfileChangeData change = new UserProfileChangeData();
       change.setUserAccountName(userName);
       changes.add(change);
@@ -560,7 +561,7 @@ public class SharePointUserProfileAdaptorTest {
   }
 
   private static class MockUserProfileServiceFactoryImpl
-  implements UserProfileServiceFactory {
+      implements UserProfileServiceFactory {
     MockUserProfileServiceWS proxy;
 
     public MockUserProfileServiceFactoryImpl(String changeTokenOnRepository) {
@@ -573,15 +574,15 @@ public class SharePointUserProfileAdaptorTest {
       return proxy;
     }
 
-    public void AddUserProfileToCollection (int index, int nextIndex,
+    public void addUserProfileToCollection (int index, int nextIndex,
         String userAccountName, ArrayOfPropertyData profileProperties,
         ArrayOfContactData colleagues) {
-      proxy.AddUserProfileToCollection(index, nextIndex,
+      proxy.addUserProfileToCollection(index, nextIndex,
           userAccountName, profileProperties, colleagues);
     }
 
-    public void AddChangeLogForUser(String userName) {
-      proxy.AddChangeLogForUser(userName);
+    public void addChangeLogForUser(String userName) {
+      proxy.addChangeLogForUser(userName);
     }
   }
 }
