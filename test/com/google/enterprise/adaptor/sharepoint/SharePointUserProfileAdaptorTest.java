@@ -5,6 +5,7 @@ import static org.junit.Assert.*;
 
 import com.google.enterprise.adaptor.Config;
 import com.google.enterprise.adaptor.DocId;
+import com.google.enterprise.adaptor.GroupPrincipal;
 
 import com.google.enterprise.adaptor.sharepoint.SharePointUserProfileAdaptor.UserProfileServiceClient;
 import com.google.enterprise.adaptor.sharepoint.SharePointUserProfileAdaptor.UserProfileServiceFactory;
@@ -232,7 +233,7 @@ public class SharePointUserProfileAdaptorTest {
     assertNotNull(response.getAcl().getPermitGroups());
     assertEquals(1, response.getAcl().getPermitGroups().size());
     assertTrue(response.getAcl().getPermitGroups().contains(
-        "NT AUTHORITY\\Authenticated Users"));
+        new GroupPrincipal("NT AUTHORITY\\Authenticated Users")));
     assertTrue(response.getAcl().getPermitUsers().isEmpty());
     assertTrue(response.getAcl().getDenyGroups().isEmpty());
     assertTrue(response.getAcl().getDenyUsers().isEmpty());
