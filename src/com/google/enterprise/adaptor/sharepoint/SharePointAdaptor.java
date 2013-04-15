@@ -191,6 +191,11 @@ public class SharePointAdaptor extends AbstractAdaptor
   private final HttpClient httpClient;
   private boolean xmlValidation;
   private NtlmAuthenticator ntlmAuthenticator;
+  /**
+   * Cached value of whether we are talking to a SP 2010 server or not. This
+   * value is used in case of error in certain situations.
+   */
+  private boolean isSp2010;
 
   public SharePointAdaptor() {
     this(new SiteDataFactoryImpl(), new HttpClientImpl());
@@ -297,9 +302,17 @@ public class SharePointAdaptor extends AbstractAdaptor
     Set<String> discoveredContentDatabases;
     if (vs == null) {
       // Retrieving list of databases failed, but we can continue without it.
+      // We don't set isSp2010 here, because we don't know what version of
+      // server we are talking to. However, if isSp2010 is still its default,
+      // then contentDatabaseChangeId is also its default and is empty. When
+      // contentDatabaseChangeId is empty, we won't end up using isSp2010.
       discoveredContentDatabases
         = new HashSet<String>(contentDatabaseChangeId.keySet());
     } else {
+      String version = vs.getMetadata().getVersion();
+      // Version is missing for SP 2007 (but its version is 12). SP 2010 is 14.
+      isSp2010 = version != null && version.startsWith("14.");
+
       discoveredContentDatabases = new HashSet<String>();
       if (vs.getContentDatabases() != null) {
         for (ContentDatabases.ContentDatabase cd
@@ -350,7 +363,8 @@ public class SharePointAdaptor extends AbstractAdaptor
         continue;
       }
       CursorPaginator<SPContentDatabase, String> changesPaginator
-          = client.getChangesContentDatabase(contentDatabase, changeId);
+          = client.getChangesContentDatabase(contentDatabase, changeId,
+              isSp2010);
       SPContentDatabase changes;
       try {
         while ((changes = changesPaginator.next()) != null) {
@@ -1379,7 +1393,7 @@ public class SharePointAdaptor extends AbstractAdaptor
      */
     private CursorPaginator<SPContentDatabase, String>
         getChangesContentDatabase(final String contentDatabaseGuid,
-            String startChangeId) {
+            String startChangeId, final boolean isSp2010) {
       log.entering("SiteDataClient", "getChangesContentDatabase",
           new Object[] {contentDatabaseGuid, startChangeId});
       final Holder<String> lastChangeId = new Holder<String>(startChangeId);
@@ -1390,18 +1404,19 @@ public class SharePointAdaptor extends AbstractAdaptor
       return new CursorPaginator<SPContentDatabase, String>() {
         @Override
         public SPContentDatabase next() throws IOException {
-          // SharePoint 2010 sometimes does not set lastChangeId=currentChangeId
-          // nor moreChanges=false when paging is complete, even though both of
-          // these conditions are a "MUST" requirement in the documentation.
-          // Thus, we make sure that each call changes the lastChangeId.
-          if (!moreChanges.value
-              || lastChangeId.value.equals(lastLastChangeId.value)) {
+          if (!moreChanges.value) {
             return null;
           }
           lastLastChangeId.value = lastChangeId.value;
           Holder<String> result = new Holder<String>();
+          // In non-SP2010, the timeout is a number of seconds. In SP2010, the
+          // timeout is n * 60, where n is the number of items you want
+          // returned. However, in SP2010, asking for more than 10 items seems
+          // to lose results. If timeout is less than 60 in SP 2010, then it
+          // causes an infinite loop.
+          int timeout = isSp2010 ? 10 * 60 : 15;
           siteData.getChanges(ObjectType.CONTENT_DATABASE, contentDatabaseGuid,
-              lastChangeId, currentChangeId, 15, result, moreChanges);
+              lastChangeId, currentChangeId, timeout, result, moreChanges);
           // XmlProcessingExceptions fine after this point.
           String xml = result.value;
           xml = xml.replace("<SPContentDatabase ",

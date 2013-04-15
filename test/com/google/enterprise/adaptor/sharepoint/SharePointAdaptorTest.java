@@ -3361,11 +3361,13 @@ public class SharePointAdaptorTest {
   }
 
   @Test
-  public void testModifiedGetDocIdsBrokenSP2010() throws IOException,
+  public void testModifiedGetDocIdsSP2010() throws IOException,
          InterruptedException {
     final String getContentVirtualServer
         = "<VirtualServer>"
-        + "<Metadata URL=\"http://localhost:1/\" />"
+        + "<Metadata ID=\"{3a125232-0c27-495f-8c92-65ad85b5a17c}\""
+        + " Version=\"14.0.4762.1000\" URL=\"http://localhost:1/\""
+        + " URLZone=\"Default\" URLIsHostHeader=\"False\" />"
         + "<ContentDatabases>"
         + "<ContentDatabase ID=\"{4fb7dea1-2912-4927-9eda-1ea2f0977cf8}\" />"
         + "</ContentDatabases>"
@@ -3420,20 +3422,20 @@ public class SharePointAdaptorTest {
           Integer timeout, Holder<String> getChangesResult,
           Holder<Boolean> moreChanges) {
         atomicNumberGetChangesCalls.getAndIncrement();
+        // The timeout in SP 2010 is not a timeout and should always be at least
+        // 60. Otherwise, you will always get zero results.
+        assertTrue(timeout >= 60);
         assertEquals(ObjectType.CONTENT_DATABASE, objectType);
         assertEquals("{4fb7dea1-2912-4927-9eda-1ea2f0977cf8}",
             contentDatabaseId);
         assertEquals(
             "1;0;4fb7dea1-2912-4927-9eda-1ea2f0977cf8;634727056594000000;603",
             lastChangeId.value);
-        // Purposefully make lastChangeId != currentChangeId, because SP 2010
-        // has been known to do this.
         setValue(currentChangeId, "1;0;4fb7dea1-2912-4927-9eda-1ea2f0977cf9;634"
             + "727056595000000;604");
+        setValue(lastChangeId, currentChangeId.value);
         setValue(getChangesResult, getChangesContentDatabase4fb);
-        // Purposefully make moreChanges=true even though there are no more
-        // pages, because SP 2010 has been known to do this.
-        setValue(moreChanges, true);
+        setValue(moreChanges, false);
       }
     };
     SiteDataFactory siteDataFactory = new SingleSiteDataFactory(siteData,
