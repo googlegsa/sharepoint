@@ -277,6 +277,7 @@ public class SharePointAdaptorTest {
     String[] permit = new String[] {"GDC-PSL\\Administrator",
         "GDC-PSL\\spuser1", "NT AUTHORITY\\LOCAL SERVICE"};
     assertEquals(new Acl.Builder()
+        .setEverythingCaseInsensitive()
         .setInheritanceType(Acl.InheritanceType.PARENT_OVERRIDES)
         .setPermitUsers(users(permit)).setPermitGroups(groups(permit)).build(),
         response.getAcl());
@@ -510,6 +511,7 @@ public class SharePointAdaptorTest {
         + "</body></html>";
     assertEquals(golden, responseString);
     assertEquals(new Acl.Builder()
+        .setEverythingCaseInsensitive()
         .setInheritFrom(new DocId(""))
         .setInheritanceType(Acl.InheritanceType.PARENT_OVERRIDES)
         .setPermitGroups(groups("chinese1 Members", "chinese1 Owners",
@@ -969,6 +971,7 @@ public class SharePointAdaptorTest {
         + "</ul></body></html>";
     assertEquals(golden, responseString);
     assertEquals(new Acl.Builder()
+        .setEverythingCaseInsensitive()
         .setInheritFrom(new DocId(""))
         .setInheritanceType(Acl.InheritanceType.PARENT_OVERRIDES)
         .setPermitGroups(groups("SiteCollection Members",
@@ -3181,6 +3184,7 @@ public class SharePointAdaptorTest {
     assertEquals(golden, responseString);
     assertEquals(goldenMetadata, response.getMetadata());
     assertEquals(new Acl.Builder()
+        .setEverythingCaseInsensitive()
         .setInheritFrom(new DocId(""))
         .setInheritanceType(Acl.InheritanceType.PARENT_OVERRIDES)
         .setPermitGroups(groups("SiteCollection Members",

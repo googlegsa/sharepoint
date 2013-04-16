@@ -35,6 +35,9 @@ class GetContentsResponse implements Response {
   private boolean noIndex;
   private boolean noFollow;
   private boolean noArchive;
+  private boolean lock;
+  private boolean crawlOnce;
+  private URI displayUrl;
 
   public GetContentsResponse(OutputStream os) {
     this.os = os;
@@ -101,6 +104,21 @@ class GetContentsResponse implements Response {
     this.noArchive = noArchive;
   }
 
+  @Override
+  public void setLock(boolean lock) {
+    this.lock = lock;
+  }
+
+  @Override
+  public void setCrawlOnce(boolean crawlOnce) {
+    this.crawlOnce = crawlOnce;
+  }
+
+  @Override
+  public void setDisplayUrl(URI displayUrl) {
+    this.displayUrl = displayUrl;
+  }
+
   public String getContentType() {
     return contentType;
   }
@@ -136,5 +154,17 @@ class GetContentsResponse implements Response {
 
   public boolean isNoArchive() {
     return noArchive;
+  }
+
+  public boolean isLock() {
+    return lock;
+  }
+
+  public boolean isCrawlOnce() {
+    return crawlOnce;
+  }
+
+  public URI getDisplayUrl() {
+    return displayUrl;
   }
 }

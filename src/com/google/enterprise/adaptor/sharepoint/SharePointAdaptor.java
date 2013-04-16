@@ -603,6 +603,7 @@ public class SharePointAdaptor extends AbstractAdaptor
         }
       }
       response.setAcl(new Acl.Builder()
+          .setEverythingCaseInsensitive()
           .setInheritanceType(Acl.InheritanceType.PARENT_OVERRIDES)
           .setPermitUsers(permitUsers).setPermitGroups(permitGroups)
           .setDenyUsers(denyUsers).setDenyGroups(denyGroups).build());
@@ -878,8 +879,8 @@ public class SharePointAdaptor extends AbstractAdaptor
           log.log(Level.WARNING, "Could not resolve member id {0}", id);
         }
       }
-      return new Acl.Builder().setPermitUsers(permitUsers)
-          .setPermitGroups(permitGroups);
+      return new Acl.Builder().setEverythingCaseInsensitive()
+          .setPermitUsers(permitUsers).setPermitGroups(permitGroups);
     }
 
     private void getAspxDocContent(Request request, Response response)
