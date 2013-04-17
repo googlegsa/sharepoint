@@ -45,6 +45,7 @@ import org.junit.*;
 import org.junit.rules.ExpectedException;
 
 import java.io.*;
+import java.net.URI;
 import java.net.URL;
 import java.nio.charset.Charset;
 import java.util.*;
@@ -281,13 +282,14 @@ public class SharePointAdaptorTest {
         .setInheritanceType(Acl.InheritanceType.PARENT_OVERRIDES)
         .setPermitUsers(users(permit)).setPermitGroups(groups(permit)).build(),
         response.getAcl());
+    assertNull(response.getDisplayUrl());
   }
 
   @Test
   public void testGetDocContentSiteCollection() throws IOException {
     final String getContentSiteCollection
         = "<Site>"
-        + "<Metadata URL=\"http://localhost:1\""
+        + "<Metadata URL=\"http://localhost:1/sites/SiteCollection\""
         + " ID=\"{bb3bb2dd-6ea7-471b-a361-6fb67988755c}\""
         + " LastModified=\"2012-06-25 22:29:58Z\" PortalURL=\"\""
         + " UserProfileGUID=\"\""
@@ -325,7 +327,7 @@ public class SharePointAdaptorTest {
         + " SharePoint site: chinese1\" OwnerID=\"3\" OwnerIsUser=\"False\" />"
         + "<Users /></Group></Groups>"
         + "<Web>"
-        + "<Metadata URL=\"http://localhost:1\""
+        + "<Metadata URL=\"http://localhost:1/sites/SiteCollection\""
         + " LastModified=\"2012-06-25 22:29:58Z\""
         + " Created=\"2011-10-14 18:59:25Z\""
         + " ID=\"{b2ea1067-3a54-4ab7-a459-c8ec864b97eb}\" Title=\"chinese1\""
@@ -354,16 +356,18 @@ public class SharePointAdaptorTest {
         + "<permission memberid='6' mask='206292717568' />"
         + "</permissions></ACL>"
         + "<Webs>"
-        + "<Web URL=\"http://localhost:1/somesite\""
+        + "<Web URL=\"http://localhost:1/sites/SiteCollection/somesite\""
         + " ID=\"{ee63e7d0-da23-4553-9f14-359f1cc1bf1c}\""
         + " LastModified=\"2012-06-25 22:29:58Z\" />"
         + "</Webs><Lists>"
         + "<List ID=\"{133fcb96-7e9b-46c9-b5f3-09770a35ad8a}\""
         + " LastModified=\"2012-06-01 22:00:07Z\""
-        + " DefaultViewUrl=\"/Lists/Announcements/AllItems.aspx\" />"
+        + " DefaultViewUrl=\"/sites/SiteCollection/Lists/Announcements/AllItems"
+        +   ".aspx\" />"
         + "<List ID=\"{648f6636-3d90-4565-86b9-2dd7611fc855}\""
         + " LastModified=\"2012-06-01 22:39:22Z\""
-        + " DefaultViewUrl=\"/Shared Documents/Forms/AllItems.aspx\" />"
+        + " DefaultViewUrl=\"/sites/SiteCollection/Shared Documents/Forms/"
+        +   "AllItems.aspx\" />"
         + "</Lists>"
         + "<FPFolder><Folders>"
         + "<Folder URL=\"Lists\" ID=\"{c2c6cfcc-439e-4372-8a7a-87bec657eebf}\""
@@ -375,7 +379,7 @@ public class SharePointAdaptorTest {
         + "</Files></FPFolder></Web></Site>";
     final String getContentSite
         = "<Web>"
-        + "<Metadata URL=\"http://localhost:1\""
+        + "<Metadata URL=\"http://localhost:1/sites/SiteCollection\""
         + " LastModified=\"2012-05-15 19:07:39Z\""
         + " Created=\"2011-10-14 18:59:25Z\""
         + " ID=\"{b2ea1067-3a54-4ab7-a459-c8ec864b97eb}\""
@@ -403,16 +407,18 @@ public class SharePointAdaptorTest {
         + "</permissions>"
         + "</ACL>"
         + "<Webs>"
-        + "<Web URL=\"http://localhost:1/somesite\""
+        + "<Web URL=\"http://localhost:1/sites/SiteCollection/somesite\""
         + " ID=\"{ee63e7d0-da23-4553-9f14-359f1cc1bf1c}\""
         + " LastModified=\"2012-05-15 19:07:39Z\" />"
         + "</Webs><Lists>"
         + "<List ID=\"{133fcb96-7e9b-46c9-b5f3-09770a35ad8a}\""
         + " LastModified=\"2012-05-15 18:21:38Z\""
-        + " DefaultViewUrl=\"/Lists/Announcements/AllItems.aspx\" />"
+        + " DefaultViewUrl=\"/sites/SiteCollection/Lists/Announcements/AllItems"
+        +   ".aspx\" />"
         + "<List ID=\"{648f6636-3d90-4565-86b9-2dd7611fc855}\""
         + " LastModified=\"2012-05-15 19:07:40Z\""
-        + " DefaultViewUrl=\"/Shared Documents/Forms/AllItems.aspx\" />"
+        + " DefaultViewUrl=\"/sites/SiteCollection/Shared Documents/Forms/"
+        +   "AllItems.aspx\" />"
         + "</Lists>"
         + "<FPFolder><Folders>"
         + "<Folder URL=\"Lists\" ID=\"{c2c6cfcc-439e-4372-8a7a-87bec657eebf}\""
@@ -495,13 +501,15 @@ public class SharePointAdaptorTest {
         + "<html><head><title>Site chinese1</title></head>"
         + "<body><h1>Site chinese1</h1>"
         + "<p>Sites</p>"
-        + "<ul><li><a href=\"../somesite\">"
-        + "http://localhost:1/somesite</a></li></ul>"
+        + "<ul><li><a href=\"SiteCollection/somesite\">"
+        + "http://localhost:1/sites/SiteCollection/somesite</a></li></ul>"
         + "<p>Lists</p>"
-        + "<ul><li><a href=\"../Lists/Announcements/AllItems.aspx\">"
-        + "/Lists/Announcements/AllItems.aspx</a></li>"
-        + "<li><a href=\"../Shared%20Documents/Forms/AllItems.aspx\">"
-        + "/Shared Documents/Forms/AllItems.aspx</a>"
+        + "<ul><li><a href=\"SiteCollection/Lists/Announcements/"
+        +   "AllItems.aspx\">"
+        + "/sites/SiteCollection/Lists/Announcements/AllItems.aspx</a></li>"
+        + "<li><a href=\"SiteCollection/Shared%20Documents/Forms/"
+        +   "AllItems.aspx\">"
+        + "/sites/SiteCollection/Shared Documents/Forms/AllItems.aspx</a>"
         + "</li></ul>"
         + "<p>Folders</p>"
         + "<ul><li><a href=\"SiteCollection/Lists\">Lists</a></li></ul>"
@@ -518,6 +526,8 @@ public class SharePointAdaptorTest {
             "chinese1 Visitors"))
         .setPermitUsers(users("GDC-PSL\\spuser1")).build(),
         response.getAcl());
+    assertEquals(URI.create("http://localhost:1/sites/SiteCollection"),
+        response.getDisplayUrl());
   }
 
   @Test
@@ -977,6 +987,8 @@ public class SharePointAdaptorTest {
         .setPermitGroups(groups("SiteCollection Members",
             "SiteCollection Owners", "SiteCollection Visitors")).build(),
         response.getAcl());
+    assertEquals(URI.create("http://localhost:1/sites/SiteCollection/Lists/"
+          + "Custom%20List/AllItems.aspx"), response.getDisplayUrl());
   }
 
   @Test
@@ -1319,6 +1331,9 @@ public class SharePointAdaptorTest {
             "http://localhost:1/Lists/Custom List/Test Folder/2_.000"))
         .build(),
         response.getAcl());
+    assertEquals(URI.create(
+          "http://localhost:1/Lists/Custom%20List/Attachments/2/1046000.pdf"),
+        response.getDisplayUrl());
   }
 
   @Test
@@ -2009,6 +2024,9 @@ public class SharePointAdaptorTest {
             + "Lists/Custom List/Test Folder"))
         .setInheritanceType(Acl.InheritanceType.PARENT_OVERRIDES).build(),
         response.getAcl());
+    assertEquals(URI.create("http://localhost:1/sites/SiteCollection/Lists/"
+          + "Custom%20List/DispForm.aspx?ID=2"),
+        response.getDisplayUrl());
   }
 
   @Test
@@ -3191,6 +3209,10 @@ public class SharePointAdaptorTest {
             "SiteCollection Owners", "SiteCollection Visitors"))
         .setPermitUsers(users("GDC-PSL\\administrator")).build(),
         response.getAcl());
+    assertEquals(URI.create("http://localhost:1/sites/SiteCollection/Lists/"
+          + "Custom%20List/AllItems.aspx?RootFolder=/sites/SiteCollection/"
+          + "Lists/Custom%20List/Test%20Folder"),
+        response.getDisplayUrl());
   }
 
   @Test

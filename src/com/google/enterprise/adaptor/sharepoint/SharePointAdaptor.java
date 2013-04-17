@@ -573,6 +573,34 @@ public class SharePointAdaptor extends AbstractAdaptor
       return docId;
     }
 
+    private URI docIdToUri(DocId docId) throws IOException {
+      String url = docId.getUniqueId();
+      // Because SP is silly, the path of the URI is unencoded, but the rest of
+      // the URI is correct. Thus, we split up the path from the host, and then
+      // turn them into URIs separately, and then turn everything into a
+      // properly-escaped string.
+      String[] parts = url.split("/", 4);
+      String host = parts[0] + "/" + parts[1] + "/" + parts[2] + "/";
+      // Host must be properly-encoded already.
+      URI hostUri = URI.create(host);
+      URI pathUri;
+      try {
+        pathUri = new URI(null, null, parts[3], null);
+      } catch (URISyntaxException ex) {
+        throw new IOException(ex);
+      }
+      return hostUri.resolve(pathUri);
+    }
+
+    /**
+     * Handles converting from relative paths to fully qualified URIs and
+     * dealing with SharePoint's lack of encoding paths (spaces in SP are kept
+     * as spaces in URLs, instead of becoming %20).
+     */
+    private URI sharePointUrlToUri(String path) throws IOException {
+      return docIdToUri(encodeDocId(path));
+    }
+
     private void getVirtualServerDocContent(Request request, Response response)
         throws IOException {
       log.entering("SiteDataClient", "getVirtualServerDocContent",
@@ -670,6 +698,7 @@ public class SharePointAdaptor extends AbstractAdaptor
           .setInheritanceType(Acl.InheritanceType.PARENT_OVERRIDES)
           .build());
 
+      response.setDisplayUrl(URI.create(w.getMetadata().getURL()));
       response.setContentType("text/html");
       HtmlResponseWriter writer = createHtmlResponseWriter(response);
       writer.start(request.getDocId(), ObjectType.SITE,
@@ -741,6 +770,8 @@ public class SharePointAdaptor extends AbstractAdaptor
           .setInheritanceType(Acl.InheritanceType.PARENT_OVERRIDES)
           .build());
 
+      response.setDisplayUrl(sharePointUrlToUri(
+          l.getMetadata().getDefaultViewUrl()));
       response.setContentType("text/html");
       HtmlResponseWriter writer = createHtmlResponseWriter(response);
       writer.start(request.getDocId(), ObjectType.LIST,
@@ -902,28 +933,14 @@ public class SharePointAdaptor extends AbstractAdaptor
         throws IOException {
       log.entering("SiteDataClient", "getFileDocContent",
           new Object[] {request, response});
-      String url = request.getDocId().getUniqueId();
-      // Because SP is silly, the path of the URI is unencoded, but the rest of
-      // the URI is correct. Thus, we split up the path from the host, and then
-      // turn them into URIs separately, and then turn everything into a
-      // properly-escaped string.
-      String[] parts = url.split("/", 4);
-      String host = parts[0] + "/" + parts[1] + "/" + parts[2] + "/";
-      // Host must be properly-encoded already.
-      URI hostUri = URI.create(host);
-      URI pathUri;
-      try {
-        pathUri = new URI(null, null, parts[3], null);
-      } catch (URISyntaxException ex) {
-        throw new IOException(ex);
-      }
-      URL finalUrl = hostUri.resolve(pathUri).toURL();
-      FileInfo fi = httpClient.issueGetRequest(finalUrl);
+      URI displayUrl = docIdToUri(request.getDocId());
+      FileInfo fi = httpClient.issueGetRequest(displayUrl.toURL());
       if (fi == null) {
         response.respondNotFound();
         return;
       }
       try {
+        response.setDisplayUrl(displayUrl);
         String contentType = fi.getFirstHeaderWithName("Content-Type");
         if (contentType != null) {
           response.setContentType(contentType);
@@ -1051,6 +1068,23 @@ public class SharePointAdaptor extends AbstractAdaptor
         if (!folder.startsWith(root)) {
           throw new AssertionError();
         }
+        URI displayPage
+            = sharePointUrlToUri(l.getMetadata().getDefaultViewUrl());
+        if (serverUrl.contains("&") || serverUrl.contains("=")
+            || serverUrl.contains("%")) {
+          throw new AssertionError();
+        }
+        try {
+          // SharePoint percent-encodes '/'s in serverUrl, but accepts them
+          // encoded or unencoded. We leave them unencoded for simplicity of
+          // implementation and to not deal with the possibility of
+          // double-encoding.
+          response.setDisplayUrl(new URI(displayPage.getScheme(),
+              displayPage.getAuthority(), displayPage.getPath(),
+              "RootFolder=" + serverUrl, null));
+        } catch (URISyntaxException ex) {
+          throw new IOException(ex);
+        }
         response.setContentType("text/html");
         HtmlResponseWriter writer = createHtmlResponseWriter(response);
         writer.start(request.getDocId(), ObjectType.FOLDER, null);
@@ -1067,6 +1101,15 @@ public class SharePointAdaptor extends AbstractAdaptor
         getFileDocContent(request, response);
       } else {
         // Some list item.
+        URI displayPage
+            = sharePointUrlToUri(l.getMetadata().getDefaultViewItemUrl());
+        try {
+          response.setDisplayUrl(new URI(displayPage.getScheme(),
+              displayPage.getAuthority(), displayPage.getPath(),
+              "ID=" + itemId, null));
+        } catch (URISyntaxException ex) {
+          throw new IOException(ex);
+        }
         response.setContentType("text/html");
         HtmlResponseWriter writer = createHtmlResponseWriter(response);
         writer.start(request.getDocId(), ObjectType.LIST_ITEM, title);
