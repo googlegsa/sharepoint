@@ -27,6 +27,8 @@ import com.google.enterprise.adaptor.DocIdPusher;
 import com.google.enterprise.adaptor.GroupPrincipal;
 import com.google.enterprise.adaptor.Metadata;
 import com.google.enterprise.adaptor.UserPrincipal;
+import com.google.enterprise.adaptor.sharepoint.SharePointAdaptor.SiteUserIdMappingCallable;
+import com.google.enterprise.adaptor.sharepoint.SharePointAdaptor.UserGroupFactory;
 
 import com.microsoft.schemas.sharepoint.soap.ArrayOfSFPUrl;
 import com.microsoft.schemas.sharepoint.soap.ArrayOfSList;
@@ -40,16 +42,53 @@ import com.microsoft.schemas.sharepoint.soap.SPContentDatabase;
 import com.microsoft.schemas.sharepoint.soap.SSiteMetadata;
 import com.microsoft.schemas.sharepoint.soap.SWebMetadata;
 import com.microsoft.schemas.sharepoint.soap.SiteDataSoap;
+import com.microsoft.schemas.sharepoint.soap.directory.AddUserCollectionToGroup;
+import com.microsoft.schemas.sharepoint.soap.directory.AddUserCollectionToRole;
+import com.microsoft.schemas.sharepoint.soap.directory.EmailsInputType;
+import com.microsoft.schemas.sharepoint.soap.directory.GetAllUserCollectionFromWebResponse;
+import com.microsoft.schemas.sharepoint.soap.directory.GetCurrentUserInfoResponse;
+import com.microsoft.schemas.sharepoint.soap.directory.GetGroupCollectionFromRoleResponse;
+import com.microsoft.schemas.sharepoint.soap.directory.GetGroupCollectionFromSiteResponse;
+import com.microsoft.schemas.sharepoint.soap.directory.GetGroupCollectionFromUserResponse;
+import com.microsoft.schemas.sharepoint.soap.directory.GetGroupCollectionFromWebResponse;
+import com.microsoft.schemas.sharepoint.soap.directory.GetGroupCollectionResponse;
+import com.microsoft.schemas.sharepoint.soap.directory.GetGroupInfoResponse;
+import com.microsoft.schemas.sharepoint.soap.directory.GetRoleCollectionFromGroupResponse;
+import com.microsoft.schemas.sharepoint.soap.directory.GetRoleCollectionFromUserResponse;
+import com.microsoft.schemas.sharepoint.soap.directory.GetRoleCollectionFromWebResponse;
+import com.microsoft.schemas.sharepoint.soap.directory.GetRoleCollectionResponse;
+import com.microsoft.schemas.sharepoint.soap.directory.GetRolesAndPermissionsForCurrentUserResponse;
+import com.microsoft.schemas.sharepoint.soap.directory.GetRolesAndPermissionsForSiteResponse;
+import com.microsoft.schemas.sharepoint.soap.directory.GetUserCollection;
+import com.microsoft.schemas.sharepoint.soap.directory.GetUserCollectionFromGroupResponse;
+import com.microsoft.schemas.sharepoint.soap.directory.GetUserCollectionFromRoleResponse;
+import com.microsoft.schemas.sharepoint.soap.directory.GetUserCollectionFromSiteResponse;
+import com.microsoft.schemas.sharepoint.soap.directory.GetUserCollectionFromWebResponse;
+import com.microsoft.schemas.sharepoint.soap.directory.GetUserCollectionResponse;
+import com.microsoft.schemas.sharepoint.soap.directory.GetUserInfoResponse;
+import com.microsoft.schemas.sharepoint.soap.directory.GetUserLoginFromEmailResponse;
+import com.microsoft.schemas.sharepoint.soap.directory.GroupsInputType;
+import com.microsoft.schemas.sharepoint.soap.directory.PrincipalType;
+import com.microsoft.schemas.sharepoint.soap.directory.RemoveUserCollectionFromGroup;
+import com.microsoft.schemas.sharepoint.soap.directory.RemoveUserCollectionFromRole;
+import com.microsoft.schemas.sharepoint.soap.directory.RemoveUserCollectionFromSite;
+import com.microsoft.schemas.sharepoint.soap.directory.RoleOutputType;
+import com.microsoft.schemas.sharepoint.soap.directory.RolesInputType;
+import com.microsoft.schemas.sharepoint.soap.directory.TrueFalseType;
+import com.microsoft.schemas.sharepoint.soap.directory.User;
+import com.microsoft.schemas.sharepoint.soap.directory.UserGroupSoap;
+import com.microsoft.schemas.sharepoint.soap.directory.Users;
 
 import org.junit.*;
 import org.junit.rules.ExpectedException;
 
 import java.io.*;
+import java.math.BigInteger;
 import java.net.URI;
 import java.net.URL;
 import java.nio.charset.Charset;
 import java.util.*;
-import java.util.concurrent.Callable;
+import java.util.concurrent.*;
 import java.util.concurrent.atomic.AtomicLong;
 
 import javax.xml.ws.Holder;
@@ -62,6 +101,7 @@ public class SharePointAdaptorTest {
   private final Charset charset = Charset.forName("UTF-8");
   private Config config;
   private SharePointAdaptor adaptor;
+  private Executor executor = new UnsupportedExecutor();
 
   @Rule
   public ExpectedException thrown = ExpectedException.none();
@@ -108,6 +148,21 @@ public class SharePointAdaptorTest {
     }
     return groups;
   }
+  
+  public User createUserGroupUser(long id, String loginName, String sid, 
+      String name, String email, boolean isDomainGroup, boolean isSiteAdmin) {
+    User u = new User();
+    u.setID(id);
+    u.setLoginName(loginName);
+    u.setSid(sid);
+    u.setName(name);
+    u.setEmail(email);
+    u.setIsDomainGroup(
+        isDomainGroup ? TrueFalseType.TRUE : TrueFalseType.FALSE);
+    u.setIsSiteAdmin(
+        isSiteAdmin ? TrueFalseType.TRUE : TrueFalseType.FALSE);
+    return u;        
+  }
 
   @Test
   public void testConstructor() {
@@ -117,19 +172,36 @@ public class SharePointAdaptorTest {
   @Test
   public void testNullSiteDataFactory() {
     thrown.expect(NullPointerException.class);
-    new SharePointAdaptor(null, new UnsupportedHttpClient());
+    new SharePointAdaptor(null, new UnsupportedUserGroupFactory(),
+        new UnsupportedHttpClient(), executor);
+  }
+  
+  @Test
+  public void testNullUserGroupFactory() {
+    thrown.expect(NullPointerException.class);
+    new SharePointAdaptor(new UnsupportedSiteDataFactory(), null,
+        new UnsupportedHttpClient(), executor);
   }
 
   @Test
   public void testNullHttpClient() {
     thrown.expect(NullPointerException.class);
-    new SharePointAdaptor(new UnsupportedSiteDataFactory(), null);
+    new SharePointAdaptor(new UnsupportedSiteDataFactory(),
+        new UnsupportedUserGroupFactory(), null, executor);
+  }
+  
+  @Test
+  public void testNullExecutor() {
+    thrown.expect(NullPointerException.class);
+    new SharePointAdaptor(new UnsupportedSiteDataFactory(),
+        new UnsupportedUserGroupFactory(), new UnsupportedHttpClient(), null);
   }
 
   @Test
   public void testInitDestroy() throws IOException {
     adaptor = new SharePointAdaptor(new UnsupportedSiteDataFactory(),
-        new UnsupportedHttpClient());
+        new UnsupportedUserGroupFactory(),
+        new UnsupportedHttpClient(), executor);
     adaptor.init(new MockAdaptorContext(config, null));
     adaptor.destroy();
     adaptor = null;
@@ -152,7 +224,8 @@ public class SharePointAdaptorTest {
     adaptor = new SharePointAdaptor(
         new SingleSiteDataFactory(new WrongServerSiteData(),
           "http://localhost:1/_vti_bin/SiteData.asmx"),
-        new UnsupportedHttpClient());
+        new UnsupportedUserGroupFactory(),
+        new UnsupportedHttpClient(), executor);
     adaptor.init(new MockAdaptorContext(config, null));
     ByteArrayOutputStream baos = new ByteArrayOutputStream();
     GetContentsRequest request = new GetContentsRequest(
@@ -194,7 +267,8 @@ public class SharePointAdaptorTest {
     adaptor = new SharePointAdaptor(
         new SingleSiteDataFactory(new WrongPageSiteData(),
           "http://localhost:1/_vti_bin/SiteData.asmx"),
-        new UnsupportedHttpClient());
+        new UnsupportedUserGroupFactory(), new UnsupportedHttpClient(),
+        executor);
     adaptor.init(new MockAdaptorContext(config, null));
     ByteArrayOutputStream baos = new ByteArrayOutputStream();
     GetContentsRequest request = new GetContentsRequest(new DocId(wrongPage));
@@ -258,7 +332,8 @@ public class SharePointAdaptorTest {
     adaptor = new SharePointAdaptor(
         new SingleSiteDataFactory(new VirtualServerSiteData(),
             "http://localhost:1/_vti_bin/SiteData.asmx"),
-        new UnsupportedHttpClient());
+        new UnsupportedUserGroupFactory(), new UnsupportedHttpClient(),
+        executor);
     adaptor.init(new MockAdaptorContext(config, null));
     ByteArrayOutputStream baos = new ByteArrayOutputStream();
     GetContentsResponse response = new GetContentsResponse(baos);
@@ -485,11 +560,12 @@ public class SharePointAdaptorTest {
     }
 
     adaptor = new SharePointAdaptor(new SiteDataFactory() {
-      @Override
-      public SiteDataSoap newSiteData(String endpoint) {
-        return new SiteCollectionSiteData(endpoint);
-      }
-    }, new UnsupportedHttpClient());
+          @Override
+          public SiteDataSoap newSiteData(String endpoint) {
+            return new SiteCollectionSiteData(endpoint);
+          }
+        }, new UnsupportedUserGroupFactory(), new UnsupportedHttpClient(),
+        executor);
     adaptor.init(new MockAdaptorContext(config, null));
     ByteArrayOutputStream baos = new ByteArrayOutputStream();
     GetContentsRequest request = new GetContentsRequest(
@@ -958,7 +1034,8 @@ public class SharePointAdaptorTest {
     }
 
     adaptor = new SharePointAdaptor(new UnsupportedSiteDataFactory(),
-        new UnsupportedHttpClient());
+        new UnsupportedUserGroupFactory(), new UnsupportedHttpClient(),
+        executor);
     adaptor.init(new MockAdaptorContext(config, null));
     ByteArrayOutputStream baos = new ByteArrayOutputStream();
     GetContentsRequest request = new GetContentsRequest(
@@ -966,8 +1043,9 @@ public class SharePointAdaptorTest {
           + "AllItems.aspx"));
     GetContentsResponse response = new GetContentsResponse(baos);
     adaptor.new SiteDataClient("http://localhost:1/sites/SiteCollection",
-          "http://localhost:1/sites/SiteCollection",
-          siteData, Callables.returning(memberIdMapping))
+          "http://localhost:1/sites/SiteCollection", siteData,
+          new UnsupportedUserGroupSoap(), Callables.returning(memberIdMapping),
+          new UnsupportedCallable<MemberIdMapping>())
         .getDocContent(request, response);
     String responseString = new String(baos.toByteArray(), charset);
     final String golden
@@ -1304,7 +1382,7 @@ public class SharePointAdaptorTest {
     adaptor = new SharePointAdaptor(
         new SingleSiteDataFactory(new ListItemAttachmentsSiteData(),
           "http://localhost:1/_vti_bin/SiteData.asmx"),
-        new HttpClient() {
+        new UnsupportedUserGroupFactory(), new HttpClient() {
       @Override
       public FileInfo issueGetRequest(URL url) {
         assertEquals(
@@ -1316,7 +1394,7 @@ public class SharePointAdaptorTest {
             "conTent-TypE", goldenContentType, "Content-Type", "late");
         return new FileInfo.Builder(contents).setHeaders(headers).build();
       }
-    });
+    }, executor);
     adaptor.init(new MockAdaptorContext(config, null));
     ByteArrayOutputStream baos = new ByteArrayOutputStream();
     GetContentsRequest request = new GetContentsRequest(
@@ -1951,7 +2029,8 @@ public class SharePointAdaptorTest {
     }
 
     adaptor = new SharePointAdaptor(new UnsupportedSiteDataFactory(),
-        new UnsupportedHttpClient());
+        new UnsupportedUserGroupFactory(), new UnsupportedHttpClient(),
+        executor);
     adaptor.init(new MockAdaptorContext(config, null));
     ByteArrayOutputStream baos = new ByteArrayOutputStream();
     GetContentsRequest request = new GetContentsRequest(
@@ -1959,8 +2038,9 @@ public class SharePointAdaptorTest {
           + "Test Folder/2_.000"));
     GetContentsResponse response = new GetContentsResponse(baos);
     adaptor.new SiteDataClient("http://localhost:1/sites/SiteCollection",
-          "http://localhost:1/sites/SiteCollection",
-          siteData, Callables.returning(memberIdMapping))
+          "http://localhost:1/sites/SiteCollection", siteData,
+          new UnsupportedUserGroupSoap(), Callables.returning(memberIdMapping),
+          new UnsupportedCallable<MemberIdMapping>())
         .getDocContent(request, response);
     String responseString = new String(baos.toByteArray(), charset);
     final String golden
@@ -2030,6 +2110,436 @@ public class SharePointAdaptorTest {
   }
 
   @Test
+  public void testGetDocContentListItemWithReadSecurity() throws IOException {
+    final String getContentListResponse
+        = "<List>"
+        + "<Metadata ID=\"{6f33949a-b3ff-4b0c-ba99-93cb518ac2c0}\""
+        + " LastModified=\"2012-05-04 21:24:32Z\" Title=\"Custom List\""
+        + " DefaultTitle=\"True\" Description=\"\" BaseType=\"GenericList\""
+        + " BaseTemplate=\"GenericList\""
+        + " DefaultViewUrl=\"/sites/SiteCollection/Lists/Custom List/AllItems.a"
+        +   "spx\""
+        + " DefaultViewItemUrl=\"/sites/SiteCollection/Lists/Custom List/DispFo"
+        +   "rm.aspx\""
+        + " RootFolder=\"Lists/Custom List\" Author=\"System Account\""
+        + " ItemCount=\"7\" ReadSecurity=\"2\" AllowAnonymousAccess=\"False\""
+        + " AnonymousViewListItems=\"False\" AnonymousPermMask=\"0\""
+        + " CRC=\"1334405648\" NoIndex=\"False\""
+        + " ScopeID=\"{f9cb02b3-7f29-4cac-804f-ba6e14f1eb39}\" />"
+        + "<ACL><permissions>"
+        + "<permission memberid='1' mask='206292717568' />"
+        + "<permission memberid='3' mask='9223372036854775807' />"
+        + "<permission memberid='4' mask='756052856929' />"
+        + "<permission memberid='5' mask='1856436900591' />"
+        + "</permissions></ACL>"
+        + "<Views>"
+        + "<View URL=\"Lists/Custom List/AllItems.aspx\""
+        + " ID=\"{18b67349-78bd-49a2-ba1a-cdbc048adf0b}\" Title=\"All Items\""
+        + " />"
+        + "</Views><Schema>"
+        + "<Field Name=\"Title\" Title=\"Title\" Type=\"Text\" />"
+        + "<Field Name=\"Additional_x0020_Info\" Title=\"Additional Info\""
+        + " Type=\"Text\" />"
+        + "<Field Name=\"ContentType\" Title=\"Content Type\" Type=\"Choice\""
+        + " />"
+        + "<Field Name=\"ID\" Title=\"ID\" Type=\"Counter\" />"
+        + "<Field Name=\"Modified\" Title=\"Modified\" Type=\"DateTime\" />"
+        + "<Field Name=\"Created\" Title=\"Created\" Type=\"DateTime\" />"
+        + "<Field Name=\"Author\" Title=\"Created By\" Type=\"User\" />"
+        + "<Field Name=\"Editor\" Title=\"Modified By\" Type=\"User\" />"
+        + "<Field Name=\"_UIVersionString\" Title=\"Version\" Type=\"Text\" />"
+        + "<Field Name=\"Attachments\" Title=\"Attachments\""
+        + " Type=\"Attachments\" />"
+        + "<Field Name=\"Edit\" Title=\"Edit\" Type=\"Computed\" />"
+        + "<Field Name=\"LinkTitleNoMenu\" Title=\"Title\" Type=\"Computed\" />"
+        + "<Field Name=\"LinkTitle\" Title=\"Title\" Type=\"Computed\" />"
+        + "<Field Name=\"DocIcon\" Title=\"Type\" Type=\"Computed\" />"
+        + "</Schema></List>";
+    final String getContentListItemResponse
+        = "<Item>"
+        + "<Metadata>"
+        + "<scope id=\"{f9cb02b3-7f29-4cac-804f-ba6e14f1eb39}\"><permissions>"
+        + "<permission memberid='1' mask='206292717568' />"
+        + "<permission memberid='3' mask='9223372036854775807' />"
+        + "<permission memberid='4' mask='756052856929' />"
+        + "<permission memberid='5' mask='1856436900591' />"
+        + "</permissions></scope>"
+        + "</Metadata>"
+        + "<xml xmlns:s='uuid:BDC6E3F0-6DA3-11d1-A2A3-00AA00C14882'"
+        + " xmlns:dt='uuid:C2F41010-65B3-11d1-A29F-00AA00C14882'"
+        + " xmlns:rs='urn:schemas-microsoft-com:rowset'"
+        + " xmlns:z='#RowsetSchema'>"
+        + "<s:Schema id='RowsetSchema'>"
+        + "<s:ElementType name='row' content='eltOnly' rs:CommandTimeout='30'>"
+        + "<s:AttributeType name='ows_ContentTypeId' rs:name='Content Type ID'"
+        + " rs:number='1'>"
+        + "<s:datatype dt:type='int' dt:maxLength='512' />"
+        + "</s:AttributeType>"
+        + "<s:AttributeType name='ows_Title' rs:name='Title' rs:number='2'>"
+        + "<s:datatype dt:type='string' dt:maxLength='512' />"
+        + "</s:AttributeType>"
+        + "<s:AttributeType name='ows__ModerationComments'"
+        + " rs:name='Approver Comments' rs:number='3'>"
+        + "<s:datatype dt:type='string' dt:maxLength='1073741823' />"
+        + "</s:AttributeType>"
+        + "<s:AttributeType name='ows_File_x0020_Type' rs:name='File Type'"
+        + " rs:number='4'>"
+        + "<s:datatype dt:type='string' dt:maxLength='512' />"
+        + "</s:AttributeType>"
+        + "<s:AttributeType name='ows_Additional_x0020_Info'"
+        + " rs:name='Additional Info' rs:number='5'>"
+        + "<s:datatype dt:type='string' dt:maxLength='512' />"
+        + "</s:AttributeType>"
+        + "<s:AttributeType name='ows_ContentType' rs:name='Content Type'"
+        + " rs:number='6'>"
+        + "<s:datatype dt:type='string' dt:maxLength='512' />"
+        + "</s:AttributeType>"
+        + "<s:AttributeType name='ows_ID' rs:name='ID' rs:number='7'>"
+        + "<s:datatype dt:type='i4' dt:maxLength='4' />"
+        + "</s:AttributeType>"
+        + "<s:AttributeType name='ows_Modified' rs:name='Modified'"
+        + " rs:number='8'>"
+        + "<s:datatype dt:type='datetime' dt:maxLength='8' />"
+        + "</s:AttributeType>"
+        + "<s:AttributeType name='ows_Created' rs:name='Created' rs:number='9'>"
+        + "<s:datatype dt:type='datetime' dt:maxLength='8' />"
+        + "</s:AttributeType>"
+        + "<s:AttributeType name='ows_Author' rs:name='Created By'"
+        + " rs:number='10'>"
+        + "<s:datatype dt:type='string' dt:lookup='true' dt:maxLength='512' />"
+        + "</s:AttributeType>"
+        + "<s:AttributeType name='ows_Editor' rs:name='Modified By'"
+        + " rs:number='11'>"
+        + "<s:datatype dt:type='string' dt:lookup='true' dt:maxLength='512' />"
+        + "</s:AttributeType>"
+        + "<s:AttributeType name='ows__HasCopyDestinations'"
+        + " rs:name='Has Copy Destinations' rs:number='12'>"
+        + "<s:datatype dt:type='boolean' dt:maxLength='1' />"
+        + "</s:AttributeType>"
+        + "<s:AttributeType name='ows__CopySource' rs:name='Copy Source'"
+        + " rs:number='13'>"
+        + "<s:datatype dt:type='string' dt:maxLength='1073741823' />"
+        + "</s:AttributeType>"
+        + "<s:AttributeType name='ows_owshiddenversion'"
+        + " rs:name='owshiddenversion' rs:number='14'>"
+        + "<s:datatype dt:type='i4' dt:maxLength='4' />"
+        + "</s:AttributeType>"
+        + "<s:AttributeType name='ows_WorkflowVersion'"
+        + " rs:name='Workflow Version' rs:number='15'>"
+        + "<s:datatype dt:type='i4' dt:maxLength='4' />"
+        + "</s:AttributeType>"
+        + "<s:AttributeType name='ows__UIVersion' rs:name='UI Version'"
+        + " rs:number='16'>"
+        + "<s:datatype dt:type='i4' dt:maxLength='4' />"
+        + "</s:AttributeType>"
+        + "<s:AttributeType name='ows__UIVersionString' rs:name='Version'"
+        + " rs:number='17'>"
+        + "<s:datatype dt:type='string' dt:maxLength='512' />"
+        + "</s:AttributeType>"
+        + "<s:AttributeType name='ows_Attachments' rs:name='Attachments'"
+        + " rs:number='18'>"
+        + "<s:datatype dt:type='boolean' dt:maxLength='1' />"
+        + "</s:AttributeType>"
+        + "<s:AttributeType name='ows__ModerationStatus'"
+        + " rs:name='Approval Status' rs:number='19'>"
+        + "<s:datatype dt:type='i4' dt:maxLength='4' />"
+        + "</s:AttributeType>"
+        + "<s:AttributeType name='ows_LinkTitleNoMenu' rs:name='Title'"
+        + " rs:number='20'>"
+        + "<s:datatype dt:type='string' dt:maxLength='512' />"
+        + "</s:AttributeType>"
+        + "<s:AttributeType name='ows_LinkTitle' rs:name='Title'"
+        + " rs:number='21'>"
+        + "<s:datatype dt:type='string' dt:maxLength='512' />"
+        + "</s:AttributeType>"
+        + "<s:AttributeType name='ows_SelectTitle' rs:name='Select'"
+        + " rs:number='22'>"
+        + "<s:datatype dt:type='i4' dt:maxLength='4' />"
+        + "</s:AttributeType>"
+        + "<s:AttributeType name='ows_InstanceID' rs:name='Instance ID'"
+        + " rs:number='23'>"
+        + "<s:datatype dt:type='i4' dt:maxLength='4' />"
+        + "</s:AttributeType>"
+        + "<s:AttributeType name='ows_Order' rs:name='Order' rs:number='24'>"
+        + "<s:datatype dt:type='float' dt:maxLength='8' />"
+        + "</s:AttributeType>"
+        + "<s:AttributeType name='ows_GUID' rs:name='GUID' rs:number='25'>"
+        + "<s:datatype dt:type='string' dt:maxLength='38' />"
+        + "</s:AttributeType>"
+        + "<s:AttributeType name='ows_WorkflowInstanceID'"
+        + " rs:name='Workflow Instance ID' rs:number='26'>"
+        + "<s:datatype dt:type='string' dt:maxLength='38' />"
+        + "</s:AttributeType>"
+        + "<s:AttributeType name='ows_FileRef' rs:name='URL Path'"
+        + " rs:number='27'>"
+        + "<s:datatype dt:type='string' dt:lookup='true' dt:maxLength='512' />"
+        + "</s:AttributeType>"
+        + "<s:AttributeType name='ows_FileDirRef' rs:name='Path'"
+        + " rs:number='28'>"
+        + "<s:datatype dt:type='string' dt:lookup='true' dt:maxLength='512' />"
+        + "</s:AttributeType>"
+        + "<s:AttributeType name='ows_Last_x0020_Modified' rs:name='Modified'"
+        + " rs:number='29'>"
+        + "<s:datatype dt:type='datetime' dt:lookup='true' dt:maxLength='8' />"
+        + "</s:AttributeType>"
+        + "<s:AttributeType name='ows_Created_x0020_Date' rs:name='Created'"
+        + " rs:number='30'>"
+        + "<s:datatype dt:type='datetime' dt:lookup='true' dt:maxLength='8' />"
+        + "</s:AttributeType>"
+        + "<s:AttributeType name='ows_FSObjType' rs:name='Item Type'"
+        + " rs:number='31'>"
+        + "<s:datatype dt:type='ui1' dt:lookup='true' dt:maxLength='4' />"
+        + "</s:AttributeType>"
+        + "<s:AttributeType name='ows_PermMask'"
+        + " rs:name='Effective Permissions Mask' rs:number='32'>"
+        + "<s:datatype dt:type='string' dt:maxLength='1073741823' />"
+        + "</s:AttributeType>"
+        + "<s:AttributeType name='ows_FileLeafRef' rs:name='Name'"
+        + " rs:number='33'>"
+        + "<s:datatype dt:type='string' dt:lookup='true' dt:maxLength='512' />"
+        + "</s:AttributeType>"
+        + "<s:AttributeType name='ows_UniqueId' rs:name='Unique Id'"
+        + " rs:number='34'>"
+        + "<s:datatype dt:type='string' dt:lookup='true' dt:maxLength='38' />"
+        + "</s:AttributeType>"
+        + "<s:AttributeType name='ows_ProgId' rs:name='ProgId' rs:number='35'>"
+        + "<s:datatype dt:type='string' dt:lookup='true' dt:maxLength='512' />"
+        + "</s:AttributeType>"
+        + "<s:AttributeType name='ows_ScopeId' rs:name='ScopeId'"
+        + " rs:number='36'>"
+        + "<s:datatype dt:type='string' dt:lookup='true' dt:maxLength='38' />"
+        + "</s:AttributeType>"
+        + "<s:AttributeType name='ows_HTML_x0020_File_x0020_Type'"
+        + " rs:name='HTML File Type' rs:number='37'>"
+        + "<s:datatype dt:type='string' dt:maxLength='512' />"
+        + "</s:AttributeType>"
+        + "<s:AttributeType name='ows__EditMenuTableStart'"
+        + " rs:name='Edit Menu Table Start' rs:number='38'>"
+        + "<s:datatype dt:type='string' dt:maxLength='512' />"
+        + "</s:AttributeType>"
+        + "<s:AttributeType name='ows__EditMenuTableEnd'"
+        + " rs:name='Edit Menu Table End' rs:number='39'>"
+        + "<s:datatype dt:type='i4' dt:maxLength='4' />"
+        + "</s:AttributeType>"
+        + "<s:AttributeType name='ows_LinkFilenameNoMenu' rs:name='Name'"
+        + " rs:number='40'>"
+        + "<s:datatype dt:type='string' dt:maxLength='512' />"
+        + "</s:AttributeType>"
+        + "<s:AttributeType name='ows_LinkFilename' rs:name='Name'"
+        + " rs:number='41'>"
+        + "<s:datatype dt:type='string' dt:maxLength='512' />"
+        + "</s:AttributeType>"
+        + "<s:AttributeType name='ows_DocIcon' rs:name='Type' rs:number='42'>"
+        + "<s:datatype dt:type='string' dt:maxLength='512' />"
+        + "</s:AttributeType>"
+        + "<s:AttributeType name='ows_ServerUrl' rs:name='Server Relative URL'"
+        + " rs:number='43'>"
+        + "<s:datatype dt:type='string' dt:maxLength='1073741823' />"
+        + "</s:AttributeType>"
+        + "<s:AttributeType name='ows_EncodedAbsUrl'"
+        + " rs:name='Encoded Absolute URL' rs:number='44'>"
+        + "<s:datatype dt:type='string' dt:maxLength='1073741823' />"
+        + "</s:AttributeType>"
+        + "<s:AttributeType name='ows_BaseName' rs:name='File Name'"
+        + " rs:number='45'>"
+        + "<s:datatype dt:type='string' dt:maxLength='1073741823' />"
+        + "</s:AttributeType>"
+        + "<s:AttributeType name='ows_MetaInfo' rs:name='Property Bag'"
+        + " rs:number='46'>"
+        + "<s:datatype dt:type='int' dt:lookup='true' dt:maxLength='2147483646'"
+        + " />"
+        + "</s:AttributeType>"
+        + "<s:AttributeType name='ows__Level' rs:name='Level' rs:number='47'>"
+        + "<s:datatype dt:type='ui1' dt:maxLength='1' />"
+        + "</s:AttributeType>"
+        + "<s:AttributeType name='ows__IsCurrentVersion'"
+        + " rs:name='Is Current Version' rs:number='48'>"
+        + "<s:datatype dt:type='boolean' dt:maxLength='1' />"
+        + "</s:AttributeType>"
+        + "</s:ElementType></s:Schema><scopes>"
+        + "<scope id='{f9cb02b3-7f29-4cac-804f-ba6e14f1eb39}' >"
+        + "<permission memberid='1' mask='206292717568' />"
+        + "<permission memberid='3' mask='9223372036854775807' />"
+        + "<permission memberid='4' mask='756052856929' />"
+        + "<permission memberid='5' mask='1856436900591' />"
+        + "</scope>"
+        + "<scope id='{2e29615c-59e7-493b-b08a-3642949cc069}' >"
+        + "<permission memberid='1' mask='9223372036854775807' />"
+        + "<permission memberid='3' mask='9223372036854775807' />"
+        + "<permission memberid='4' mask='756052856929' />"
+        + "<permission memberid='5' mask='1856436900591' />"
+        + "</scope>"
+        + "</scopes>"
+        + "<rs:data ItemCount=\"1\">"
+        + "<z:row ows_ContentTypeId='0x0100442459C9B5E59C4F9CFDC789A220FC92'"
+        + " ows_Title='Inside Folder' ows_ContentType='Item' ows_ID='2'"
+        + " ows_Modified='2012-05-04T21:24:32Z'"
+        + " ows_Created='2012-05-01T22:14:06Z'"
+        + " ows_Author='1073741823;#System Account'"
+        + " ows_Editor='1073741823;#System Account' ows_owshiddenversion='4'"
+        + " ows_WorkflowVersion='1' ows__UIVersion='512'"
+        + " ows__UIVersionString='1.0' ows_Attachments='0'"
+        + " ows__ModerationStatus='0' ows_LinkTitleNoMenu='Inside Folder'"
+        + " ows_LinkTitle='Inside Folder' ows_SelectTitle='2'"
+        + " ows_Order='200.000000000000'"
+        + " ows_GUID='{2C5BEF60-18FA-42CA-B472-7B5E1EC405A5}'"
+        + " ows_FileRef='2;#sites/SiteCollection/Lists/Custom List/Test Folder/"
+        +   "2_.000'"
+        + " ows_FileDirRef='2;#sites/SiteCollection/Lists/Custom List/Test Fold"
+        +   "er'"
+        + " ows_Last_x0020_Modified='2;#2012-05-01T22:14:06Z'"
+        + " ows_Created_x0020_Date='2;#2012-05-01T22:14:06Z'"
+        + " ows_FSObjType='2;#0' ows_PermMask='0x7fffffffffffffff'"
+        + " ows_FileLeafRef='2;#2_.000'"
+        + " ows_UniqueId='2;#{E7156244-AC2F-4402-AA74-7A365726CD02}'"
+        + " ows_ProgId='2;#'"
+        + " ows_ScopeId='2;#{2E29615C-59E7-493B-B08A-3642949CC069}'"
+        + " ows__EditMenuTableStart='2_.000' ows__EditMenuTableEnd='2'"
+        + " ows_LinkFilenameNoMenu='2_.000' ows_LinkFilename='2_.000'"
+        + " ows_ServerUrl='/sites/SiteCollection/Lists/Custom List/Test Folder/"
+        +   "2_.000'"
+        + " ows_EncodedAbsUrl='http://localhost:1/sites/SiteCollection/Lists/Cu"
+        +   "stom%20List/Test%20Folder/2_.000'"
+        + " ows_BaseName='2_' ows_MetaInfo='2;#' ows__Level='1'"
+        + " ows__IsCurrentVersion='1' ows_ServerRedirected='0'/>"
+        + "</rs:data>"
+        + "</xml></Item>";
+
+    SiteDataSoap siteData = new UnsupportedSiteData() {
+      @Override
+      public void getURLSegments(String strURL,
+          Holder<Boolean> getURLSegmentsResult, Holder<String> strWebID,
+          Holder<String> strBucketID, Holder<String> strListID,
+          Holder<String> strItemID) {
+        if (("http://localhost:1/sites/SiteCollection/Lists/Custom List"
+            + "/Test Folder/2_.000").equals(strURL)) {
+          setValue(getURLSegmentsResult, true);
+          setValue(strWebID, null);
+          setValue(strBucketID, null);
+          setValue(strListID, "{6F33949A-B3FF-4B0C-BA99-93CB518AC2C0}");
+          setValue(strItemID, "2");
+        } else if (("http://localhost:1/sites/SiteCollection/Lists/Custom List"
+            + "/Test Folder").equals(strURL)) {
+          setValue(getURLSegmentsResult, true);
+          setValue(strWebID, null);
+          setValue(strBucketID, null);
+          setValue(strListID, "{6F33949A-B3FF-4B0C-BA99-93CB518AC2C0}");
+          setValue(strItemID, "1");
+        } else {
+          fail("Unexpected strUrl: " + strURL);
+        }
+      }
+
+      @Override
+      public void getContent(ObjectType objectType, String objectId,
+          String folderUrl, String itemId, boolean retrieveChildItems,
+          boolean securityOnly, Holder<String> lastItemIdOnPage,
+          Holder<String> getContentResult) {
+        setValue(lastItemIdOnPage, null);
+        if (ObjectType.LIST_ITEM.equals(objectType)) {
+          if ("2".equals(itemId)) {
+            assertEquals(false, securityOnly);
+            assertEquals("{6F33949A-B3FF-4B0C-BA99-93CB518AC2C0}", objectId);
+            setValue(getContentResult, getContentListItemResponse);
+          }
+        } else if (objectType.equals(ObjectType.LIST)) {
+          assertEquals(false, retrieveChildItems);
+          assertEquals(false, securityOnly);
+          assertEquals("{6F33949A-B3FF-4B0C-BA99-93CB518AC2C0}", objectId);
+          setValue(getContentResult, getContentListResponse);
+        } else {
+          fail("Unexpected object type: " + objectType);
+          throw new AssertionError();
+        }
+      }
+    };
+    final MemberIdMapping memberIdMapping;
+    {
+      Map<Integer, String> users = new HashMap<Integer, String>();
+      Map<Integer, String> groups = new HashMap<Integer, String>();
+      users.put(1, "GDC-PSL\\administrator");
+      groups.put(3, "SiteCollection Owners");
+      groups.put(4, "SiteCollection Visitors");
+      groups.put(5, "SiteCollection Members");
+      memberIdMapping = new MemberIdMapping(users, groups);
+    }
+
+    Users users = new Users(); 
+    users.getUser().add(createUserGroupUser(1, "GDC-PSL\\administrator",
+        "S-1-5-21-7369146", "Administrator", "admin@domain.com", false, true));
+    users.getUser().add(createUserGroupUser(7, "GDC-PSL\\User1",
+        "S-1-5-21-736911", "User1", "User1@domain.com", false, false));
+    users.getUser().add(createUserGroupUser(9, "GDC-PSL\\User11",
+        "S-1-5-21-7369132", "User11", "User11@domain.com", false, false));
+    users.getUser().add(createUserGroupUser(1073741823, "System.Account",
+        "S-1-5-21-7369343", "System Account", "System.Account@domain.com",
+        false, true));   
+    
+    MockUserGroupFactory mockUserGroupFactory 
+        = new MockUserGroupFactory(users);
+
+    adaptor = new SharePointAdaptor(new SiteDataFactory() {
+      @Override
+      public SiteDataSoap newSiteData(String endpoint) {
+        return new UnsupportedSiteData();
+      }
+    },
+    mockUserGroupFactory, new UnsupportedHttpClient(),
+    new Executor() {
+      @Override
+      public void execute(Runnable command) {
+        command.run();
+      }
+    });
+    final AccumulatingDocIdPusher docIdPusher = new AccumulatingDocIdPusher();
+    adaptor.init(new MockAdaptorContext(config, null) {
+      @Override
+      public DocIdPusher getDocIdPusher() {
+        return docIdPusher;
+      }
+    });
+    ByteArrayOutputStream baos = new ByteArrayOutputStream();
+    GetContentsRequest request = new GetContentsRequest(
+        new DocId("http://localhost:1/sites/SiteCollection/Lists/Custom List/"
+            + "Test Folder/2_.000"));
+    GetContentsResponse response = new GetContentsResponse(baos);
+    adaptor.new SiteDataClient("http://localhost:1/sites/SiteCollection",
+          "http://localhost:1/sites/SiteCollection", siteData,
+          mockUserGroupFactory.newUserGroup(
+              "http://localhost:1/sites/SiteCollection"), 
+          Callables.returning(memberIdMapping),
+          adaptor.new SiteUserIdMappingCallable(
+              "http://localhost:1/sites/SiteCollection"))
+        .getDocContent(request, response);
+    String responseString = new String(baos.toByteArray(), charset);
+    final String golden = "<!DOCTYPE html>\n"
+        + "<html><head><title>List Item Inside Folder</title></head>"
+        + "<body><h1>List Item Inside Folder</h1>"
+        + "</body></html>";
+
+    assertEquals(golden, responseString);
+    assertEquals(new Acl.Builder()
+        .setEverythingCaseInsensitive()
+        .setInheritFrom(new DocId("http://localhost:1/sites/SiteCollection"
+            + "/Lists/Custom List/Test Folder/2_.000_READ_SECURITY"))
+        .setPermitUsers(users("GDC-PSL\\administrator"))
+        .setPermitGroups(groups("SiteCollection Owners",
+            "SiteCollection Members", "SiteCollection Visitors"))
+        .setInheritanceType(Acl.InheritanceType.PARENT_OVERRIDES).build(),
+        response.getAcl());
+    assertEquals(Collections.singletonList(Collections.singletonMap(
+        new DocId("http://localhost:1/sites/SiteCollection/Lists/Custom List/"
+            + "Test Folder/2_.000_READ_SECURITY"),
+        new Acl.Builder()
+            .setEverythingCaseInsensitive()
+            .setPermitUsers(users("GDC-PSL\\administrator", "System.Account"))
+            .setPermitGroups(groups("SiteCollection Owners"))
+            .setInheritanceType(Acl.InheritanceType.AND_BOTH_PERMIT)
+            .setInheritFrom(new DocId(""))
+            .build())),
+        docIdPusher.getNamedResources());
+  }
+  
   public void testGetDocContentListItemScopeSameAsParent() throws IOException {
     final String getContentListResponse
         = "<List>"
@@ -2415,7 +2925,8 @@ public class SharePointAdaptorTest {
     }
 
     adaptor = new SharePointAdaptor(new UnsupportedSiteDataFactory(),
-        new UnsupportedHttpClient());
+        new UnsupportedUserGroupFactory(), new UnsupportedHttpClient(),
+        executor);
     adaptor.init(new MockAdaptorContext(config, null));
     ByteArrayOutputStream baos = new ByteArrayOutputStream();
     GetContentsRequest request = new GetContentsRequest(
@@ -2423,8 +2934,10 @@ public class SharePointAdaptorTest {
           + "Test Folder/2_.000"));
     GetContentsResponse response = new GetContentsResponse(baos);
     adaptor.new SiteDataClient("http://localhost:1/sites/SiteCollection",
-          "http://localhost:1/sites/SiteCollection",
-          siteData, Callables.returning(memberIdMapping))
+        "http://localhost:1/sites/SiteCollection",
+        siteData, new UnsupportedUserGroupSoap(),
+        Callables.returning(memberIdMapping),
+        new UnsupportedCallable<MemberIdMapping>())
         .getDocContent(request, response);
     String responseString = new String(baos.toByteArray(), charset);
     final String golden
@@ -3133,7 +3646,8 @@ public class SharePointAdaptorTest {
     }
 
     adaptor = new SharePointAdaptor(new UnsupportedSiteDataFactory(),
-        new UnsupportedHttpClient());
+        new UnsupportedUserGroupFactory(), new UnsupportedHttpClient(),
+        executor);
     adaptor.init(new MockAdaptorContext(config, null));
     ByteArrayOutputStream baos = new ByteArrayOutputStream();
     GetContentsRequest request = new GetContentsRequest(
@@ -3142,7 +3656,9 @@ public class SharePointAdaptorTest {
     GetContentsResponse response = new GetContentsResponse(baos);
     adaptor.new SiteDataClient("http://localhost:1/sites/SiteCollection",
           "http://localhost:1/sites/SiteCollection",
-          siteData, Callables.returning(memberIdMapping))
+          siteData, new UnsupportedUserGroupSoap(),
+        Callables.returning(memberIdMapping),
+        new UnsupportedCallable<MemberIdMapping>())
         .getDocContent(request, response);
     String responseString = new String(baos.toByteArray(), charset);
     final String golden
@@ -3218,7 +3734,8 @@ public class SharePointAdaptorTest {
   @Test
   public void testGetDocIds() throws IOException, InterruptedException {
     adaptor = new SharePointAdaptor(new UnsupportedSiteDataFactory(),
-        new UnsupportedHttpClient());
+        new UnsupportedUserGroupFactory(), new UnsupportedHttpClient(),
+        executor);
     AccumulatingDocIdPusher pusher = new AccumulatingDocIdPusher();
     adaptor.init(new MockAdaptorContext(config, pusher));
     assertEquals(0, pusher.getRecords().size());
@@ -3354,7 +3871,8 @@ public class SharePointAdaptorTest {
     SiteDataFactory siteDataFactory = new SingleSiteDataFactory(siteData,
           "http://localhost:1/_vti_bin/SiteData.asmx");
     adaptor = new SharePointAdaptor(siteDataFactory,
-        new UnsupportedHttpClient());
+        new UnsupportedUserGroupFactory(), new UnsupportedHttpClient(),
+        executor);
     AccumulatingDocIdPusher pusher = new AccumulatingDocIdPusher();
     adaptor.init(new MockAdaptorContext(config, pusher));
 
@@ -3467,7 +3985,8 @@ public class SharePointAdaptorTest {
     SiteDataFactory siteDataFactory = new SingleSiteDataFactory(siteData,
           "http://localhost:1/_vti_bin/SiteData.asmx");
     adaptor = new SharePointAdaptor(siteDataFactory,
-        new UnsupportedHttpClient());
+        new UnsupportedUserGroupFactory(), new UnsupportedHttpClient(),
+        executor);
     AccumulatingDocIdPusher pusher = new AccumulatingDocIdPusher();
     adaptor.init(new MockAdaptorContext(config, pusher));
 
@@ -3645,12 +4164,15 @@ public class SharePointAdaptorTest {
         + "</SPSite>"
         + "</SPContentDatabase>";
     adaptor = new SharePointAdaptor(new UnsupportedSiteDataFactory(),
-        new UnsupportedHttpClient());
+        new UnsupportedUserGroupFactory(), new UnsupportedHttpClient(),
+        executor);
     AccumulatingDocIdPusher pusher = new AccumulatingDocIdPusher();
     adaptor.init(new MockAdaptorContext(config, pusher));
     SharePointAdaptor.SiteDataClient client = adaptor.new SiteDataClient(
         "http://localhost:1/sites/SiteCollection",
         "http://localhost:1/sites/SiteCollection", new UnsupportedSiteData(),
+        new UnsupportedUserGroupSoap(),
+        new UnsupportedCallable<MemberIdMapping>(),
         new UnsupportedCallable<MemberIdMapping>());
 
     SPContentDatabase result
@@ -3666,11 +4188,14 @@ public class SharePointAdaptorTest {
   @Test
   public void testParseError() throws Exception {
     adaptor = new SharePointAdaptor(new UnsupportedSiteDataFactory(),
-        new UnsupportedHttpClient());
+        new UnsupportedUserGroupFactory(), new UnsupportedHttpClient(),
+        executor);
     adaptor.init(new MockAdaptorContext(config, null));
     SharePointAdaptor.SiteDataClient client = adaptor.new SiteDataClient(
         "http://localhost:1", "http://localhost:1",
-        new UnsupportedSiteData(), new UnsupportedCallable<MemberIdMapping>());
+        new UnsupportedSiteData(), new UnsupportedUserGroupSoap(),
+        new UnsupportedCallable<MemberIdMapping>(),
+        new UnsupportedCallable<MemberIdMapping>());
     String xml = "<broken";
     thrown.expect(IOException.class);
     client.jaxbParse(xml, SPContentDatabase.class);
@@ -3679,11 +4204,14 @@ public class SharePointAdaptorTest {
   @Test
   public void testValidationError() throws Exception {
     adaptor = new SharePointAdaptor(new UnsupportedSiteDataFactory(),
-        new UnsupportedHttpClient());
+        new UnsupportedUserGroupFactory(),
+        new UnsupportedHttpClient(), executor);
     adaptor.init(new MockAdaptorContext(config, null));
     SharePointAdaptor.SiteDataClient client = adaptor.new SiteDataClient(
         "http://localhost:1", "http://localhost:1",
-        new UnsupportedSiteData(), new UnsupportedCallable<MemberIdMapping>());
+        new UnsupportedSiteData(), new UnsupportedUserGroupSoap(),
+        new UnsupportedCallable<MemberIdMapping>(),
+        new UnsupportedCallable<MemberIdMapping>());
     // Lacks required child element.
     String xml = "<SPContentDatabase"
         + " xmlns='http://schemas.microsoft.com/sharepoint/soap/'/>";
@@ -3694,12 +4222,15 @@ public class SharePointAdaptorTest {
   @Test
   public void testDisabledValidation() throws Exception {
     adaptor = new SharePointAdaptor(new UnsupportedSiteDataFactory(),
-        new UnsupportedHttpClient());
+        new UnsupportedUserGroupFactory(),
+        new UnsupportedHttpClient(), executor);
     config.overrideKey("sharepoint.xmlValidation", "false");
     adaptor.init(new MockAdaptorContext(config, null));
     SharePointAdaptor.SiteDataClient client = adaptor.new SiteDataClient(
         "http://localhost:1", "http://localhost:1",
-        new UnsupportedSiteData(), new UnsupportedCallable<MemberIdMapping>());
+        new UnsupportedSiteData(), new UnsupportedUserGroupSoap(),
+        new UnsupportedCallable<MemberIdMapping>(),
+        new UnsupportedCallable<MemberIdMapping>());
     // Lacks required child element.
     String xml = "<SPContentDatabase"
         + " xmlns='http://schemas.microsoft.com/sharepoint/soap/'/>";
@@ -3710,11 +4241,14 @@ public class SharePointAdaptorTest {
   @Test
   public void testParseUnknownXml() throws Exception {
     adaptor = new SharePointAdaptor(new UnsupportedSiteDataFactory(),
-        new UnsupportedHttpClient());
+        new UnsupportedUserGroupFactory(),
+        new UnsupportedHttpClient(), executor);
     adaptor.init(new MockAdaptorContext(config, null));
     SharePointAdaptor.SiteDataClient client = adaptor.new SiteDataClient(
         "http://localhost:1", "http://localhost:1",
-        new UnsupportedSiteData(), new UnsupportedCallable<MemberIdMapping>());
+        new UnsupportedSiteData(), new UnsupportedUserGroupSoap(),
+        new UnsupportedCallable<MemberIdMapping>(),
+        new UnsupportedCallable<MemberIdMapping>());
     // Valid XML, but not any class that we know about.
     String xml = "<html/>";
     thrown.expect(IOException.class);
@@ -3771,7 +4305,26 @@ public class SharePointAdaptorTest {
       throw new UnsupportedOperationException();
     }
   }
+  
+  private static class UnsupportedUserGroupFactory
+      implements UserGroupFactory {
+    @Override
+    public UserGroupSoap newUserGroup(String endpoint) {
+      return new UnsupportedUserGroupSoap();
+    }
+  }
 
+  private static class MockUserGroupFactory implements UserGroupFactory {
+    final Users users;
+    public MockUserGroupFactory(Users users) {
+      this.users = users;
+    }
+    
+    @Override
+    public UserGroupSoap newUserGroup(String endpoint) {
+      return new MockUserGroupSoap(users);
+    }
+  }
   private static class SingleSiteDataFactory implements SiteDataFactory {
     private final SiteDataSoap siteData;
     private final String expectedEndpoint;
@@ -3794,6 +4347,285 @@ public class SharePointAdaptorTest {
     public FileInfo issueGetRequest(URL url) {
       throw new UnsupportedOperationException();
     }
+  }
+  
+  private static class MockUserGroupSoap extends UnsupportedUserGroupSoap {
+    final Users users;    
+    public MockUserGroupSoap(Users users) {
+      this.users = users;      
+    }
+    
+    @Override
+    public GetUserCollectionFromSiteResponse.GetUserCollectionFromSiteResult 
+        getUserCollectionFromSite() {
+      GetUserCollectionFromSiteResponse.GetUserCollectionFromSiteResult result 
+          = new GetUserCollectionFromSiteResponse
+              .GetUserCollectionFromSiteResult();
+      GetUserCollectionFromSiteResponse
+          .GetUserCollectionFromSiteResult.GetUserCollectionFromSite siteUsers 
+          = new GetUserCollectionFromSiteResponse
+              .GetUserCollectionFromSiteResult.GetUserCollectionFromSite();   
+      siteUsers.setUsers(users);
+      result.setGetUserCollectionFromSite(siteUsers);
+      return result;      
+    }
+  }
+  
+  private static class UnsupportedUserGroupSoap implements UserGroupSoap {
+    @Override
+    public GetUserCollectionFromSiteResponse.GetUserCollectionFromSiteResult 
+        getUserCollectionFromSite() {
+      throw new UnsupportedOperationException(); 
+    }
+
+    @Override
+    public GetUserCollectionFromWebResponse.GetUserCollectionFromWebResult 
+        getUserCollectionFromWeb() {
+      throw new UnsupportedOperationException(); 
+    }
+
+    @Override
+    public GetAllUserCollectionFromWebResponse.GetAllUserCollectionFromWebResult 
+        getAllUserCollectionFromWeb() {
+      throw new UnsupportedOperationException(); 
+    }
+
+    @Override
+    public GetUserCollectionFromGroupResponse.GetUserCollectionFromGroupResult 
+        getUserCollectionFromGroup(String string) {
+      throw new UnsupportedOperationException(); 
+    }
+
+    @Override
+    public GetUserCollectionFromRoleResponse.GetUserCollectionFromRoleResult 
+        getUserCollectionFromRole(String string) {
+      throw new UnsupportedOperationException(); 
+    }
+
+    @Override
+    public GetUserCollectionResponse.GetUserCollectionResult 
+        getUserCollection(GetUserCollection.UserLoginNamesXml ulnx) {
+      throw new UnsupportedOperationException(); 
+    }
+
+    @Override
+    public GetUserInfoResponse.GetUserInfoResult 
+        getUserInfo(String string) {
+      throw new UnsupportedOperationException(); 
+    }
+
+    @Override
+    public GetCurrentUserInfoResponse.GetCurrentUserInfoResult 
+        getCurrentUserInfo() {
+      throw new UnsupportedOperationException(); 
+    }
+
+    @Override
+    public void addUserToGroup(String string, String string1, 
+        String string2, String string3, String string4) {
+      throw new UnsupportedOperationException(); 
+    }
+
+    @Override
+    public void addUserCollectionToGroup(String string,
+        AddUserCollectionToGroup.UsersInfoXml uix) {
+      throw new UnsupportedOperationException(); 
+    }
+
+    @Override
+    public void addUserToRole(String string, String string1,
+        String string2, String string3, String string4) {
+      throw new UnsupportedOperationException(); 
+    }
+
+    @Override
+    public void addUserCollectionToRole(String string,
+        AddUserCollectionToRole.UsersInfoXml uix) {
+      throw new UnsupportedOperationException(); 
+    }
+
+    @Override
+    public void updateUserInfo(String string, String string1,
+        String string2, String string3) {
+      throw new UnsupportedOperationException(); 
+    }
+
+    @Override
+    public void removeUserFromSite(String string) {
+      throw new UnsupportedOperationException(); 
+    }
+
+    @Override
+    public void removeUserCollectionFromSite(
+        RemoveUserCollectionFromSite.UserLoginNamesXml ulnx) {
+      throw new UnsupportedOperationException(); 
+    }
+
+    @Override
+    public void removeUserFromWeb(String string) {
+      throw new UnsupportedOperationException(); 
+    }
+
+    @Override
+    public void removeUserFromGroup(String string, String string1) {
+      throw new UnsupportedOperationException(); 
+    }
+
+    @Override
+    public void removeUserCollectionFromGroup(String string,
+        RemoveUserCollectionFromGroup.UserLoginNamesXml ulnx) {
+      throw new UnsupportedOperationException(); 
+    }
+
+    @Override
+    public void removeUserFromRole(String string, String string1) {
+      throw new UnsupportedOperationException(); 
+    }
+
+    @Override
+    public void removeUserCollectionFromRole(String string,
+        RemoveUserCollectionFromRole.UserLoginNamesXml ulnx) {
+      throw new UnsupportedOperationException(); 
+    }
+
+    @Override
+    public GetGroupCollectionFromSiteResponse.GetGroupCollectionFromSiteResult
+        getGroupCollectionFromSite() {
+      throw new UnsupportedOperationException(); 
+    }
+
+    @Override
+    public GetGroupCollectionFromWebResponse.GetGroupCollectionFromWebResult
+        getGroupCollectionFromWeb() {
+      throw new UnsupportedOperationException(); 
+    }
+
+    @Override
+    public GetGroupCollectionFromRoleResponse.GetGroupCollectionFromRoleResult
+        getGroupCollectionFromRole(String string) {
+      throw new UnsupportedOperationException(); 
+    }
+
+    @Override
+    public GetGroupCollectionFromUserResponse.GetGroupCollectionFromUserResult
+        getGroupCollectionFromUser(String string) {
+      throw new UnsupportedOperationException(); 
+    }
+
+    @Override
+    public GetGroupCollectionResponse.GetGroupCollectionResult
+        getGroupCollection(GroupsInputType git) {
+      throw new UnsupportedOperationException(); 
+    }
+
+    @Override
+    public GetGroupInfoResponse.GetGroupInfoResult
+        getGroupInfo(String string) {
+      throw new UnsupportedOperationException(); 
+    }
+
+    @Override
+    public void addGroup(String string, String string1, PrincipalType pt,
+        String string2, String string3) {
+      throw new UnsupportedOperationException(); 
+    }
+
+    @Override
+    public void addGroupToRole(String string, String string1) {
+      throw new UnsupportedOperationException(); 
+    }
+
+    @Override
+    public void updateGroupInfo(String string, String string1,
+        String string2, PrincipalType pt, String string3) {
+      throw new UnsupportedOperationException(); 
+    }
+
+    @Override
+    public void removeGroup(String string) {
+      throw new UnsupportedOperationException(); 
+    }
+
+    @Override
+    public void removeGroupFromRole(String string, String string1) {
+      throw new UnsupportedOperationException(); 
+    }
+
+    @Override
+    public GetRoleCollectionFromWebResponse.GetRoleCollectionFromWebResult
+        getRoleCollectionFromWeb() {
+      throw new UnsupportedOperationException(); 
+    }
+
+    @Override
+    public GetRoleCollectionFromGroupResponse.GetRoleCollectionFromGroupResult
+        getRoleCollectionFromGroup(String string) {
+      throw new UnsupportedOperationException(); 
+    }
+
+    @Override
+    public GetRoleCollectionFromUserResponse.GetRoleCollectionFromUserResult
+        getRoleCollectionFromUser(String string) {
+      throw new UnsupportedOperationException(); 
+    }
+
+    @Override
+    public GetRoleCollectionResponse.GetRoleCollectionResult 
+        getRoleCollection(RolesInputType rit) {
+      throw new UnsupportedOperationException(); 
+    }
+
+    @Override
+    public RoleOutputType getRoleInfo(String string) {
+      throw new UnsupportedOperationException(); 
+    }
+
+    @Override
+    public void addRole(String string, String string1, int i) {
+      throw new UnsupportedOperationException(); 
+    }
+
+    @Override
+    public void addRoleDef(String string, String string1, BigInteger bi) {
+      throw new UnsupportedOperationException(); 
+    }
+
+    @Override
+    public void updateRoleInfo(String string, String string1,
+        String string2, int i) {
+      throw new UnsupportedOperationException(); 
+    }
+
+    @Override
+    public void updateRoleDefInfo(String string, String string1, 
+        String string2, BigInteger bi) {
+      throw new UnsupportedOperationException(); 
+    }
+
+    @Override
+    public void removeRole(String string) {
+      throw new UnsupportedOperationException(); 
+    }
+
+    @Override
+    public GetUserLoginFromEmailResponse.GetUserLoginFromEmailResult 
+        getUserLoginFromEmail(EmailsInputType eit) {
+      throw new UnsupportedOperationException(); 
+    }
+
+    @Override
+    public GetRolesAndPermissionsForCurrentUserResponse
+        .GetRolesAndPermissionsForCurrentUserResult 
+        getRolesAndPermissionsForCurrentUser() {
+      throw new UnsupportedOperationException(); 
+    }
+
+    @Override
+    public GetRolesAndPermissionsForSiteResponse
+        .GetRolesAndPermissionsForSiteResult 
+        getRolesAndPermissionsForSite() {
+      throw new UnsupportedOperationException(); 
+    }    
   }
 
   /**
@@ -3893,6 +4725,13 @@ public class SharePointAdaptorTest {
   private static class UnsupportedCallable<V> implements Callable<V> {
     @Override
     public V call() {
+      throw new UnsupportedOperationException();
+    }
+  }
+  
+  private static class UnsupportedExecutor implements Executor {
+    @Override
+    public void execute(Runnable command) {
       throw new UnsupportedOperationException();
     }
   }

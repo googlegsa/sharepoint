@@ -23,6 +23,8 @@ import java.util.*;
 
 class AccumulatingDocIdPusher implements DocIdPusher {
   private List<Record> records = new ArrayList<Record>();
+  private List<Map<DocId, Acl>> namedResouces
+      = new ArrayList<Map<DocId, Acl>>();
 
   @Override
   public DocId pushDocIds(Iterable<DocId> docIds)
@@ -61,9 +63,14 @@ class AccumulatingDocIdPusher implements DocIdPusher {
   public List<Record> getRecords() {
     return Collections.unmodifiableList(records);
   }
+  
+  public List<Map<DocId, Acl>> getNamedResources() {
+    return namedResouces;
+  }
 
   public void reset() {
     records.clear();
+    namedResouces.clear();
   }
 
   @Override
@@ -76,6 +83,8 @@ class AccumulatingDocIdPusher implements DocIdPusher {
   public DocId pushNamedResources(Map<DocId, Acl> resources,
                                   PushErrorHandler hanlder)
       throws InterruptedException {
-    throw new UnsupportedOperationException();
+    namedResouces.add(Collections.unmodifiableMap(
+        new TreeMap<DocId, Acl>(resources)));
+    return null;
   }
 }

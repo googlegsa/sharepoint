@@ -61,6 +61,10 @@ import com.microsoft.schemas.sharepoint.soap.VirtualServer;
 import com.microsoft.schemas.sharepoint.soap.Web;
 import com.microsoft.schemas.sharepoint.soap.Webs;
 import com.microsoft.schemas.sharepoint.soap.Xml;
+import com.microsoft.schemas.sharepoint.soap.directory.GetUserCollectionFromSiteResponse;
+import com.microsoft.schemas.sharepoint.soap.directory.GetUserCollectionFromSiteResponse.GetUserCollectionFromSiteResult;
+import com.microsoft.schemas.sharepoint.soap.directory.User;
+import com.microsoft.schemas.sharepoint.soap.directory.UserGroupSoap;
 
 import org.w3c.dom.Attr;
 import org.w3c.dom.Document;
@@ -107,6 +111,9 @@ public class SharePointAdaptor extends AbstractAdaptor
   /** SharePoint's namespace. */
   private static final String XMLNS
       = "http://schemas.microsoft.com/sharepoint/soap/";
+  private static final String XMLNS_DIRECTORY
+      = "http://schemas.microsoft.com/sharepoint/soap/directory/";
+
   /**
    * The data element within a self-describing XML blob. See
    * http://msdn.microsoft.com/en-us/library/windows/desktop/ms675943.aspx .
@@ -124,6 +131,7 @@ public class SharePointAdaptor extends AbstractAdaptor
    * distinguish between folders and other list items.
    */
   private static final String OWS_FSOBJTYPE_ATTRIBUTE = "ows_FSObjType";
+  private static final String OWS_AUTHOR_ATTRIBUTE = "ows_Author";
   /** Row attribute that contains the title of the List Item. */
   private static final String OWS_TITLE_ATTRIBUTE = "ows_Title";
   /**
@@ -171,8 +179,15 @@ public class SharePointAdaptor extends AbstractAdaptor
    * As defined at http://msdn.microsoft.com/en-us/library/ee394878.aspx .
    */
   private static final long VIEW_PAGES_MASK = 0x0000000000020000;
+  /**
+   * As defined at http://msdn.microsoft.com/en-us/library/ee394878.aspx .
+   */
+  private static final long MANAGE_LIST_MASK = 0x0000000000000800;
+
   private static final long LIST_ITEM_MASK
       = OPEN_MASK | VIEW_PAGES_MASK | VIEW_LIST_ITEMS_MASK;
+  private static final long READ_SECURITY_LIST_ITEM_MASK
+      = OPEN_MASK | VIEW_PAGES_MASK | VIEW_LIST_ITEMS_MASK | MANAGE_LIST_MASK;
   /**
    * The JAXBContext is expensive to initialize, so we share a copy between
    * instances.
@@ -236,13 +251,20 @@ public class SharePointAdaptor extends AbstractAdaptor
         .refreshAfterWrite(30, TimeUnit.MINUTES)
         .expireAfterWrite(45, TimeUnit.MINUTES)
         .build(new MemberIdsCacheLoader());
+  private LoadingCache<String, MemberIdMapping> siteUserCache
+      = CacheBuilder.newBuilder()
+        .refreshAfterWrite(30, TimeUnit.MINUTES)
+        .expireAfterWrite(45, TimeUnit.MINUTES)
+        .build(new SiteUserCacheLoader());
   /** Map from Content Database GUID to last known Change Token for that DB. */
   private final ConcurrentSkipListMap<String, String> contentDatabaseChangeId
       = new ConcurrentSkipListMap<String, String>();
   /** Production factory for all SiteDataSoap communication objects. */
   private final SiteDataFactory siteDataFactory;
+  private final UserGroupFactory userGroupFactory;
   /** Client for initiating raw HTTP connections. */
   private final HttpClient httpClient;
+  private final Executor executor;
   private boolean xmlValidation;
   /** Authenticator instance that authenticates with SP. */
   private NtlmAuthenticator ntlmAuthenticator;
@@ -253,16 +275,21 @@ public class SharePointAdaptor extends AbstractAdaptor
   private boolean isSp2010;
 
   public SharePointAdaptor() {
-    this(new SiteDataFactoryImpl(), new HttpClientImpl());
+    this(new SiteDataFactoryImpl(), new UserGroupFactoryImpl(),
+        new HttpClientImpl(), Executors.newCachedThreadPool());
   }
 
   @VisibleForTesting
-  SharePointAdaptor(SiteDataFactory siteDataFactory, HttpClient httpClient) {
-    if (siteDataFactory == null || httpClient == null) {
+  SharePointAdaptor(SiteDataFactory siteDataFactory,
+  UserGroupFactory userGroupFactory, HttpClient httpClient, Executor executor) {
+    if (siteDataFactory == null || httpClient == null
+        || userGroupFactory == null || executor == null) {
       throw new NullPointerException();
     }
     this.siteDataFactory = siteDataFactory;
+    this.userGroupFactory = userGroupFactory;
     this.httpClient = httpClient;
+    this.executor = executor;
   }
 
   /**
@@ -459,9 +486,15 @@ public class SharePointAdaptor extends AbstractAdaptor
       String endpoint = web + "/_vti_bin/SiteData.asmx";
       ntlmAuthenticator.addToWhitelist(endpoint);
       SiteDataSoap siteDataSoap = siteDataFactory.newSiteData(endpoint);
-
-      client = new SiteDataClient(site, web, siteDataSoap,
-          new MemberIdMappingCallable(site));
+      
+      String endpointUserGroup = site + "/_vti_bin/UserGroup.asmx";
+      ntlmAuthenticator.addToWhitelist(endpoint);
+      UserGroupSoap userGroupSoap 
+          = userGroupFactory.newUserGroup(endpointUserGroup);
+      
+      client = new SiteDataClient(site, web, siteDataSoap, userGroupSoap,
+          new MemberIdMappingCallable(site),
+          new SiteUserIdMappingCallable(site));
       clients.putIfAbsent(web, client);
       client = clients.get(web);
     }
@@ -475,6 +508,7 @@ public class SharePointAdaptor extends AbstractAdaptor
   @VisibleForTesting
   class SiteDataClient {
     private final CheckedExceptionSiteDataSoap siteData;
+    private final UserGroupSoap userGroup;
     private final String siteUrl;
     private final String webUrl;
     /**
@@ -483,9 +517,12 @@ public class SharePointAdaptor extends AbstractAdaptor
      * this allows mocking out the cache during testing.
      */
     private final Callable<MemberIdMapping> memberIdMappingCallable;
+    private final Callable<MemberIdMapping> siteUserIdMappingCallable;
 
     public SiteDataClient(String site, String web, SiteDataSoap siteDataSoap,
-        Callable<MemberIdMapping> memberIdMappingCallable) {
+        UserGroupSoap userGroupSoap,
+        Callable<MemberIdMapping> memberIdMappingCallable,
+        Callable<MemberIdMapping> siteUserIdMappingCallable) {
       log.entering("SiteDataClient", "SiteDataClient",
           new Object[] {site, web, siteDataSoap});
       if (site.endsWith("/")) {
@@ -500,14 +537,26 @@ public class SharePointAdaptor extends AbstractAdaptor
       this.siteUrl = site;
       this.webUrl = web;
       siteDataSoap = LoggingWSHandler.create(SiteDataSoap.class, siteDataSoap);
+      this.userGroup = userGroupSoap;
       this.siteData = new CheckedExceptionSiteDataSoapAdapter(siteDataSoap);
       this.memberIdMappingCallable = memberIdMappingCallable;
+      this.siteUserIdMappingCallable = siteUserIdMappingCallable;
       log.exiting("SiteDataClient", "SiteDataClient");
     }
 
     private MemberIdMapping getMemberIdMapping() throws IOException {
       try {
         return memberIdMappingCallable.call();
+      } catch (IOException ex) {
+        throw ex;
+      } catch (Exception ex) {
+        throw new IOException(ex);
+      }
+    }
+
+     private MemberIdMapping getSiteUserMapping() throws IOException {
+      try {
+        return siteUserIdMappingCallable.call();
       } catch (IOException ex) {
         throw ex;
       } catch (Exception ex) {
@@ -915,6 +964,36 @@ public class SharePointAdaptor extends AbstractAdaptor
           .setPermitUsers(permitUsers).setPermitGroups(permitGroups);
     }
 
+    private void addPermitUserToAcl(int userId, Acl.Builder aclToUpdate)
+        throws IOException {
+      if (userId == -1) {
+        return;
+      }
+      String userName = getUserName(userId);
+      if (userName == null) {
+        log.log(Level.WARNING, "Could not resolve user id {0}", userId);
+        return;
+      }
+
+      List<UserPrincipal> permitUsers
+          = new LinkedList<UserPrincipal>(aclToUpdate.build().getPermitUsers());
+      permitUsers.add(new UserPrincipal(userName));
+      aclToUpdate.setPermitUsers(permitUsers);
+    }
+
+    private String getUserName(int userId) throws IOException {     
+      String userName = getMemberIdMapping().getUserName(userId);
+      // MemberIdMapping will have information about users with explicit
+      // permissions on SharePoint or users which are direct members of
+      // SharePoint groups. MemberIdMapping might not have information
+      // about all valid SharePoint Users. To get all valid SharePoint users
+      // under SiteCollection, use SiteUserMapping.
+      if (userName == null) {
+        userName = getSiteUserMapping().getUserName(userId);        
+      }
+      return userName;
+    }
+
     private void getAspxDocContent(Request request, Response response)
         throws IOException {
       log.entering("SiteDataClient", "getAspxDocContent",
@@ -958,6 +1037,7 @@ public class SharePointAdaptor extends AbstractAdaptor
       log.entering("SiteDataClient", "getListItemDocContent",
           new Object[] {request, response, listId, itemId});
       com.microsoft.schemas.sharepoint.soap.List l = getContentList(listId);
+      boolean applyReadSecurity = (l.getMetadata().getReadSecurity() == 2);
       ItemData i = getContentItem(listId, itemId);
 
       Xml xml = i.getXml();
@@ -970,10 +1050,8 @@ public class SharePointAdaptor extends AbstractAdaptor
           = row.getAttribute(OWS_SCOPEID_ATTRIBUTE).split(";#", 2)[1];
       scopeId = scopeId.toLowerCase(Locale.ENGLISH);
 
-      DocId parentDocId;
-      boolean listIsParent;
-      String parentScopeId;
-      {
+      Acl.Builder acl = null;     
+      if (!applyReadSecurity) {
         String rawFileDirRef = row.getAttribute(OWS_FILEDIRREF_ATTRIBUTE);
         // This should be in the form of "1234;#site/list/path". We want to
         // extract the site/list/path. Path relative to host, even though it
@@ -985,14 +1063,15 @@ public class SharePointAdaptor extends AbstractAdaptor
         // folderDocId, since the root folder is a List and not actually a
         // Folder.
         boolean parentIsList = folderDocId.equals(rootFolderDocId);
-        parentDocId = parentIsList ? listDocId : folderDocId;
+        DocId parentDocId = parentIsList ? listDocId : folderDocId;
         String listScopeId = l.getMetadata().getScopeID()
             .toLowerCase(Locale.ENGLISH);
+        String parentScopeId;
         // If a folder doesn't inherit its list's scope, then all of the
         // folder's descendent list items are guaranteed to have a different
         // scope than the list. We use this knowledge as a performance
         // optimization to prevent issuing requests to discover the folder's
-        // scopeId when a child list item and list have the same scope.
+        // scopeId when a child list item and list have the same scope.        
         if (parentIsList || scopeId.equals(listScopeId)) {
           parentScopeId = listScopeId;
         } else {
@@ -1023,21 +1102,19 @@ public class SharePointAdaptor extends AbstractAdaptor
           parentScopeId = folderRow.getAttribute(OWS_SCOPEID_ATTRIBUTE)
               .split(";#", 2)[1].toLowerCase(Locale.ENGLISH);
         }
-      }
-
-      Acl.Builder acl = null;
-      if (scopeId.equals(parentScopeId)) {
-        acl = new Acl.Builder().setInheritFrom(parentDocId);
-      } else {
-        // We have to search for the correct scope within the scopes element.
-        // The scope provided in the metadata is for the parent list, not for
-        // the item
-        Scopes scopes = getFirstChildOfType(xml, Scopes.class);
-        for (Scopes.Scope scope : scopes.getScope()) {
-          if (scope.getId().toLowerCase(Locale.ENGLISH).equals(scopeId)) {
-            acl = generateAcl(scope.getPermission(), LIST_ITEM_MASK)
-                .setInheritFrom(virtualServerDocId);
-            break;
+        if (scopeId.equals(parentScopeId)) {
+          acl = new Acl.Builder().setInheritFrom(parentDocId);
+        } else {
+          // We have to search for the correct scope within the scopes element.
+          // The scope provided in the metadata is for the parent list, not for
+          // the item
+          Scopes scopes = getFirstChildOfType(xml, Scopes.class);
+          for (Scopes.Scope scope : scopes.getScope()) {
+            if (scope.getId().toLowerCase(Locale.ENGLISH).equals(scopeId)) {
+              acl = generateAcl(scope.getPermission(), LIST_ITEM_MASK)
+                  .setInheritFrom(virtualServerDocId);
+              break;
+            }
           }
         }
 
@@ -1045,8 +1122,49 @@ public class SharePointAdaptor extends AbstractAdaptor
           throw new IOException("Unable to find permission scope for item: "
               + request.getDocId());
         }
+      } else {
+        DocId namedResource 
+            = new DocId(request.getDocId().getUniqueId()+ "_READ_SECURITY");
+        List<Permission> permission = null;
+        Scopes scopes = getFirstChildOfType(xml, Scopes.class);
+        for (Scopes.Scope scope : scopes.getScope()) {
+          if (scope.getId().toLowerCase(Locale.ENGLISH).equals(scopeId)) {
+            permission = scope.getPermission();
+            break;
+          }
+        }
+        if (permission == null) {
+          permission 
+              = i.getMetadata().getScope().getPermissions().getPermission();
+        }
+        acl = generateAcl(permission, LIST_ITEM_MASK)
+            .setInheritFrom(namedResource);        
+        int authorId = -1;
+        String authorValue = row.getAttribute(OWS_AUTHOR_ATTRIBUTE);
+        if (authorValue != null) {
+          String[] authorInfo = authorValue.split(";#", 2);
+          if (authorInfo.length == 2) {
+            authorId = Integer.parseInt(authorInfo[0]);
+          }
+        }
+        Acl.Builder aclNamedResource 
+            = generateAcl(permission, READ_SECURITY_LIST_ITEM_MASK)
+            .setInheritFrom(virtualServerDocId)
+            .setInheritanceType(Acl.InheritanceType.AND_BOTH_PERMIT);
+        addPermitUserToAcl(authorId, aclNamedResource);
+        final Map<DocId, Acl> map = new TreeMap<DocId, Acl>();
+        map.put(namedResource, aclNamedResource.build());
+        executor.execute(new Runnable() {
+          @Override
+          public void run() {
+            try {
+              context.getDocIdPusher().pushNamedResources(map);
+            } catch (InterruptedException ie) {
+              log.log(Level.WARNING, "Error pushing named resource", ie);
+            }
+          }
+        });
       }
-
       response.setAcl(acl
           .setInheritanceType(Acl.InheritanceType.PARENT_OVERRIDES)
           .build());
@@ -1331,6 +1449,34 @@ public class SharePointAdaptor extends AbstractAdaptor
       }
       MemberIdMapping mapping = new MemberIdMapping(userMap, groupMap);
       log.exiting("SiteDataClient", "retrieveMemberIdMapping", mapping);
+      return mapping;
+    }
+    
+    private MemberIdMapping retrieveSiteUserMapping() 
+        throws IOException {
+      log.entering("SiteDataClient", "retrieveSiteUserMapping");
+      GetUserCollectionFromSiteResponse.GetUserCollectionFromSiteResult result
+          = userGroup.getUserCollectionFromSite();
+      Map<Integer, String> userMap = new HashMap<Integer, String>();
+      Map<Integer, String> groupMap = new HashMap<Integer, String>();
+      MemberIdMapping mapping;
+      if (result == null) {
+        mapping = new MemberIdMapping(userMap, groupMap);
+        log.exiting("SiteDataClient", "retrieveSiteUserMapping", mapping);
+        return mapping;
+      }
+      GetUserCollectionFromSiteResult.GetUserCollectionFromSite siteUsers
+           = result.getGetUserCollectionFromSite();
+      if (siteUsers.getUsers() == null) {
+        mapping = new MemberIdMapping(userMap, groupMap);
+        log.exiting("SiteDataClient", "retrieveSiteUserMapping", mapping);
+        return mapping;
+      }
+      for (User user : siteUsers.getUsers().getUser()) {
+        userMap.put((int) user.getID(), user.getLoginName());
+      }
+      mapping = new MemberIdMapping(userMap, groupMap);
+      log.exiting("SiteDataClient", "retrieveSiteUserMapping", mapping);        
       return mapping;
     }
 
@@ -1753,6 +1899,33 @@ public class SharePointAdaptor extends AbstractAdaptor
     }
   }
 
+  @VisibleForTesting
+  interface UserGroupFactory {
+    public UserGroupSoap newUserGroup(String endpoint);
+  }
+
+  static class UserGroupFactoryImpl implements UserGroupFactory {
+    private final Service userGroupService;
+
+    public UserGroupFactoryImpl() {
+      URL url = UserGroupSoap.class.getResource("UserGroup.wsdl");
+      QName qname = new QName(XMLNS_DIRECTORY, "UserGroup");
+      this.userGroupService = Service.create(url, qname);
+    }
+
+    @Override
+    public UserGroupSoap newUserGroup(String endpoint) {
+      String endpointString
+          = "<wsa:EndpointReference"
+          + " xmlns:wsa='http://www.w3.org/2005/08/addressing'>"
+          + "<wsa:Address>" + endpoint + "</wsa:Address>"
+          + "</wsa:EndpointReference>";
+      EndpointReference endpointRef = EndpointReference.readFrom(
+          new StreamSource(new StringReader(endpointString)));
+      return userGroupService.getPort(endpointRef, UserGroupSoap.class);
+    }
+  }
+
   private static class NtlmAuthenticator extends Authenticator {
     // URLs are not comparable, so use String instead.
     private final Set<String> whitelist = new ConcurrentSkipListSet<String>();
@@ -1891,11 +2064,47 @@ public class SharePointAdaptor extends AbstractAdaptor
     }
   }
 
+  @VisibleForTesting
+  class SiteUserIdMappingCallable implements Callable<MemberIdMapping> {
+    private final String siteUrl;
+
+    public SiteUserIdMappingCallable(String siteUrl) {
+      if (siteUrl == null) {
+        throw new NullPointerException();
+      }
+      this.siteUrl = siteUrl;
+    }
+
+    @Override
+    public MemberIdMapping call() throws Exception {
+      try {
+        return siteUserCache.get(siteUrl);
+      } catch (ExecutionException ex) {
+        Throwable cause = ex.getCause();
+        if (cause instanceof Exception) {
+          throw (Exception) cause;
+        } else if (cause instanceof Error) {
+          throw (Error) cause;
+        } else {
+          throw new AssertionError(cause);
+        }
+      }
+    }
+  }
+
   private class MemberIdsCacheLoader
       extends CacheLoader<String, MemberIdMapping> {
     @Override
     public MemberIdMapping load(String site) throws IOException {
       return getSiteDataClient(site, site).retrieveMemberIdMapping();
+    }
+  }
+
+  private class SiteUserCacheLoader
+      extends CacheLoader<String, MemberIdMapping> {
+    @Override
+    public MemberIdMapping load(String site) throws IOException {
+      return getSiteDataClient(site, site).retrieveSiteUserMapping();     
     }
   }
 }
