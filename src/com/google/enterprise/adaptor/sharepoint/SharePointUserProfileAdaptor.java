@@ -62,6 +62,7 @@ import javax.xml.parsers.ParserConfigurationException;
 import javax.xml.ws.EndpointReference;
 import javax.xml.ws.Service;
 import javax.xml.ws.WebServiceException;
+import javax.xml.ws.wsaddressing.W3CEndpointReferenceBuilder;
 
 /**
  * An adaptor for obtaining user profile information from SharePoint.
@@ -254,18 +255,10 @@ public class SharePointUserProfileAdaptor extends AbstractAdaptor
     @Override
     public UserProfileServiceWS newUserProfileService(String endpoint,
         String endpointChangeService) {
-      String endpointString = "<wsa:EndpointReference"
-          + " xmlns:wsa='http://www.w3.org/2005/08/addressing'>"
-          + "<wsa:Address>" + endpoint + "</wsa:Address>"
-          + "</wsa:EndpointReference>";
-      EndpointReference endpointRef = EndpointReference.readFrom(
-          new StreamSource(new StringReader(endpointString)));
-      String endpointChangeString = "<wsa:EndpointReference"
-          + " xmlns:wsa='http://www.w3.org/2005/08/addressing'>"
-          + "<wsa:Address>" + endpointChangeService + "</wsa:Address>"
-          + "</wsa:EndpointReference>";
-      EndpointReference endpointChangeRef = EndpointReference.readFrom(
-          new StreamSource(new StringReader(endpointChangeString)));
+      EndpointReference endpointRef = new W3CEndpointReferenceBuilder()
+          .address(endpoint).build();
+      EndpointReference endpointChangeRef = new W3CEndpointReferenceBuilder()
+          .address(endpointChangeService).build();
       return new SharePointUserProfileServiceWS(userProfileServiceSoap.
           getPort(endpointRef, UserProfileServiceSoap.class),
           userProfileChangeServiceSoap.getPort(endpointChangeRef,

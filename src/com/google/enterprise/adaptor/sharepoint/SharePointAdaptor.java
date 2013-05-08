@@ -95,6 +95,7 @@ import javax.xml.ws.EndpointReference;
 import javax.xml.ws.Holder;
 import javax.xml.ws.Service;
 import javax.xml.ws.WebServiceException;
+import javax.xml.ws.wsaddressing.W3CEndpointReferenceBuilder;
 
 /**
  * SharePoint Adaptor for the GSA.
@@ -1746,13 +1747,8 @@ public class SharePointAdaptor extends AbstractAdaptor
 
     @Override
     public SiteDataSoap newSiteData(String endpoint) {
-      String endpointString
-          = "<wsa:EndpointReference"
-          + " xmlns:wsa='http://www.w3.org/2005/08/addressing'>"
-          + "<wsa:Address>" + endpoint + "</wsa:Address>"
-          + "</wsa:EndpointReference>";
-      EndpointReference endpointRef = EndpointReference.readFrom(
-          new StreamSource(new StringReader(endpointString)));
+      EndpointReference endpointRef = new W3CEndpointReferenceBuilder()
+          .address(endpoint).build();
       return siteDataService.getPort(endpointRef, SiteDataSoap.class);
     }
   }
