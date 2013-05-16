@@ -1124,7 +1124,7 @@ public class SharePointAdaptor extends AbstractAdaptor
         }
       } else {
         DocId namedResource 
-            = new DocId(request.getDocId().getUniqueId()+ "_READ_SECURITY");
+            = new DocId(request.getDocId().getUniqueId() + "_READ_SECURITY");
         List<Permission> permission = null;
         Scopes scopes = getFirstChildOfType(xml, Scopes.class);
         for (Scopes.Scope scope : scopes.getScope()) {
