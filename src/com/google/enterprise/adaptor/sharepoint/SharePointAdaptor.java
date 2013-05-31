@@ -267,7 +267,6 @@ public class SharePointAdaptor extends AbstractAdaptor
   private final Executor executor;
   private boolean xmlValidation;
   /** Authenticator instance that authenticates with SP. */
-  private NtlmAuthenticator ntlmAuthenticator;
   /**
    * Cached value of whether we are talking to a SP 2010 server or not. This
    * value is used in case of error in certain situations.
@@ -325,7 +324,9 @@ public class SharePointAdaptor extends AbstractAdaptor
     log.log(Level.CONFIG, "Username: {0}", username);
     log.log(Level.CONFIG, "Password: {0}", password);
 
-    ntlmAuthenticator = new NtlmAuthenticator(username, password);
+    URL virtualServerUrl = new URL(virtualServer);
+    Authenticator ntlmAuthenticator = new NtlmAuthenticator(username, password,
+        virtualServerUrl.getHost(), virtualServerUrl.getPort());
     // Unfortunately, this is a JVM-wide modification.
     Authenticator.setDefault(ntlmAuthenticator);
 
@@ -486,11 +487,9 @@ public class SharePointAdaptor extends AbstractAdaptor
         site = site.substring(0, site.length() - 1);
       }
       String endpoint = web + "/_vti_bin/SiteData.asmx";
-      ntlmAuthenticator.addToWhitelist(endpoint);
       SiteDataSoap siteDataSoap = siteDataFactory.newSiteData(endpoint);
       
       String endpointUserGroup = site + "/_vti_bin/UserGroup.asmx";
-      ntlmAuthenticator.addToWhitelist(endpoint);
       UserGroupSoap userGroupSoap 
           = userGroupFactory.newUserGroup(endpointUserGroup);
       
@@ -1929,28 +1928,30 @@ public class SharePointAdaptor extends AbstractAdaptor
   }
 
   private static class NtlmAuthenticator extends Authenticator {
-    // URLs are not comparable, so use String instead.
-    private final Set<String> whitelist = new ConcurrentSkipListSet<String>();
     private final String username;
     private final char[] password;
+    private final String host;
+    private final int port;
 
-    public NtlmAuthenticator(String username, String password) {
+    public NtlmAuthenticator(String username, String password, String host,
+        int port) {
       this.username = username;
       this.password = password.toCharArray();
+      this.host = host;
+      this.port = port;
     }
 
     @Override
     protected PasswordAuthentication getPasswordAuthentication() {
-      String urlString = getRequestingURL().toString();
-      if (whitelist.contains(urlString)) {
+      URL url = getRequestingURL();
+      // If the port is missing (so that the default is used), then the port
+      // will be -1 here. The port needs to be consistently specified or
+      // missing.
+      if (host.equals(url.getHost()) && port == url.getPort()) {
         return new PasswordAuthentication(username, password);
       } else {
         return super.getPasswordAuthentication();
       }
-    }
-
-    public void addToWhitelist(String url) {
-      whitelist.add(url);
     }
   }
 
