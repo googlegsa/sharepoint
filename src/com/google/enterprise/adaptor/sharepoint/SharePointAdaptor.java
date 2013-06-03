@@ -1916,13 +1916,8 @@ public class SharePointAdaptor extends AbstractAdaptor
 
     @Override
     public UserGroupSoap newUserGroup(String endpoint) {
-      String endpointString
-          = "<wsa:EndpointReference"
-          + " xmlns:wsa='http://www.w3.org/2005/08/addressing'>"
-          + "<wsa:Address>" + endpoint + "</wsa:Address>"
-          + "</wsa:EndpointReference>";
-      EndpointReference endpointRef = EndpointReference.readFrom(
-          new StreamSource(new StringReader(endpointString)));
+      EndpointReference endpointRef = new W3CEndpointReferenceBuilder()
+          .address(endpoint).build();
       return userGroupService.getPort(endpointRef, UserGroupSoap.class);
     }
   }
