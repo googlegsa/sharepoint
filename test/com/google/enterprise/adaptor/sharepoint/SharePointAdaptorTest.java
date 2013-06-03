@@ -16,7 +16,7 @@ package com.google.enterprise.adaptor.sharepoint;
 
 import static com.google.enterprise.adaptor.sharepoint.SharePointAdaptor.FileInfo;
 import static com.google.enterprise.adaptor.sharepoint.SharePointAdaptor.HttpClient;
-import static com.google.enterprise.adaptor.sharepoint.SharePointAdaptor.SiteDataFactory;
+import static com.google.enterprise.adaptor.sharepoint.SiteDataClient.SiteDataFactory;
 import static org.junit.Assert.*;
 
 import com.google.common.base.Objects;
@@ -255,8 +255,8 @@ public class SharePointAdaptorTest {
 
   @Test
   public void testSiteDataFactoryImpl() throws IOException {
-    SharePointAdaptor.SiteDataFactoryImpl sdfi
-        = new SharePointAdaptor.SiteDataFactoryImpl();
+    SiteDataClient.SiteDataFactoryImpl sdfi
+        = new SiteDataClient.SiteDataFactoryImpl();
     assertNotNull(
         sdfi.newSiteData("http://localhost:1/_vti_bin/SiteData.asmx"));
     // Test a site with a space.
@@ -522,7 +522,7 @@ public class SharePointAdaptorTest {
         new DocId("http://localhost:1/sites/SiteCollection/Lists/Custom List/"
           + "AllItems.aspx"));
     GetContentsResponse response = new GetContentsResponse(baos);
-    adaptor.new SiteDataClient("http://localhost:1/sites/SiteCollection",
+    adaptor.new SiteAdaptor("http://localhost:1/sites/SiteCollection",
           "http://localhost:1/sites/SiteCollection", siteData,
           new UnsupportedUserGroupSoap(), Callables.returning(memberIdMapping),
           new UnsupportedCallable<MemberIdMapping>())
@@ -566,7 +566,7 @@ public class SharePointAdaptorTest {
         new DocId("http://localhost:1/sites/SiteCollection/Lists/Custom List/"
           + "AllItems.aspx"));
     GetContentsResponse response = new GetContentsResponse(baos);
-    adaptor.new SiteDataClient("http://localhost:1/sites/SiteCollection",
+    adaptor.new SiteAdaptor("http://localhost:1/sites/SiteCollection",
           "http://localhost:1/sites/SiteCollection", siteData,
           new UnsupportedUserGroupSoap(),
           new UnsupportedCallable<MemberIdMapping>(),
@@ -609,7 +609,7 @@ public class SharePointAdaptorTest {
     GetContentsRequest request = new GetContentsRequest(
         new DocId(attachmentId));
     GetContentsResponse response = new GetContentsResponse(baos);
-    adaptor.new SiteDataClient("http://localhost:1/sites/SiteCollection",
+    adaptor.new SiteAdaptor("http://localhost:1/sites/SiteCollection",
           "http://localhost:1/sites/SiteCollection", siteData,
           new UnsupportedUserGroupSoap(),
           new UnsupportedCallable<MemberIdMapping>(),
@@ -660,7 +660,7 @@ public class SharePointAdaptorTest {
         new DocId("http://localhost:1/sites/SiteCollection/Lists/Custom List/"
           + "Test Folder/2_.000"));
     GetContentsResponse response = new GetContentsResponse(baos);
-    adaptor.new SiteDataClient("http://localhost:1/sites/SiteCollection",
+    adaptor.new SiteAdaptor("http://localhost:1/sites/SiteCollection",
           "http://localhost:1/sites/SiteCollection", siteData,
           new UnsupportedUserGroupSoap(), Callables.returning(memberIdMapping),
           new UnsupportedCallable<MemberIdMapping>())
@@ -775,7 +775,7 @@ public class SharePointAdaptorTest {
         new DocId("http://localhost:1/sites/SiteCollection/Lists/Custom List/"
           + "Test Folder/2_.000"));
     GetContentsResponse response = new GetContentsResponse(baos);
-    adaptor.new SiteDataClient("http://localhost:1/sites/SiteCollection",
+    adaptor.new SiteAdaptor("http://localhost:1/sites/SiteCollection",
           "http://localhost:1/sites/SiteCollection", siteData,
           new UnsupportedUserGroupSoap(), Callables.returning(memberIdMapping),
           new UnsupportedCallable<MemberIdMapping>())
@@ -833,7 +833,7 @@ public class SharePointAdaptorTest {
         new DocId("http://localhost:1/sites/SiteCollection/Lists/Custom List/"
             + "Test Folder/2_.000"));
     GetContentsResponse response = new GetContentsResponse(baos);
-    adaptor.new SiteDataClient("http://localhost:1/sites/SiteCollection",
+    adaptor.new SiteAdaptor("http://localhost:1/sites/SiteCollection",
           "http://localhost:1/sites/SiteCollection", siteData,
           mockUserGroupFactory.newUserGroup(
               "http://localhost:1/sites/SiteCollection"),
@@ -900,7 +900,7 @@ public class SharePointAdaptorTest {
         new DocId("http://localhost:1/sites/SiteCollection/Lists/Custom List/"
           + "Test Folder/2_.000"));
     GetContentsResponse response = new GetContentsResponse(baos);
-    adaptor.new SiteDataClient("http://localhost:1/sites/SiteCollection",
+    adaptor.new SiteAdaptor("http://localhost:1/sites/SiteCollection",
         "http://localhost:1/sites/SiteCollection",
         siteData, new UnsupportedUserGroupSoap(),
         Callables.returning(memberIdMapping),
@@ -944,7 +944,7 @@ public class SharePointAdaptorTest {
         new DocId("http://localhost:1/sites/SiteCollection/Lists/Custom List/"
           + "Test Folder"));
     GetContentsResponse response = new GetContentsResponse(baos);
-    adaptor.new SiteDataClient("http://localhost:1/sites/SiteCollection",
+    adaptor.new SiteAdaptor("http://localhost:1/sites/SiteCollection",
           "http://localhost:1/sites/SiteCollection",
           siteData, new UnsupportedUserGroupSoap(),
         Callables.returning(memberIdMapping),
@@ -1221,17 +1221,14 @@ public class SharePointAdaptorTest {
         executorFactory);
     AccumulatingDocIdPusher pusher = new AccumulatingDocIdPusher();
     adaptor.init(new MockAdaptorContext(config, pusher));
-    SharePointAdaptor.SiteDataClient client = adaptor.new SiteDataClient(
+    SPContentDatabase result = parseChanges(getChangesContentDatabase);
+    adaptor.new SiteAdaptor(
         "http://localhost:1/sites/SiteCollection",
         "http://localhost:1/sites/SiteCollection", new UnsupportedSiteData(),
         new UnsupportedUserGroupSoap(),
         new UnsupportedCallable<MemberIdMapping>(),
-        new UnsupportedCallable<MemberIdMapping>());
-
-    SPContentDatabase result
-        = parseChanges(client, getChangesContentDatabase);
-
-    client.getModifiedDocIds(result, pusher);
+        new UnsupportedCallable<MemberIdMapping>())
+        .getModifiedDocIds(result, pusher);
     assertEquals(1, pusher.getRecords().size());
     assertEquals(new DocIdPusher.Record.Builder(new DocId(
           "http://localhost:1/Lists/Announcements/2_.000"))
@@ -1240,15 +1237,8 @@ public class SharePointAdaptorTest {
 
   @Test
   public void testParseError() throws Exception {
-    adaptor = new SharePointAdaptor(initableSiteDataFactory,
-        new UnsupportedUserGroupFactory(), new UnsupportedHttpClient(),
-        executorFactory);
-    adaptor.init(new MockAdaptorContext(config, null));
-    SharePointAdaptor.SiteDataClient client = adaptor.new SiteDataClient(
-        "http://localhost:1", "http://localhost:1",
-        new UnsupportedSiteData(), new UnsupportedUserGroupSoap(),
-        new UnsupportedCallable<MemberIdMapping>(),
-        new UnsupportedCallable<MemberIdMapping>());
+    SiteDataClient client = new SiteDataClient(
+        new UnsupportedSiteData(), false);
     String xml = "<broken";
     thrown.expect(IOException.class);
     client.jaxbParse(xml, SPContentDatabase.class);
@@ -1256,16 +1246,8 @@ public class SharePointAdaptorTest {
 
   @Test
   public void testValidationError() throws Exception {
-    config.overrideKey("sharepoint.xmlValidation", "true");
-    adaptor = new SharePointAdaptor(initableSiteDataFactory,
-        new UnsupportedUserGroupFactory(),
-        new UnsupportedHttpClient(), executorFactory);
-    adaptor.init(new MockAdaptorContext(config, null));
-    SharePointAdaptor.SiteDataClient client = adaptor.new SiteDataClient(
-        "http://localhost:1", "http://localhost:1",
-        new UnsupportedSiteData(), new UnsupportedUserGroupSoap(),
-        new UnsupportedCallable<MemberIdMapping>(),
-        new UnsupportedCallable<MemberIdMapping>());
+    SiteDataClient client = new SiteDataClient(
+        new UnsupportedSiteData(), true);
     // Lacks required child element.
     String xml = "<SPContentDatabase"
         + " xmlns='http://schemas.microsoft.com/sharepoint/soap/'/>";
@@ -1275,16 +1257,8 @@ public class SharePointAdaptorTest {
 
   @Test
   public void testDisabledValidation() throws Exception {
-    adaptor = new SharePointAdaptor(initableSiteDataFactory,
-        new UnsupportedUserGroupFactory(),
-        new UnsupportedHttpClient(), executorFactory);
-    config.overrideKey("sharepoint.xmlValidation", "false");
-    adaptor.init(new MockAdaptorContext(config, null));
-    SharePointAdaptor.SiteDataClient client = adaptor.new SiteDataClient(
-        "http://localhost:1", "http://localhost:1",
-        new UnsupportedSiteData(), new UnsupportedUserGroupSoap(),
-        new UnsupportedCallable<MemberIdMapping>(),
-        new UnsupportedCallable<MemberIdMapping>());
+    SiteDataClient client = new SiteDataClient(
+        new UnsupportedSiteData(), false);
     // Lacks required child element.
     String xml = "<SPContentDatabase"
         + " xmlns='http://schemas.microsoft.com/sharepoint/soap/'/>";
@@ -1294,16 +1268,8 @@ public class SharePointAdaptorTest {
 
   @Test
   public void testParseUnknownXml() throws Exception {
-    config.overrideKey("sharepoint.xmlValidation", "true");
-    adaptor = new SharePointAdaptor(initableSiteDataFactory,
-        new UnsupportedUserGroupFactory(),
-        new UnsupportedHttpClient(), executorFactory);
-    adaptor.init(new MockAdaptorContext(config, null));
-    SharePointAdaptor.SiteDataClient client = adaptor.new SiteDataClient(
-        "http://localhost:1", "http://localhost:1",
-        new UnsupportedSiteData(), new UnsupportedUserGroupSoap(),
-        new UnsupportedCallable<MemberIdMapping>(),
-        new UnsupportedCallable<MemberIdMapping>());
+    SiteDataClient client = new SiteDataClient(
+        new UnsupportedSiteData(), true);
     // Valid XML, but not any class that we know about.
     String xml = "<html/>";
     thrown.expect(IOException.class);
@@ -1346,8 +1312,8 @@ public class SharePointAdaptorTest {
     }
   }
 
-  private SPContentDatabase parseChanges(
-      SharePointAdaptor.SiteDataClient client, String xml) throws IOException {
+  private SPContentDatabase parseChanges(String xml) throws IOException {
+    SiteDataClient client = new SiteDataClient(new UnsupportedSiteData(), true);
     String xmlns = "http://schemas.microsoft.com/sharepoint/soap/";
     xml = xml.replace("<SPContentDatabase ",
         "<SPContentDatabase xmlns='" + xmlns + "' ");
