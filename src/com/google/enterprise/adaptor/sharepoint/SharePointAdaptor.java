@@ -450,10 +450,13 @@ public class SharePointAdaptor extends AbstractAdaptor
       CursorPaginator<SPContentDatabase, String> changesPaginator
           = client.getChangesContentDatabase(contentDatabase, changeId,
               isSp2010);
-      SPContentDatabase changes;
       try {
-        while ((changes = changesPaginator.next()) != null) {
+        while (true) {
           try {
+            SPContentDatabase changes = changesPaginator.next();
+            if (changes == null) {
+              break;
+            }
             client.getModifiedDocIds(changes, pusher);
           } catch (XmlProcessingException ex) {
             log.log(Level.WARNING, "Error parsing changes from content "
