@@ -1327,6 +1327,51 @@ public class SharePointAdaptorTest {
         + " ows__IsCurrentVersion='1' ows_ServerRedirected='0'/>"
         + "</rs:data>"
         + "</xml></Item>";
+    final String getContentListResponse
+        = "<List>"
+        + "<Metadata ID=\"{6f33949a-b3ff-4b0c-ba99-93cb518ac2c0}\""
+        + " LastModified=\"2012-05-04 21:24:32Z\" Title=\"Custom List\""
+        + " DefaultTitle=\"True\" Description=\"\" BaseType=\"GenericList\""
+        + " BaseTemplate=\"GenericList\""
+        + " DefaultViewUrl=\"/sites/SiteCollection/Lists/Custom List/AllItems.a"
+        +   "spx\""
+        + " DefaultViewItemUrl=\"/sites/SiteCollection/Lists/Custom List/DispFo"
+        +   "rm.aspx\""
+        + " RootFolder=\"Lists/Custom List\" Author=\"System Account\""
+        + " ItemCount=\"7\" ReadSecurity=\"1\" AllowAnonymousAccess=\"False\""
+        + " AnonymousViewListItems=\"False\" AnonymousPermMask=\"0\""
+        + " CRC=\"1334405648\" NoIndex=\"False\""
+        + " ScopeID=\"{f9cb02b3-7f29-4cac-804f-ba6e14f1eb39}\" />"
+        + "<ACL><permissions>"
+        + "<permission memberid='1' mask='206292717568' />"
+        + "<permission memberid='3' mask='9223372036854775807' />"
+        + "<permission memberid='4' mask='756052856929' />"
+        + "<permission memberid='5' mask='1856436900591' />"
+        + "</permissions></ACL>"
+        + "<Views>"
+        + "<View URL=\"Lists/Custom List/AllItems.aspx\""
+        + " ID=\"{18b67349-78bd-49a2-ba1a-cdbc048adf0b}\" Title=\"All Items\""
+        + " />"
+        + "</Views>"
+        + "<Schema>"
+        + "<Field Name=\"Title\" Title=\"Title\" Type=\"Text\" />"
+        + "<Field Name=\"Additional_x0020_Info\" Title=\"Additional Info\""
+        + " Type=\"Text\" />"
+        + "<Field Name=\"ContentType\" Title=\"Content Type\" Type=\"Choice\""
+        + " />"
+        + "<Field Name=\"ID\" Title=\"ID\" Type=\"Counter\" />"
+        + "<Field Name=\"Modified\" Title=\"Modified\" Type=\"DateTime\" />"
+        + "<Field Name=\"Created\" Title=\"Created\" Type=\"DateTime\" />"
+        + "<Field Name=\"Author\" Title=\"Created By\" Type=\"User\" />"
+        + "<Field Name=\"Editor\" Title=\"Modified By\" Type=\"User\" />"
+        + "<Field Name=\"_UIVersionString\" Title=\"Version\" Type=\"Text\" />"
+        + "<Field Name=\"Attachments\" Title=\"Attachments\""
+        + " Type=\"Attachments\" />"
+        + "<Field Name=\"Edit\" Title=\"Edit\" Type=\"Computed\" />"
+        + "<Field Name=\"LinkTitleNoMenu\" Title=\"Title\" Type=\"Computed\" />"
+        + "<Field Name=\"LinkTitle\" Title=\"Title\" Type=\"Computed\" />"
+        + "<Field Name=\"DocIcon\" Title=\"Type\" Type=\"Computed\" />"
+        + "</Schema></List>";
     class ListItemAttachmentsSiteData extends UnsupportedSiteData {
       @Override
       public void getSiteAndWeb(String strUrl, Holder<Long> getSiteAndWebResult,
@@ -1371,6 +1416,11 @@ public class SharePointAdaptorTest {
 
           setValue(lastItemIdOnPage, null);
           setValue(getContentResult, getContentListItemResponse);
+        } else if (objectType.equals(ObjectType.LIST)) {
+          assertEquals(false, retrieveChildItems);
+          assertEquals(false, securityOnly);
+          assertEquals(listGuid, objectId);
+          setValue(getContentResult, getContentListResponse);
         } else {
           fail("Unexpected object type: " + objectType);
           throw new AssertionError();
@@ -2109,6 +2159,455 @@ public class SharePointAdaptorTest {
         response.getDisplayUrl());
   }
 
+  @Test
+  public void testGetDocContentListItemAnonymousAccess() throws IOException {
+    final String getContentListResponse
+        = "<List>"
+        + "<Metadata ID=\"{6f33949a-b3ff-4b0c-ba99-93cb518ac2c0}\""
+        + " LastModified=\"2012-05-04 21:24:32Z\" Title=\"Custom List\""
+        + " DefaultTitle=\"True\" Description=\"\" BaseType=\"GenericList\""
+        + " BaseTemplate=\"GenericList\""
+        + " DefaultViewUrl=\"/sites/SiteCollection/Lists/Custom List/AllItems.a"
+        +   "spx\""
+        + " DefaultViewItemUrl=\"/sites/SiteCollection/Lists/Custom List/DispFo"
+        +   "rm.aspx\""
+        + " RootFolder=\"Lists/Custom List\" Author=\"System Account\""
+        + " ItemCount=\"7\" ReadSecurity=\"1\" AllowAnonymousAccess=\"True\""
+        + " AnonymousViewListItems=\"True\" AnonymousPermMask=\"68719546465\""
+        + " CRC=\"1334405648\" NoIndex=\"False\""
+        + " ScopeID=\"{f9cb02b3-7f29-4cac-804f-ba6e14f1eb39}\" />"
+        + "<ACL><permissions>"
+        + "<permission memberid='1' mask='206292717568' />"
+        + "<permission memberid='3' mask='9223372036854775807' />"
+        + "<permission memberid='4' mask='756052856929' />"
+        + "<permission memberid='5' mask='1856436900591' />"
+        + "</permissions></ACL>"
+        + "<Views>"
+        + "<View URL=\"Lists/Custom List/AllItems.aspx\""
+        + " ID=\"{18b67349-78bd-49a2-ba1a-cdbc048adf0b}\" Title=\"All Items\""
+        + " />"
+        + "</Views><Schema>"
+        + "<Field Name=\"Title\" Title=\"Title\" Type=\"Text\" />"
+        + "<Field Name=\"Additional_x0020_Info\" Title=\"Additional Info\""
+        + " Type=\"Text\" />"
+        + "<Field Name=\"ContentType\" Title=\"Content Type\" Type=\"Choice\""
+        + " />"
+        + "<Field Name=\"ID\" Title=\"ID\" Type=\"Counter\" />"
+        + "<Field Name=\"Modified\" Title=\"Modified\" Type=\"DateTime\" />"
+        + "<Field Name=\"Created\" Title=\"Created\" Type=\"DateTime\" />"
+        + "<Field Name=\"Author\" Title=\"Created By\" Type=\"User\" />"
+        + "<Field Name=\"Editor\" Title=\"Modified By\" Type=\"User\" />"
+        + "<Field Name=\"_UIVersionString\" Title=\"Version\" Type=\"Text\" />"
+        + "<Field Name=\"Attachments\" Title=\"Attachments\""
+        + " Type=\"Attachments\" />"
+        + "<Field Name=\"Edit\" Title=\"Edit\" Type=\"Computed\" />"
+        + "<Field Name=\"LinkTitleNoMenu\" Title=\"Title\" Type=\"Computed\" />"
+        + "<Field Name=\"LinkTitle\" Title=\"Title\" Type=\"Computed\" />"
+        + "<Field Name=\"DocIcon\" Title=\"Type\" Type=\"Computed\" />"
+        + "</Schema></List>";
+    final String getContentSite
+        = "<Web>"
+        + "<Metadata URL=\"http://localhost:1/sites/SiteCollection\""
+        + " LastModified=\"2012-05-15 19:07:39Z\""
+        + " Created=\"2011-10-14 18:59:25Z\""
+        + " ID=\"{b2ea1067-3a54-4ab7-a459-c8ec864b97eb}\""
+        + " Title=\"chinese1\" Description=\"\""
+        + " Author=\"GDC-PSL\\administrator\" Language=\"1033\""
+        + " CRC=\"558566148\" NoIndex=\"False\" DefaultHomePage=\"\""
+        + " ExternalSecurity=\"False\""
+        + " ScopeID=\"{01abac8c-66c8-4fed-829c-8dd02bbf40dd}\""
+        + " AllowAnonymousAccess=\"False\" AnonymousViewListItems=\"False\""
+        + " AnonymousPermMask=\"65536\" />"
+        + "<Users>"
+        + "<User ID=\"1\" Sid=\"S-1-5-21-736914693-3137354690-2813686979-500\""
+        + " Name=\"GDC-PSL\\administrator\""
+        + " LoginName=\"GDC-PSL\\administrator\" Email=\"\" Notes=\"\""
+        + " IsSiteAdmin=\"True\" IsDomainGroup=\"False\" />"
+        + "<User ID=\"2\" Sid=\"S-1-5-21-736914693-3137354690-2813686979-1130\""
+        + " Name=\"spuser1\" LoginName=\"GDC-PSL\\spuser1\" Email=\"\""
+        + " Notes=\"\" IsSiteAdmin=\"True\" IsDomainGroup=\"False\" />"
+        + "</Users>"
+        + "<ACL><permissions>"
+        + "<permission memberid='2' mask='9223372036854775807' />"
+        + "<permission memberid='3' mask='9223372036854775807' />"
+        + "<permission memberid='4' mask='756052856929' />"
+        + "<permission memberid='5' mask='1856436900591' />"
+        + "</permissions>"
+        + "</ACL>"
+        + "<Webs>"
+        + "<Web URL=\"http://localhost:1/sites/SiteCollection/somesite\""
+        + " ID=\"{ee63e7d0-da23-4553-9f14-359f1cc1bf1c}\""
+        + " LastModified=\"2012-05-15 19:07:39Z\" />"
+        + "</Webs><Lists>"
+        + "<List ID=\"{133fcb96-7e9b-46c9-b5f3-09770a35ad8a}\""
+        + " LastModified=\"2012-05-15 18:21:38Z\""
+        + " DefaultViewUrl=\"/sites/SiteCollection/Lists/Announcements/AllItems"
+        +   ".aspx\" />"
+        + "<List ID=\"{648f6636-3d90-4565-86b9-2dd7611fc855}\""
+        + " LastModified=\"2012-05-15 19:07:40Z\""
+        + " DefaultViewUrl=\"/sites/SiteCollection/Shared Documents/Forms/"
+        +   "AllItems.aspx\" />"
+        + "</Lists>"
+        + "<FPFolder><Folders>"
+        + "<Folder URL=\"Lists\" ID=\"{c2c6cfcc-439e-4372-8a7a-87bec657eebf}\""
+        + " LastModified=\"2012-05-15 19:07:39Z\" />"
+        + "</Folders><Files>"
+        + "<File URL=\"default.aspx\""
+        + " ID=\"{1bdad8a3-376d-448c-b9c3-de91a6152687}\""
+        + " LastModified=\"2012-05-15 19:07:39Z\" />"
+        + "</Files></FPFolder></Web>";
+    final String getContentListItemResponse
+        = "<Item>"
+        + "<Metadata>"
+        + "<scope id=\"{f9cb02b3-7f29-4cac-804f-ba6e14f1eb39}\"><permissions>"
+        + "<permission memberid='1' mask='206292717568' />"
+        + "<permission memberid='3' mask='9223372036854775807' />"
+        + "<permission memberid='4' mask='756052856929' />"
+        + "<permission memberid='5' mask='1856436900591' />"
+        + "</permissions></scope>"
+        + "</Metadata>"
+        + "<xml xmlns:s='uuid:BDC6E3F0-6DA3-11d1-A2A3-00AA00C14882'"
+        + " xmlns:dt='uuid:C2F41010-65B3-11d1-A29F-00AA00C14882'"
+        + " xmlns:rs='urn:schemas-microsoft-com:rowset'"
+        + " xmlns:z='#RowsetSchema'>"
+        + "<s:Schema id='RowsetSchema'>"
+        + "<s:ElementType name='row' content='eltOnly' rs:CommandTimeout='30'>"
+        + "<s:AttributeType name='ows_ContentTypeId' rs:name='Content Type ID'"
+        + " rs:number='1'>"
+        + "<s:datatype dt:type='int' dt:maxLength='512' />"
+        + "</s:AttributeType>"
+        + "<s:AttributeType name='ows_Title' rs:name='Title' rs:number='2'>"
+        + "<s:datatype dt:type='string' dt:maxLength='512' />"
+        + "</s:AttributeType>"
+        + "<s:AttributeType name='ows__ModerationComments'"
+        + " rs:name='Approver Comments' rs:number='3'>"
+        + "<s:datatype dt:type='string' dt:maxLength='1073741823' />"
+        + "</s:AttributeType>"
+        + "<s:AttributeType name='ows_File_x0020_Type' rs:name='File Type'"
+        + " rs:number='4'>"
+        + "<s:datatype dt:type='string' dt:maxLength='512' />"
+        + "</s:AttributeType>"
+        + "<s:AttributeType name='ows_Additional_x0020_Info'"
+        + " rs:name='Additional Info' rs:number='5'>"
+        + "<s:datatype dt:type='string' dt:maxLength='512' />"
+        + "</s:AttributeType>"
+        + "<s:AttributeType name='ows_ContentType' rs:name='Content Type'"
+        + " rs:number='6'>"
+        + "<s:datatype dt:type='string' dt:maxLength='512' />"
+        + "</s:AttributeType>"
+        + "<s:AttributeType name='ows_ID' rs:name='ID' rs:number='7'>"
+        + "<s:datatype dt:type='i4' dt:maxLength='4' />"
+        + "</s:AttributeType>"
+        + "<s:AttributeType name='ows_Modified' rs:name='Modified'"
+        + " rs:number='8'>"
+        + "<s:datatype dt:type='datetime' dt:maxLength='8' />"
+        + "</s:AttributeType>"
+        + "<s:AttributeType name='ows_Created' rs:name='Created' rs:number='9'>"
+        + "<s:datatype dt:type='datetime' dt:maxLength='8' />"
+        + "</s:AttributeType>"
+        + "<s:AttributeType name='ows_Author' rs:name='Created By'"
+        + " rs:number='10'>"
+        + "<s:datatype dt:type='string' dt:lookup='true' dt:maxLength='512' />"
+        + "</s:AttributeType>"
+        + "<s:AttributeType name='ows_Editor' rs:name='Modified By'"
+        + " rs:number='11'>"
+        + "<s:datatype dt:type='string' dt:lookup='true' dt:maxLength='512' />"
+        + "</s:AttributeType>"
+        + "<s:AttributeType name='ows__HasCopyDestinations'"
+        + " rs:name='Has Copy Destinations' rs:number='12'>"
+        + "<s:datatype dt:type='boolean' dt:maxLength='1' />"
+        + "</s:AttributeType>"
+        + "<s:AttributeType name='ows__CopySource' rs:name='Copy Source'"
+        + " rs:number='13'>"
+        + "<s:datatype dt:type='string' dt:maxLength='1073741823' />"
+        + "</s:AttributeType>"
+        + "<s:AttributeType name='ows_owshiddenversion'"
+        + " rs:name='owshiddenversion' rs:number='14'>"
+        + "<s:datatype dt:type='i4' dt:maxLength='4' />"
+        + "</s:AttributeType>"
+        + "<s:AttributeType name='ows_WorkflowVersion'"
+        + " rs:name='Workflow Version' rs:number='15'>"
+        + "<s:datatype dt:type='i4' dt:maxLength='4' />"
+        + "</s:AttributeType>"
+        + "<s:AttributeType name='ows__UIVersion' rs:name='UI Version'"
+        + " rs:number='16'>"
+        + "<s:datatype dt:type='i4' dt:maxLength='4' />"
+        + "</s:AttributeType>"
+        + "<s:AttributeType name='ows__UIVersionString' rs:name='Version'"
+        + " rs:number='17'>"
+        + "<s:datatype dt:type='string' dt:maxLength='512' />"
+        + "</s:AttributeType>"
+        + "<s:AttributeType name='ows_Attachments' rs:name='Attachments'"
+        + " rs:number='18'>"
+        + "<s:datatype dt:type='boolean' dt:maxLength='1' />"
+        + "</s:AttributeType>"
+        + "<s:AttributeType name='ows__ModerationStatus'"
+        + " rs:name='Approval Status' rs:number='19'>"
+        + "<s:datatype dt:type='i4' dt:maxLength='4' />"
+        + "</s:AttributeType>"
+        + "<s:AttributeType name='ows_LinkTitleNoMenu' rs:name='Title'"
+        + " rs:number='20'>"
+        + "<s:datatype dt:type='string' dt:maxLength='512' />"
+        + "</s:AttributeType>"
+        + "<s:AttributeType name='ows_LinkTitle' rs:name='Title'"
+        + " rs:number='21'>"
+        + "<s:datatype dt:type='string' dt:maxLength='512' />"
+        + "</s:AttributeType>"
+        + "<s:AttributeType name='ows_SelectTitle' rs:name='Select'"
+        + " rs:number='22'>"
+        + "<s:datatype dt:type='i4' dt:maxLength='4' />"
+        + "</s:AttributeType>"
+        + "<s:AttributeType name='ows_InstanceID' rs:name='Instance ID'"
+        + " rs:number='23'>"
+        + "<s:datatype dt:type='i4' dt:maxLength='4' />"
+        + "</s:AttributeType>"
+        + "<s:AttributeType name='ows_Order' rs:name='Order' rs:number='24'>"
+        + "<s:datatype dt:type='float' dt:maxLength='8' />"
+        + "</s:AttributeType>"
+        + "<s:AttributeType name='ows_GUID' rs:name='GUID' rs:number='25'>"
+        + "<s:datatype dt:type='string' dt:maxLength='38' />"
+        + "</s:AttributeType>"
+        + "<s:AttributeType name='ows_WorkflowInstanceID'"
+        + " rs:name='Workflow Instance ID' rs:number='26'>"
+        + "<s:datatype dt:type='string' dt:maxLength='38' />"
+        + "</s:AttributeType>"
+        + "<s:AttributeType name='ows_FileRef' rs:name='URL Path'"
+        + " rs:number='27'>"
+        + "<s:datatype dt:type='string' dt:lookup='true' dt:maxLength='512' />"
+        + "</s:AttributeType>"
+        + "<s:AttributeType name='ows_FileDirRef' rs:name='Path'"
+        + " rs:number='28'>"
+        + "<s:datatype dt:type='string' dt:lookup='true' dt:maxLength='512' />"
+        + "</s:AttributeType>"
+        + "<s:AttributeType name='ows_Last_x0020_Modified' rs:name='Modified'"
+        + " rs:number='29'>"
+        + "<s:datatype dt:type='datetime' dt:lookup='true' dt:maxLength='8' />"
+        + "</s:AttributeType>"
+        + "<s:AttributeType name='ows_Created_x0020_Date' rs:name='Created'"
+        + " rs:number='30'>"
+        + "<s:datatype dt:type='datetime' dt:lookup='true' dt:maxLength='8' />"
+        + "</s:AttributeType>"
+        + "<s:AttributeType name='ows_FSObjType' rs:name='Item Type'"
+        + " rs:number='31'>"
+        + "<s:datatype dt:type='ui1' dt:lookup='true' dt:maxLength='4' />"
+        + "</s:AttributeType>"
+        + "<s:AttributeType name='ows_PermMask'"
+        + " rs:name='Effective Permissions Mask' rs:number='32'>"
+        + "<s:datatype dt:type='string' dt:maxLength='1073741823' />"
+        + "</s:AttributeType>"
+        + "<s:AttributeType name='ows_FileLeafRef' rs:name='Name'"
+        + " rs:number='33'>"
+        + "<s:datatype dt:type='string' dt:lookup='true' dt:maxLength='512' />"
+        + "</s:AttributeType>"
+        + "<s:AttributeType name='ows_UniqueId' rs:name='Unique Id'"
+        + " rs:number='34'>"
+        + "<s:datatype dt:type='string' dt:lookup='true' dt:maxLength='38' />"
+        + "</s:AttributeType>"
+        + "<s:AttributeType name='ows_ProgId' rs:name='ProgId' rs:number='35'>"
+        + "<s:datatype dt:type='string' dt:lookup='true' dt:maxLength='512' />"
+        + "</s:AttributeType>"
+        + "<s:AttributeType name='ows_ScopeId' rs:name='ScopeId'"
+        + " rs:number='36'>"
+        + "<s:datatype dt:type='string' dt:lookup='true' dt:maxLength='38' />"
+        + "</s:AttributeType>"
+        + "<s:AttributeType name='ows_HTML_x0020_File_x0020_Type'"
+        + " rs:name='HTML File Type' rs:number='37'>"
+        + "<s:datatype dt:type='string' dt:maxLength='512' />"
+        + "</s:AttributeType>"
+        + "<s:AttributeType name='ows__EditMenuTableStart'"
+        + " rs:name='Edit Menu Table Start' rs:number='38'>"
+        + "<s:datatype dt:type='string' dt:maxLength='512' />"
+        + "</s:AttributeType>"
+        + "<s:AttributeType name='ows__EditMenuTableEnd'"
+        + " rs:name='Edit Menu Table End' rs:number='39'>"
+        + "<s:datatype dt:type='i4' dt:maxLength='4' />"
+        + "</s:AttributeType>"
+        + "<s:AttributeType name='ows_LinkFilenameNoMenu' rs:name='Name'"
+        + " rs:number='40'>"
+        + "<s:datatype dt:type='string' dt:maxLength='512' />"
+        + "</s:AttributeType>"
+        + "<s:AttributeType name='ows_LinkFilename' rs:name='Name'"
+        + " rs:number='41'>"
+        + "<s:datatype dt:type='string' dt:maxLength='512' />"
+        + "</s:AttributeType>"
+        + "<s:AttributeType name='ows_DocIcon' rs:name='Type' rs:number='42'>"
+        + "<s:datatype dt:type='string' dt:maxLength='512' />"
+        + "</s:AttributeType>"
+        + "<s:AttributeType name='ows_ServerUrl' rs:name='Server Relative URL'"
+        + " rs:number='43'>"
+        + "<s:datatype dt:type='string' dt:maxLength='1073741823' />"
+        + "</s:AttributeType>"
+        + "<s:AttributeType name='ows_EncodedAbsUrl'"
+        + " rs:name='Encoded Absolute URL' rs:number='44'>"
+        + "<s:datatype dt:type='string' dt:maxLength='1073741823' />"
+        + "</s:AttributeType>"
+        + "<s:AttributeType name='ows_BaseName' rs:name='File Name'"
+        + " rs:number='45'>"
+        + "<s:datatype dt:type='string' dt:maxLength='1073741823' />"
+        + "</s:AttributeType>"
+        + "<s:AttributeType name='ows_MetaInfo' rs:name='Property Bag'"
+        + " rs:number='46'>"
+        + "<s:datatype dt:type='int' dt:lookup='true' dt:maxLength='2147483646'"
+        + " />"
+        + "</s:AttributeType>"
+        + "<s:AttributeType name='ows__Level' rs:name='Level' rs:number='47'>"
+        + "<s:datatype dt:type='ui1' dt:maxLength='1' />"
+        + "</s:AttributeType>"
+        + "<s:AttributeType name='ows__IsCurrentVersion'"
+        + " rs:name='Is Current Version' rs:number='48'>"
+        + "<s:datatype dt:type='boolean' dt:maxLength='1' />"
+        + "</s:AttributeType>"
+        + "</s:ElementType></s:Schema><scopes>"
+        + "<scope id='{f9cb02b3-7f29-4cac-804f-ba6e14f1eb39}' >"
+        + "<permission memberid='1' mask='206292717568' />"
+        + "<permission memberid='3' mask='9223372036854775807' />"
+        + "<permission memberid='4' mask='756052856929' />"
+        + "<permission memberid='5' mask='1856436900591' />"
+        + "</scope>"
+        + "<scope id='{2e29615c-59e7-493b-b08a-3642949cc069}' >"
+        + "<permission memberid='1' mask='9223372036854775807' />"
+        + "<permission memberid='3' mask='9223372036854775807' />"
+        + "<permission memberid='4' mask='756052856929' />"
+        + "<permission memberid='5' mask='1856436900591' />"
+        + "</scope>"
+        + "</scopes>"
+        + "<rs:data ItemCount=\"1\">"
+        + "<z:row ows_ContentTypeId='0x0100442459C9B5E59C4F9CFDC789A220FC92'"
+        + " ows_Title='Inside Folder' ows_ContentType='Item' ows_ID='2'"
+        + " ows_Modified='2012-05-04T21:24:32Z'"
+        + " ows_Created='2012-05-01T22:14:06Z'"
+        + " ows_Author='1073741823;#System Account'"
+        + " ows_Editor='1073741823;#System Account' ows_owshiddenversion='4'"
+        + " ows_WorkflowVersion='1' ows__UIVersion='512'"
+        + " ows__UIVersionString='1.0' ows_Attachments='0'"
+        + " ows__ModerationStatus='0' ows_LinkTitleNoMenu='Inside Folder'"
+        + " ows_LinkTitle='Inside Folder' ows_SelectTitle='2'"
+        + " ows_Order='200.000000000000'"
+        + " ows_GUID='{2C5BEF60-18FA-42CA-B472-7B5E1EC405A5}'"
+        + " ows_FileRef='2;#sites/SiteCollection/Lists/Custom List/"
+        +   "2_.000'"
+        + " ows_FileDirRef='2;#sites/SiteCollection/Lists/Custom List'"
+        + " ows_Last_x0020_Modified='2;#2012-05-01T22:14:06Z'"
+        + " ows_Created_x0020_Date='2;#2012-05-01T22:14:06Z'"
+        + " ows_FSObjType='2;#0' ows_PermMask='0x7fffffffffffffff'"
+        + " ows_FileLeafRef='2;#2_.000'"
+        + " ows_UniqueId='2;#{E7156244-AC2F-4402-AA74-7A365726CD02}'"
+        + " ows_ProgId='2;#'"
+        + " ows_ScopeId='2;#{f9cb02b3-7f29-4cac-804f-ba6e14f1eb39}'"
+        + " ows__EditMenuTableStart='2_.000' ows__EditMenuTableEnd='2'"
+        + " ows_LinkFilenameNoMenu='2_.000' ows_LinkFilename='2_.000'"
+        + " ows_ServerUrl='/sites/SiteCollection/Lists/Custom List/2_.000'"
+        + " ows_EncodedAbsUrl='http://localhost:1/sites/SiteCollection/Lists/Cu"
+        +   "stom%20List/2_.000'"
+        + " ows_BaseName='2_' ows_MetaInfo='2;#' ows__Level='1'"
+        + " ows__IsCurrentVersion='1' ows_ServerRedirected='0'/>"
+        + "</rs:data>"
+        + "</xml></Item>";
+    final String getContentVirtualServer
+        = "<VirtualServer>"
+        + "<Metadata URL=\"http://localhost:1/\" />"
+        + "<ContentDatabases>"
+        + "<ContentDatabase ID=\"{4fb7dea1-2912-4927-9eda-1ea2f0977cf8}\" />"
+        + "</ContentDatabases>"
+        + "<Policies AnonymousGrantMask=\"0\" AnonymousDenyMask=\"0\">"
+        + "<PolicyUser LoginName=\"NT AUTHORITY\\LOCAL SERVICE\""
+        + " Sid=\"S-1-5-19\" GrantMask=\"4611686224789442657\" DenyMask=\"0\"/>"
+        + "<PolicyUser LoginName=\"GDC-PSL\\spuser1\""
+        + " Sid=\"S-1-5-21-736914693-3137354690-2813686979-1130\""
+        + " GrantMask=\"4611686224789442657\" DenyMask=\"0\"/>"
+        + "<PolicyUser LoginName=\"GDC-PSL\\Administrator\""
+        + " Sid=\"S-1-5-21-736914693-3137354690-2813686979-500\""
+        + " GrantMask=\"9223372036854775807\" DenyMask=\"0\"/>"
+        + "</Policies></VirtualServer>";
+ 
+    
+    SiteDataSoap siteData = new UnsupportedSiteData() {
+      @Override
+      public void getURLSegments(String strURL,
+          Holder<Boolean> getURLSegmentsResult, Holder<String> strWebID,
+          Holder<String> strBucketID, Holder<String> strListID,
+          Holder<String> strItemID) {
+        if (("http://localhost:1/sites/SiteCollection/Lists/Custom List"
+            + "/Test Folder/2_.000").equals(strURL)) {
+          setValue(getURLSegmentsResult, true);
+          setValue(strWebID, null);
+          setValue(strBucketID, null);
+          setValue(strListID, "{6F33949A-B3FF-4B0C-BA99-93CB518AC2C0}");
+          setValue(strItemID, "2");
+        } else if (("http://localhost:1/sites/SiteCollection/Lists/Custom List"
+            + "/Test Folder").equals(strURL)) {
+          setValue(getURLSegmentsResult, true);
+          setValue(strWebID, null);
+          setValue(strBucketID, null);
+          setValue(strListID, "{6F33949A-B3FF-4B0C-BA99-93CB518AC2C0}");
+          setValue(strItemID, "1");
+        } else {
+          fail("Unexpected strUrl: " + strURL);
+        }
+      }
+
+      @Override
+      public void getContent(ObjectType objectType, String objectId,
+          String folderUrl, String itemId, boolean retrieveChildItems,
+          boolean securityOnly, Holder<String> lastItemIdOnPage,
+          Holder<String> getContentResult) {
+        setValue(lastItemIdOnPage, null);
+        if (ObjectType.LIST_ITEM.equals(objectType)) {
+         if ("2".equals(itemId)) {
+            assertEquals(false, securityOnly);
+            assertEquals("{6F33949A-B3FF-4B0C-BA99-93CB518AC2C0}", objectId);
+            setValue(getContentResult, getContentListItemResponse);
+          } else {
+            fail("Unexpected item id: " + itemId);
+          }
+        } else if (objectType.equals(ObjectType.LIST)) {
+          assertEquals(false, retrieveChildItems);
+          assertEquals(false, securityOnly);
+          assertEquals("{6F33949A-B3FF-4B0C-BA99-93CB518AC2C0}", objectId);
+          setValue(getContentResult, getContentListResponse);
+        } else if (objectType.equals(ObjectType.SITE)) {
+          assertEquals(true, retrieveChildItems);
+          assertEquals(false, securityOnly);
+          assertEquals(null, objectId);
+          setValue(lastItemIdOnPage, null);
+          setValue(getContentResult, getContentSite);
+        } else if (ObjectType.VIRTUAL_SERVER.equals(objectType)) {
+          assertEquals(true, retrieveChildItems);
+          assertEquals(false, securityOnly);
+          setValue(getContentResult, getContentVirtualServer);
+        } else {
+          fail("Unexpected object type: " + objectType);          
+        }
+      }
+    };
+    final MemberIdMapping memberIdMapping;
+    {
+      Map<Integer, String> users = new HashMap<Integer, String>();
+      Map<Integer, String> groups = new HashMap<Integer, String>();
+      users.put(1, "GDC-PSL\\administrator");
+      groups.put(3, "SiteCollection Owners");
+      groups.put(4, "SiteCollection Visitors");
+      groups.put(5, "SiteCollection Members");
+      memberIdMapping = new MemberIdMapping(users, groups);
+    }
+
+    adaptor = new SharePointAdaptor(new UnsupportedSiteDataFactory(),
+        new UnsupportedUserGroupFactory(), new UnsupportedHttpClient(),
+        executor);
+    adaptor.init(new MockAdaptorContext(config, null));
+    ByteArrayOutputStream baos = new ByteArrayOutputStream();
+    GetContentsRequest request = new GetContentsRequest(
+        new DocId("http://localhost:1/sites/SiteCollection/Lists/Custom List/"
+          + "Test Folder/2_.000"));
+    GetContentsResponse response = new GetContentsResponse(baos);
+    adaptor.new SiteDataClient("http://localhost:1/sites/SiteCollection",
+          "http://localhost:1/sites/SiteCollection", siteData,
+          new UnsupportedUserGroupSoap(), Callables.returning(memberIdMapping),
+          new UnsupportedCallable<MemberIdMapping>())
+        .getDocContent(request, response);   
+    assertNull(response.getAcl());    
+  }
+  
   @Test
   public void testGetDocContentListItemWithReadSecurity() throws IOException {
     final String getContentListResponse

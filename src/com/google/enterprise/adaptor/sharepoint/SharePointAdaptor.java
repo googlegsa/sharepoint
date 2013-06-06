@@ -56,6 +56,7 @@ import com.microsoft.schemas.sharepoint.soap.Scopes;
 import com.microsoft.schemas.sharepoint.soap.Site;
 import com.microsoft.schemas.sharepoint.soap.SiteDataSoap;
 import com.microsoft.schemas.sharepoint.soap.Sites;
+import com.microsoft.schemas.sharepoint.soap.TrueFalseType;
 import com.microsoft.schemas.sharepoint.soap.UserDescription;
 import com.microsoft.schemas.sharepoint.soap.VirtualServer;
 import com.microsoft.schemas.sharepoint.soap.Web;
@@ -188,6 +189,8 @@ public class SharePointAdaptor extends AbstractAdaptor
       = OPEN_MASK | VIEW_PAGES_MASK | VIEW_LIST_ITEMS_MASK;
   private static final long READ_SECURITY_LIST_ITEM_MASK
       = OPEN_MASK | VIEW_PAGES_MASK | VIEW_LIST_ITEMS_MASK | MANAGE_LIST_MASK;
+
+  private static final int LIST_READ_SECURITY_ENABLED = 2;
   /**
    * The JAXBContext is expensive to initialize, so we share a copy between
    * instances.
@@ -491,11 +494,11 @@ public class SharePointAdaptor extends AbstractAdaptor
       }
       String endpoint = web + "/_vti_bin/SiteData.asmx";
       SiteDataSoap siteDataSoap = siteDataFactory.newSiteData(endpoint);
-      
+
       String endpointUserGroup = site + "/_vti_bin/UserGroup.asmx";
-      UserGroupSoap userGroupSoap 
+      UserGroupSoap userGroupSoap
           = userGroupFactory.newUserGroup(endpointUserGroup);
-      
+
       client = new SiteDataClient(site, web, siteDataSoap, userGroupSoap,
           new MemberIdMappingCallable(site),
           new SiteUserIdMappingCallable(site));
@@ -719,38 +722,47 @@ public class SharePointAdaptor extends AbstractAdaptor
       if (webUrl.endsWith("/")) {
         throw new AssertionError();
       }
-      int slashIndex = webUrl.lastIndexOf("/");
-      // The parentUrl is not the same as the siteUrl, since there may be
-      // multiple levels of webs.
-      String parentUrl = webUrl.substring(0, slashIndex);
-
-      boolean isSiteCollection = siteUrl.equals(webUrl);
-      final boolean includePermissions;
-
-      if (isSiteCollection) {
-        includePermissions = true;
-      } else {
-        SiteDataClient parentClient = getClientForUrl(parentUrl);
-        Web parentW = parentClient.getContentWeb();
-        String parentScopeId
-            = parentW.getMetadata().getScopeID().toLowerCase(Locale.ENGLISH);
-        String scopeId
-            = w.getMetadata().getScopeID().toLowerCase(Locale.ENGLISH);
-        includePermissions = !scopeId.equals(parentScopeId);
+      boolean allowAnonymousAccess = isAllowAnonymousReadForWeb(w);
+      // Check if anonymous access is denied by web application policy
+      // only if anonymous access is enabled for web as checking web application
+      // policy is additional web service call.
+      // TODO : Add caching for web application policy.
+      if (allowAnonymousAccess) {
+        allowAnonymousAccess 
+            = !isDenyAnonymousAcessOnVirtualServer(getContentVirtualServer());
       }
 
-      Acl.Builder acl;
-      if (includePermissions) {
-        List<Permission> permissions
-            = w.getACL().getPermissions().getPermission();
-        acl = generateAcl(permissions, LIST_ITEM_MASK)
-            .setInheritFrom(virtualServerDocId);
-      } else {
-        acl = new Acl.Builder().setInheritFrom(new DocId(parentUrl));
+      if (!allowAnonymousAccess) {
+        int slashIndex = webUrl.lastIndexOf("/");
+        // The parentUrl is not the same as the siteUrl, since there may be
+        // multiple levels of webs.
+        String parentUrl = webUrl.substring(0, slashIndex);
+        boolean isSiteCollection = siteUrl.equals(webUrl);
+        final boolean includePermissions;
+        if (isSiteCollection) {
+          includePermissions = true;
+        } else {
+          SiteDataClient parentClient = getClientForUrl(parentUrl);
+          Web parentW = parentClient.getContentWeb();
+          String parentScopeId
+              = parentW.getMetadata().getScopeID().toLowerCase(Locale.ENGLISH);
+          String scopeId
+              = w.getMetadata().getScopeID().toLowerCase(Locale.ENGLISH);
+          includePermissions = !scopeId.equals(parentScopeId);
+        }
+        Acl.Builder acl;
+        if (includePermissions) {
+          List<Permission> permissions
+              = w.getACL().getPermissions().getPermission();
+          acl = generateAcl(permissions, LIST_ITEM_MASK)
+              .setInheritFrom(virtualServerDocId);
+        } else {
+          acl = new Acl.Builder().setInheritFrom(new DocId(parentUrl));
+        }
+        response.setAcl(acl
+            .setInheritanceType(Acl.InheritanceType.PARENT_OVERRIDES)
+            .build());
       }
-      response.setAcl(acl
-          .setInheritanceType(Acl.InheritanceType.PARENT_OVERRIDES)
-          .build());
 
       response.setDisplayUrl(URI.create(w.getMetadata().getURL()));
       response.setContentType("text/html");
@@ -807,22 +819,33 @@ public class SharePointAdaptor extends AbstractAdaptor
       com.microsoft.schemas.sharepoint.soap.List l = getContentList(id);
       Web w = getContentWeb();
 
-      String scopeId = l.getMetadata().getScopeID().toLowerCase(Locale.ENGLISH);
-      String webScopeId
-          = w.getMetadata().getScopeID().toLowerCase(Locale.ENGLISH);
+      boolean allowAnonymousAccess
+          = isAllowAnonymousReadForList(l) && isAllowAnonymousPeekForWeb(w);
 
-      Acl.Builder acl;
-      if (scopeId.equals(webScopeId)) {
-        acl = new Acl.Builder().setInheritFrom(new DocId(webUrl));
-      } else {
-        List<Permission> permissions
-            = l.getACL().getPermissions().getPermission();
-        acl = generateAcl(permissions, LIST_ITEM_MASK)
-            .setInheritFrom(virtualServerDocId);
+      if (allowAnonymousAccess) {
+        allowAnonymousAccess 
+            = isDenyAnonymousAcessOnVirtualServer(getContentVirtualServer());
       }
-      response.setAcl(acl
-          .setInheritanceType(Acl.InheritanceType.PARENT_OVERRIDES)
-          .build());
+
+      if (!allowAnonymousAccess) {
+        String scopeId
+            = l.getMetadata().getScopeID().toLowerCase(Locale.ENGLISH);
+        String webScopeId
+            = w.getMetadata().getScopeID().toLowerCase(Locale.ENGLISH);
+
+        Acl.Builder acl;
+        if (scopeId.equals(webScopeId)) {
+          acl = new Acl.Builder().setInheritFrom(new DocId(webUrl));
+        } else {
+          List<Permission> permissions
+              = l.getACL().getPermissions().getPermission();
+          acl = generateAcl(permissions, LIST_ITEM_MASK)
+              .setInheritFrom(virtualServerDocId);
+        }
+        response.setAcl(acl
+            .setInheritanceType(Acl.InheritanceType.PARENT_OVERRIDES)
+            .build());
+      }
 
       response.setDisplayUrl(sharePointUrlToUri(
           l.getMetadata().getDefaultViewUrl()));
@@ -985,7 +1008,56 @@ public class SharePointAdaptor extends AbstractAdaptor
       aclToUpdate.setPermitUsers(permitUsers);
     }
 
-    private String getUserName(int userId) throws IOException {     
+    private boolean isPermitted(long permission,
+        long necessaryPermission) {
+      return (necessaryPermission & permission) == necessaryPermission;
+    }
+
+    private boolean isAllowAnonymousPeekForWeb(Web w) {
+      return isPermitted(
+          w.getMetadata().getAnonymousPermMask().longValue(), OPEN_MASK);
+    }
+
+    private boolean isAllowAnonymousReadForWeb(Web w) {
+      boolean allowAnonymousRead
+          =(w.getMetadata().getAllowAnonymousAccess() == TrueFalseType.TRUE)
+          && (w.getMetadata().getAnonymousViewListItems() == TrueFalseType.TRUE)
+          && isPermitted(
+            w.getMetadata().getAnonymousPermMask().longValue(), LIST_ITEM_MASK);
+      return allowAnonymousRead;
+    }
+
+    private boolean isAllowAnonymousReadForList (
+        com.microsoft.schemas.sharepoint.soap.List l) {
+      boolean allowAnonymousRead
+          = (l.getMetadata().getReadSecurity() != LIST_READ_SECURITY_ENABLED)
+          && (l.getMetadata().getAllowAnonymousAccess() == TrueFalseType.TRUE)
+          && (l.getMetadata().getAnonymousViewListItems() == TrueFalseType.TRUE)
+          && isPermitted(
+            l.getMetadata().getAnonymousPermMask().longValue(),
+            VIEW_LIST_ITEMS_MASK);
+      return allowAnonymousRead;
+    }
+
+    private boolean isDenyAnonymousAcessOnVirtualServer(VirtualServer vs) { 
+      long anonymousDenyMask
+          =  vs.getPolicies().getAnonymousDenyMask().longValue();
+      if ((LIST_ITEM_MASK & anonymousDenyMask) != 0) {   
+        return true;
+      }
+      // Anonymous access is denied if deny read policy is specified for any
+      // user or group.
+      for (PolicyUser policyUser : vs.getPolicies().getPolicyUser()) {
+        long deny = policyUser.getDenyMask().longValue();
+        // If at least one necessary bit is masked, then deny user.
+        if ((LIST_ITEM_MASK & deny) != 0) {
+          return true;
+        }
+      }
+      return false;
+    }
+
+    private String getUserName(int userId) throws IOException {
       String userName = getMemberIdMapping().getUserName(userId);
       // MemberIdMapping will have information about users with explicit
       // permissions on SharePoint or users which are direct members of
@@ -993,7 +1065,7 @@ public class SharePointAdaptor extends AbstractAdaptor
       // about all valid SharePoint Users. To get all valid SharePoint users
       // under SiteCollection, use SiteUserMapping.
       if (userName == null) {
-        userName = getSiteUserMapping().getUserName(userId);        
+        userName = getSiteUserMapping().getUserName(userId);
       }
       return userName;
     }
@@ -1041,7 +1113,8 @@ public class SharePointAdaptor extends AbstractAdaptor
       log.entering("SiteDataClient", "getListItemDocContent",
           new Object[] {request, response, listId, itemId});
       com.microsoft.schemas.sharepoint.soap.List l = getContentList(listId);
-      boolean applyReadSecurity = (l.getMetadata().getReadSecurity() == 2);
+      boolean applyReadSecurity =
+          (l.getMetadata().getReadSecurity() == LIST_READ_SECURITY_ENABLED);
       ItemData i = getContentItem(listId, itemId);
 
       Xml xml = i.getXml();
@@ -1054,7 +1127,33 @@ public class SharePointAdaptor extends AbstractAdaptor
           = row.getAttribute(OWS_SCOPEID_ATTRIBUTE).split(";#", 2)[1];
       scopeId = scopeId.toLowerCase(Locale.ENGLISH);
 
-      Acl.Builder acl = null;     
+      String listScopeId
+          = l.getMetadata().getScopeID().toLowerCase(Locale.ENGLISH);
+      // Anonymous access is disabled if read security is applicable for list.
+      // Anonymous access for list items is disabled if it does not inherit
+      // its effective permissions from list.
+
+      boolean allowAnonymousAccess = isAllowAnonymousReadForList(l)
+          && scopeId.equals(listScopeId);
+
+      // Check anomymous access on web only if anonymous access is applicable
+      // for list and list item.
+      if (allowAnonymousAccess) {
+        Web w = getContentWeb();
+        // Even if anonymous access is enabled on list, it can be turned off
+        // on Web level by setting Anonymous access to "Nothing" on Web.
+        // Anonymous User must have minimum "Open" permission on Web
+        // for anonymous access to work on List and List Items.
+        allowAnonymousAccess = isAllowAnonymousPeekForWeb(w);
+      }
+
+      if (allowAnonymousAccess) {
+        allowAnonymousAccess 
+            = !isDenyAnonymousAcessOnVirtualServer(getContentVirtualServer());
+      }
+
+      if (!allowAnonymousAccess) {
+      Acl.Builder acl = null;
       if (!applyReadSecurity) {
         String rawFileDirRef = row.getAttribute(OWS_FILEDIRREF_ATTRIBUTE);
         // This should be in the form of "1234;#site/list/path". We want to
@@ -1068,25 +1167,23 @@ public class SharePointAdaptor extends AbstractAdaptor
         // Folder.
         boolean parentIsList = folderDocId.equals(rootFolderDocId);
         DocId parentDocId = parentIsList ? listDocId : folderDocId;
-        String listScopeId = l.getMetadata().getScopeID()
-            .toLowerCase(Locale.ENGLISH);
         String parentScopeId;
         // If a folder doesn't inherit its list's scope, then all of the
         // folder's descendent list items are guaranteed to have a different
         // scope than the list. We use this knowledge as a performance
         // optimization to prevent issuing requests to discover the folder's
-        // scopeId when a child list item and list have the same scope.        
+        // scopeId when a child list item and list have the same scope.
         if (parentIsList || scopeId.equals(listScopeId)) {
           parentScopeId = listScopeId;
         } else {
-          // Instead of using getURLSegments and getContent(ListItem), we could
-          // use just getContent(Folder). However, getContent(Folder) always
-          // returns children which could make the call very expensive. In
-          // addition, getContent(ListItem) returns all the metadata for the
-          // folder instead of just its scope so if in the future we need more
-          // metadata we will already have it. GetContentEx(Folder) may provide
-          // a way to get the folder's scope without its children, but it wasn't
-          // investigated.
+            // Instead of using getURLSegments and getContent(ListItem),
+            // we could use just getContent(Folder).
+            // However, getContent(Folder) always returns children which could
+            // make the call very expensive. In addition, getContent(ListItem)
+            // returns all the metadata for the folder instead of just its scope
+            // so if in the future we need more metadata we will already have
+            // it. GetContentEx(Folder) may provide a way to get the folder's
+            // scope without its children, but it wasn't investigated.
           Holder<String> folderListId = new Holder<String>();
           Holder<String> folderItemId = new Holder<String>();
           Holder<Boolean> result = new Holder<Boolean>();
@@ -1127,7 +1224,7 @@ public class SharePointAdaptor extends AbstractAdaptor
               + request.getDocId());
         }
       } else {
-        DocId namedResource 
+        DocId namedResource
             = new DocId(request.getDocId().getUniqueId() + "_READ_SECURITY");
         List<Permission> permission = null;
         Scopes scopes = getFirstChildOfType(xml, Scopes.class);
@@ -1138,11 +1235,11 @@ public class SharePointAdaptor extends AbstractAdaptor
           }
         }
         if (permission == null) {
-          permission 
+          permission
               = i.getMetadata().getScope().getPermissions().getPermission();
         }
         acl = generateAcl(permission, LIST_ITEM_MASK)
-            .setInheritFrom(namedResource);        
+            .setInheritFrom(namedResource);
         int authorId = -1;
         String authorValue = row.getAttribute(OWS_AUTHOR_ATTRIBUTE);
         if (authorValue != null) {
@@ -1151,7 +1248,7 @@ public class SharePointAdaptor extends AbstractAdaptor
             authorId = Integer.parseInt(authorInfo[0]);
           }
         }
-        Acl.Builder aclNamedResource 
+        Acl.Builder aclNamedResource
             = generateAcl(permission, READ_SECURITY_LIST_ITEM_MASK)
             .setInheritFrom(virtualServerDocId)
             .setInheritanceType(Acl.InheritanceType.AND_BOTH_PERMIT);
@@ -1172,6 +1269,7 @@ public class SharePointAdaptor extends AbstractAdaptor
       response.setAcl(acl
           .setInheritanceType(Acl.InheritanceType.PARENT_OVERRIDES)
           .build());
+      }
 
       // This should be in the form of "1234;#0". We want to extract the 0.
       String type = row.getAttribute(OWS_FSOBJTYPE_ATTRIBUTE).split(";#", 2)[1];
@@ -1303,12 +1401,27 @@ public class SharePointAdaptor extends AbstractAdaptor
       Xml xml = itemData.getXml();
       Element data = getFirstChildWithName(xml, DATA_ELEMENT);
       Element row = getChildrenWithName(data, ROW_ELEMENT).get(0);
-      String listItemUrl = row.getAttribute(OWS_SERVERURL_ATTRIBUTE);
       log.fine("Suspected attachment verified as being a real attachment. "
           + "Proceeding to provide content.");
-      response.setAcl(new Acl.Builder()
-          .setInheritFrom(encodeDocId(listItemUrl))
-          .build());
+      com.microsoft.schemas.sharepoint.soap.List l = getContentList(listId);
+      String scopeId
+          = row.getAttribute(OWS_SCOPEID_ATTRIBUTE).split(";#", 2)[1];
+      scopeId = scopeId.toLowerCase(Locale.ENGLISH);
+
+      String listScopeId
+          = l.getMetadata().getScopeID().toLowerCase(Locale.ENGLISH);
+      boolean allowAnonymousAccess = isAllowAnonymousReadForList(l)
+          && scopeId.equals(listScopeId);
+      if (allowAnonymousAccess) {
+        allowAnonymousAccess 
+            = !isDenyAnonymousAcessOnVirtualServer(getContentVirtualServer());
+      }
+      if (!allowAnonymousAccess) {
+        String listItemUrl = row.getAttribute(OWS_SERVERURL_ATTRIBUTE);
+        response.setAcl(new Acl.Builder()
+            .setInheritFrom(encodeDocId(listItemUrl))
+            .build());
+      }
       getFileDocContent(request, response);
       log.exiting("SiteDataClient", "getAttachmentDocContent", true);
       return true;
@@ -1455,8 +1568,8 @@ public class SharePointAdaptor extends AbstractAdaptor
       log.exiting("SiteDataClient", "retrieveMemberIdMapping", mapping);
       return mapping;
     }
-    
-    private MemberIdMapping retrieveSiteUserMapping() 
+
+    private MemberIdMapping retrieveSiteUserMapping()
         throws IOException {
       log.entering("SiteDataClient", "retrieveSiteUserMapping");
       GetUserCollectionFromSiteResponse.GetUserCollectionFromSiteResult result
@@ -1480,7 +1593,7 @@ public class SharePointAdaptor extends AbstractAdaptor
         userMap.put((int) user.getID(), user.getLoginName());
       }
       mapping = new MemberIdMapping(userMap, groupMap);
-      log.exiting("SiteDataClient", "retrieveSiteUserMapping", mapping);        
+      log.exiting("SiteDataClient", "retrieveSiteUserMapping", mapping);
       return mapping;
     }
 
@@ -2090,7 +2203,7 @@ public class SharePointAdaptor extends AbstractAdaptor
       extends CacheLoader<String, MemberIdMapping> {
     @Override
     public MemberIdMapping load(String site) throws IOException {
-      return getSiteDataClient(site, site).retrieveSiteUserMapping();     
+      return getSiteDataClient(site, site).retrieveSiteUserMapping();
     }
   }
 }
