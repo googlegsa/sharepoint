@@ -1605,21 +1605,6 @@ public class SharePointAdaptor extends AbstractAdaptor
       };
     }
 
-    private ItemData getContentFolder(final String guid,
-        final String url) throws IOException {
-      log.entering("SiteDataClient", "getContentFolder",
-          new Object[] {guid, url});
-      final Holder<String> lastItemIdOnPage = new Holder<String>("");
-      Holder<String> result = new Holder<String>();
-      siteData.getContent(ObjectType.FOLDER, guid, url, null, false, true,
-          lastItemIdOnPage, result);
-      String xml = result.value;
-      xml = xml.replace("<Folder>", "<Folder xmlns='" + XMLNS + "'>");
-      ItemData data = jaxbParse(xml, ItemData.class);
-      log.exiting("SiteDataClient", "getContentFolder", data);
-      return data;
-    }
-
     private Item getContentListItemAttachments(String listId, String itemId)
         throws IOException {
       log.entering("SiteDataClient", "getContentListItemAttachments",
