@@ -1,0 +1,83 @@
+<Site>
+<Metadata URL="http://localhost:1/sites/SiteCollection"
+ ID="{bb3bb2dd-6ea7-471b-a361-6fb67988755c}"
+ LastModified="2012-06-25 22:29:58Z" PortalURL=""
+ UserProfileGUID=""
+ RootWebId="{b2ea1067-3a54-4ab7-a459-c8ec864b97eb}"
+ ChangeId="1;1;bb3bb2dd-6ea7-471b-a361-6fb67988755c;634762601982930000;726" />
+<Groups><Group>
+<Group ID="3" Name="chinese1 Owners"
+ Description="Use this group to give people full control permissions to the SharePoint site: chinese1" OwnerID="3"
+ OwnerIsUser="False" />
+<Users>
+<User ID="1" Sid="S-1-5-21-736914693-3137354690-2813686979-500"
+ Name="GDC-PSL\administrator"
+ LoginName="GDC-PSL\administrator" Email="" Notes=""
+ IsSiteAdmin="True" IsDomainGroup="False" />
+</Users></Group><Group>
+<Group ID="5" Name="chinese1 Members"
+ Description="Use this group to give people contribute permissions to the SharePoint site: chinese1" OwnerID="3"
+ OwnerIsUser="False" />
+<Users>
+<User ID="6" Sid="S-1-5-21-736914693-3137354690-2813686979-1132"
+ Name="spuser2" LoginName="GDC-PSL\spuser2" Email=""
+ Notes="" IsSiteAdmin="False" IsDomainGroup="False" />
+<User ID="7" Sid="S-1-5-32-545" Name="BUILTIN\users"
+ LoginName="BUILTIN\users" Email="" Notes=""
+ IsSiteAdmin="False" IsDomainGroup="True" />
+<User ID="9" Sid="S-1-5-21-736914693-3137354690-2813686979-1134"
+ Name="spuser4" LoginName="GDC-PSL\spuser4" Email=""
+ Notes="" IsSiteAdmin="False" IsDomainGroup="False" />
+</Users></Group><Group>
+<Group ID="4" Name="chinese1 Visitors"
+ Description="Use this group to give people read permissions to the SharePoint site: chinese1" OwnerID="3" OwnerIsUser="False" />
+<Users /></Group></Groups>
+<Web>
+<Metadata URL="http://localhost:1/sites/SiteCollection"
+ LastModified="2012-06-25 22:29:58Z"
+ Created="2011-10-14 18:59:25Z"
+ ID="{b2ea1067-3a54-4ab7-a459-c8ec864b97eb}" Title="chinese1"
+ Description="" Author="GDC-PSL\administrator"
+ Language="1033" CRC="1158260233" NoIndex="False"
+ DefaultHomePage="" ExternalSecurity="False"
+ ScopeID="{01abac8c-66c8-4fed-829c-8dd02bbf40dd}"
+ AllowAnonymousAccess="False" AnonymousViewListItems="False"
+ AnonymousPermMask="0" />
+<Users>
+<User ID="1" Sid="S-1-5-21-736914693-3137354690-2813686979-500"
+ Name="GDC-PSL\administrator"
+ LoginName="GDC-PSL\administrator" Email="" Notes=""
+ IsSiteAdmin="True" IsDomainGroup="False" />
+<User ID="2" Sid="S-1-5-21-736914693-3137354690-2813686979-1130"
+ Name="spuser1" LoginName="GDC-PSL\spuser1" Email=""
+ Notes="" IsSiteAdmin="True" IsDomainGroup="False" />
+<User ID="6" Sid="S-1-5-21-736914693-3137354690-2813686979-1132"
+ Name="spuser2" LoginName="GDC-PSL\spuser2" Email=""
+ Notes="" IsSiteAdmin="False" IsDomainGroup="False" />
+</Users>
+<ACL><permissions>
+<permission memberid='2' mask='206292717568' />
+<permission memberid='3' mask='9223372036854775807' />
+<permission memberid='5' mask='1856436900591' />
+<permission memberid='6' mask='206292717568' />
+</permissions></ACL>
+<Webs>
+<Web URL="http://localhost:1/sites/SiteCollection/somesite"
+ ID="{ee63e7d0-da23-4553-9f14-359f1cc1bf1c}"
+ LastModified="2012-06-25 22:29:58Z" />
+</Webs><Lists>
+<List ID="{133fcb96-7e9b-46c9-b5f3-09770a35ad8a}"
+ LastModified="2012-06-01 22:00:07Z"
+ DefaultViewUrl="/sites/SiteCollection/Lists/Announcements/AllItems.aspx" />
+<List ID="{648f6636-3d90-4565-86b9-2dd7611fc855}"
+ LastModified="2012-06-01 22:39:22Z"
+ DefaultViewUrl="/sites/SiteCollection/Shared Documents/Forms/AllItems.aspx" />
+</Lists>
+<FPFolder><Folders>
+<Folder URL="Lists" ID="{c2c6cfcc-439e-4372-8a7a-87bec657eebf}"
+ LastModified="2012-06-25 22:29:58Z" />
+</Folders><Files>
+<File URL="default.aspx"
+ ID="{1bdad8a3-376d-448c-b9c3-de91a6152687}"
+ LastModified="2012-06-25 22:29:58Z" />
+</Files></FPFolder></Web></Site>

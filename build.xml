@@ -324,6 +324,7 @@ lib/plexi submodule or add the the command line argument
       <classpath location="${build-src.dir}"/>
       <classpath location="${build-generate.dir}"/>
       <classpath location="${build-test.dir}"/>
+      <classpath location="${test.dir}"/>
       <formatter type="plain" usefile="false"/>
       <formatter classname="JUnitLogFixFormatter" usefile="false"/>
       <batchtest>

@@ -1,0 +1,59 @@
+<List>
+<Metadata ID="{b7f7c386-47b4-4a74-9811-b019c4f050b3}"
+ LastModified="2011-09-07 06:49:13Z" Title="Announcements"
+ DefaultTitle="True"
+ Description="Use this list to track upcoming events, status updates or other team news."
+ BaseType="GenericList" BaseTemplate="Announcements"
+ DefaultViewUrl="/tapasnay/Lists/Announcements/AllItems.aspx"
+ DefaultViewItemUrl="/tapasnay/Lists/Announcements/DispForm.aspx"
+ RootFolder="Lists/Announcements"
+ Author="GDC-PSL\administrator" ItemCount="1"
+ ReadSecurity="1" AllowAnonymousAccess="False"
+ AnonymousViewListItems="False" AnonymousPermMask="0"
+ CRC="4060703200" NoIndex="False" UseFormsForDisplay="True"
+ ScopeID="{1d857dc3-dd22-4326-95f0-01b27d6da6d6}" /> <ACL>
+<permissions>
+<permission memberid="1" mask="206292717568" />
+</permissions></ACL>
+<Views>
+<View URL="Lists/Announcements/AllItems.aspx"
+ ID="{dbb495af-57a1-4474-a661-085658751de3}" Title="All items"
+ AllowedInRoot="True" />
+</Views>
+<Schema>
+<Field Name="ID" Title="ID" Type="Counter"
+ IsSurveyQuestion="False" />
+<Field Name="ContentType" Title="Content Type" Type="Computed"
+ IsSurveyQuestion="False" />
+<Field Name="Title" Title="Title" Type="Text"
+ IsSurveyQuestion="False" />
+<Field Name="Modified" Title="Modified" Type="DateTime"
+ IsSurveyQuestion="False" />
+<Field Name="Created" Title="Created" Type="DateTime"
+ IsSurveyQuestion="False" />
+<Field Name="Author" Title="Created By" Type="User"
+ IsSurveyQuestion="False" />
+<Field Name="Editor" Title="Modified By" Type="User"
+ IsSurveyQuestion="False" />
+<Field Name="_UIVersionString" Title="Version" Type="Text"
+ IsSurveyQuestion="False" />
+<Field Name="Attachments" Title="Attachments"
+ Type="Attachments" IsSurveyQuestion="False" />
+<Field Name="Edit" Title="Edit" Type="Computed"
+ IsSurveyQuestion="False" />
+<Field Name="LinkTitleNoMenu" Title="Title" Type="Computed"
+ IsSurveyQuestion="False" />
+<Field Name="LinkTitle" Title="Title" Type="Computed"
+ IsSurveyQuestion="False" />
+<Field Name="DocIcon" Title="Type" Type="Computed"
+ IsSurveyQuestion="False" />
+<Field Name="ItemChildCount" Title="Item Child Count"
+ Type="Lookup" IsSurveyQuestion="False" />
+<Field Name="FolderChildCount" Title="Folder Child Count"
+ Type="Lookup" IsSurveyQuestion="False" />
+<Field Name="Body" Title="Body" Type="Note"
+ IsSurveyQuestion="False" />
+<Field Name="Expires" Title="Expires" Type="DateTime"
+ IsSurveyQuestion="False" />
+</Schema>
+</List>
