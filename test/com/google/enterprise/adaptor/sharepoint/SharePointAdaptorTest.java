@@ -474,6 +474,27 @@ public class SharePointAdaptorTest {
         response.getAcl());
   }
 
+  public void testGetDocContentSiteCollectionNoIndex() throws Exception {
+    SiteDataFactory siteDataFactory = MockSiteDataFactory.blank()
+        .endpoint(VS_ENDPOINT, MockSiteData.blank()
+            .register(SITES_SITECOLLECTION_SAW_EXCHANGE))
+        .endpoint(SITES_SITECOLLECTION_ENDPOINT, MockSiteData.blank()
+            .register(SITES_SITECOLLECTION_URLSEG_EXCHANGE)
+            .register(SITES_SITECOLLECTION_S_CONTENT_EXCHANGE
+              .replaceInContent("NoIndex=\"False\"", "NoIndex=\"True\"")));
+
+    adaptor = new SharePointAdaptor(siteDataFactory,
+        new UnsupportedUserGroupFactory(), new UnsupportedHttpClient(),
+        executorFactory);
+    adaptor.init(new MockAdaptorContext(config, null));
+    ByteArrayOutputStream baos = new ByteArrayOutputStream();
+    GetContentsRequest request = new GetContentsRequest(
+        new DocId("http://localhost:1/sites/SiteCollection"));
+    GetContentsResponse response = new GetContentsResponse(baos);
+    adaptor.getDocContent(request, response);
+    assertTrue(response.isNotFound());
+  }
+
   @Test
   public void testGetDocContentList() throws Exception {
     SiteDataSoap siteData = MockSiteData.blank()
@@ -529,8 +550,35 @@ public class SharePointAdaptorTest {
   }
 
   @Test
+  public void testGetDocContentListNoIndex() throws Exception {
+    SiteDataSoap siteData = MockSiteData.blank()
+        .register(SITES_SITECOLLECTION_S_CONTENT_EXCHANGE)
+        .register(SITES_SITECOLLECTION_LISTS_CUSTOMLIST_URLSEG_EXCHANGE)
+        .register(SITES_SITECOLLECTION_LISTS_CUSTOMLIST_L_CONTENT_EXCHANGE
+          .replaceInContent("NoIndex=\"False\"", "NoIndex=\"True\""));
+
+    adaptor = new SharePointAdaptor(initableSiteDataFactory,
+        new UnsupportedUserGroupFactory(), new UnsupportedHttpClient(),
+        executorFactory);
+    adaptor.init(new MockAdaptorContext(config, null));
+    ByteArrayOutputStream baos = new ByteArrayOutputStream();
+    GetContentsRequest request = new GetContentsRequest(
+        new DocId("http://localhost:1/sites/SiteCollection/Lists/Custom List/"
+          + "AllItems.aspx"));
+    GetContentsResponse response = new GetContentsResponse(baos);
+    adaptor.new SiteDataClient("http://localhost:1/sites/SiteCollection",
+          "http://localhost:1/sites/SiteCollection", siteData,
+          new UnsupportedUserGroupSoap(),
+          new UnsupportedCallable<MemberIdMapping>(),
+          new UnsupportedCallable<MemberIdMapping>())
+        .getDocContent(request, response);
+    assertTrue(response.isNotFound());
+  }
+
+  @Test
   public void testGetDocContentAttachment() throws Exception {
     SiteDataSoap siteData = MockSiteData.blank()
+        .register(SITES_SITECOLLECTION_S_CONTENT_EXCHANGE)
         .register(SITES_SITECOLLECTION_LISTS_CUSTOMLIST_URLSEG_EXCHANGE)
         .register(SITES_SITECOLLECTION_LISTS_CUSTOMLIST_L_CONTENT_EXCHANGE)
         .register(SITES_SITECOLLECTION_LISTS_CUSTOMLIST_2_LI_CONTENT_EXCHANGE)
@@ -585,6 +633,7 @@ public class SharePointAdaptorTest {
   @Test
   public void testGetDocContentListItem() throws Exception {
     SiteDataSoap siteData = MockSiteData.blank()
+        .register(SITES_SITECOLLECTION_S_CONTENT_EXCHANGE)
         .register(SITES_SITECOLLECTION_LISTS_CUSTOMLIST_1_URLSEG_EXCHANGE)
         .register(SITES_SITECOLLECTION_LISTS_CUSTOMLIST_2_URLSEG_EXCHANGE)
         .register(SITES_SITECOLLECTION_LISTS_CUSTOMLIST_L_CONTENT_EXCHANGE)
@@ -737,6 +786,7 @@ public class SharePointAdaptorTest {
   @Test
   public void testGetDocContentListItemWithReadSecurity() throws Exception {
     SiteDataSoap siteData = MockSiteData.blank()
+        .register(SITES_SITECOLLECTION_S_CONTENT_EXCHANGE)
         .register(SITES_SITECOLLECTION_LISTS_CUSTOMLIST_2_URLSEG_EXCHANGE)
         .register(SITES_SITECOLLECTION_LISTS_CUSTOMLIST_L_CONTENT_EXCHANGE
             .replaceInContent("ReadSecurity=\"1\"", "ReadSecurity=\"2\""))
@@ -869,6 +919,7 @@ public class SharePointAdaptorTest {
   @Test
   public void testGetDocContentFolder() throws Exception {
     SiteDataSoap siteData = MockSiteData.blank()
+        .register(SITES_SITECOLLECTION_S_CONTENT_EXCHANGE)
         .register(SITES_SITECOLLECTION_LISTS_CUSTOMLIST_1_URLSEG_EXCHANGE)
         .register(SITES_SITECOLLECTION_LISTS_CUSTOMLIST_L_CONTENT_EXCHANGE)
         .register(SITES_SITECOLLECTION_LISTS_CUSTOMLIST_1_LI_CONTENT_EXCHANGE)

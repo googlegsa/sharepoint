@@ -737,11 +737,52 @@ public class SharePointAdaptor extends AbstractAdaptor
       log.exiting("SiteDataClient", "getVirtualServerDocContent");
     }
 
+    /**
+     * Returns the url of the parent of the web. The parent url is not the same
+     * as the siteUrl, since there may be multiple levels of webs. It is an
+     * error to call this method when there is no parent, which is the case iff
+     * {@link #isWebSiteCollection} is {@code true}.
+     */
+    private String getWebParentUrl() {
+      if (isWebSiteCollection()) {
+        throw new IllegalStateException();
+      }
+      int slashIndex = webUrl.lastIndexOf("/");
+      return webUrl.substring(0, slashIndex);
+    }
+
+    /** Returns true if webUrl is a site collection. */
+    private boolean isWebSiteCollection() {
+      return siteUrl.equals(webUrl);
+    }
+
+    /**
+     * Returns {@code true} if the current web should not be indexed. This
+     * method may issue a request for the web content for all parent webs, so it
+     * is expensive.
+     */
+    private boolean isWebNoIndex(Web w) throws IOException {
+      if ("True".equals(w.getMetadata().getNoIndex())) {
+        return true;
+      }
+      if (isWebSiteCollection()) {
+        return false;
+      }
+      return isWebNoIndex(getClientForUrl(getWebParentUrl()).getContentWeb());
+    }
+
     private void getSiteDocContent(Request request, Response response)
         throws IOException {
       log.entering("SiteDataClient", "getSiteDocContent",
           new Object[] {request, response});
       Web w = getContentWeb();
+
+      if (isWebNoIndex(w)) {
+        log.fine("Document marked for NoIndex");
+        response.respondNotFound();
+        log.exiting("SiteDataClient", "getSiteDocContent");
+        return;
+      }
 
       if (webUrl.endsWith("/")) {
         throw new AssertionError();
@@ -757,16 +798,11 @@ public class SharePointAdaptor extends AbstractAdaptor
       }
 
       if (!allowAnonymousAccess) {
-        int slashIndex = webUrl.lastIndexOf("/");
-        // The parentUrl is not the same as the siteUrl, since there may be
-        // multiple levels of webs.
-        String parentUrl = webUrl.substring(0, slashIndex);
-        boolean isSiteCollection = siteUrl.equals(webUrl);
         final boolean includePermissions;
-        if (isSiteCollection) {
+        if (isWebSiteCollection()) {
           includePermissions = true;
         } else {
-          SiteDataClient parentClient = getClientForUrl(parentUrl);
+          SiteDataClient parentClient = getClientForUrl(getWebParentUrl());
           Web parentW = parentClient.getContentWeb();
           String parentScopeId
               = parentW.getMetadata().getScopeID().toLowerCase(Locale.ENGLISH);
@@ -781,7 +817,7 @@ public class SharePointAdaptor extends AbstractAdaptor
           acl = generateAcl(permissions, LIST_ITEM_MASK)
               .setInheritFrom(virtualServerDocId);
         } else {
-          acl = new Acl.Builder().setInheritFrom(new DocId(parentUrl));
+          acl = new Acl.Builder().setInheritFrom(new DocId(getWebParentUrl()));
         }
         response.setAcl(acl
             .setInheritanceType(Acl.InheritanceType.PARENT_OVERRIDES)
@@ -794,7 +830,6 @@ public class SharePointAdaptor extends AbstractAdaptor
       writer.start(request.getDocId(), ObjectType.SITE,
           w.getMetadata().getTitle());
 
-      // TODO(ejona): w.getMetadata().getNoIndex()
       DocIdEncoder encoder = context.getDocIdEncoder();
       if (w.getWebs() != null) {
         writer.startSection(ObjectType.SITE);
@@ -842,6 +877,14 @@ public class SharePointAdaptor extends AbstractAdaptor
           new Object[] {request, response, id});
       com.microsoft.schemas.sharepoint.soap.List l = getContentList(id);
       Web w = getContentWeb();
+
+      if (TrueFalseType.TRUE.equals(l.getMetadata().getNoIndex())
+          || isWebNoIndex(w)) {
+        log.fine("Document marked for NoIndex");
+        response.respondNotFound();
+        log.exiting("SiteDataClient", "getListDocContent");
+        return;
+      }
 
       boolean allowAnonymousAccess
           = isAllowAnonymousReadForList(l) && isAllowAnonymousPeekForWeb(w);
@@ -1154,6 +1197,16 @@ public class SharePointAdaptor extends AbstractAdaptor
       log.entering("SiteDataClient", "getListItemDocContent",
           new Object[] {request, response, listId, itemId});
       com.microsoft.schemas.sharepoint.soap.List l = getContentList(listId);
+      Web w = getContentWeb();
+
+      if (TrueFalseType.TRUE.equals(l.getMetadata().getNoIndex())
+          || isWebNoIndex(w)) {
+        log.fine("Document marked for NoIndex");
+        response.respondNotFound();
+        log.exiting("SiteDataClient", "getListItemDocContent");
+        return;
+      }
+
       boolean applyReadSecurity =
           (l.getMetadata().getReadSecurity() == LIST_READ_SECURITY_ENABLED);
       ItemData i = getContentItem(listId, itemId);
@@ -1174,19 +1227,13 @@ public class SharePointAdaptor extends AbstractAdaptor
       // Anonymous access for list items is disabled if it does not inherit
       // its effective permissions from list.
 
+      // Even if anonymous access is enabled on list, it can be turned off
+      // on Web level by setting Anonymous access to "Nothing" on Web.
+      // Anonymous User must have minimum "Open" permission on Web
+      // for anonymous access to work on List and List Items.
       boolean allowAnonymousAccess = isAllowAnonymousReadForList(l)
-          && scopeId.equals(listScopeId);
-
-      // Check anomymous access on web only if anonymous access is applicable
-      // for list and list item.
-      if (allowAnonymousAccess) {
-        Web w = getContentWeb();
-        // Even if anonymous access is enabled on list, it can be turned off
-        // on Web level by setting Anonymous access to "Nothing" on Web.
-        // Anonymous User must have minimum "Open" permission on Web
-        // for anonymous access to work on List and List Items.
-        allowAnonymousAccess = isAllowAnonymousPeekForWeb(w);
-      }
+          && scopeId.equals(listScopeId)
+          && isAllowAnonymousPeekForWeb(w);
 
       if (allowAnonymousAccess) {
         allowAnonymousAccess 
@@ -1438,13 +1485,21 @@ public class SharePointAdaptor extends AbstractAdaptor
         log.exiting("SiteDataClient", "getAttachmentDocContent", false);
         return false;
       }
+      log.fine("Suspected attachment verified as being a real attachment. "
+          + "Proceeding to provide content.");
+      com.microsoft.schemas.sharepoint.soap.List l = getContentList(listId);
+      Web w = getContentWeb();
+      if (TrueFalseType.TRUE.equals(l.getMetadata().getNoIndex())
+          || isWebNoIndex(w)) {
+        log.fine("Document marked for NoIndex");
+        response.respondNotFound();
+        log.exiting("SiteDataClient", "getAttachmentDocContent", true);
+        return true;
+      }
       ItemData itemData = getContentItem(listId, itemId);
       Xml xml = itemData.getXml();
       Element data = getFirstChildWithName(xml, DATA_ELEMENT);
       Element row = getChildrenWithName(data, ROW_ELEMENT).get(0);
-      log.fine("Suspected attachment verified as being a real attachment. "
-          + "Proceeding to provide content.");
-      com.microsoft.schemas.sharepoint.soap.List l = getContentList(listId);
       String scopeId
           = row.getAttribute(OWS_SCOPEID_ATTRIBUTE).split(";#", 2)[1];
       scopeId = scopeId.toLowerCase(Locale.ENGLISH);
