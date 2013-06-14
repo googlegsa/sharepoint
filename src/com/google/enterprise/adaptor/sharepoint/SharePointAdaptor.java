@@ -1002,6 +1002,11 @@ public class SharePointAdaptor extends AbstractAdaptor
         throws IOException {
       log.entering("SiteDataClient", "getAspxDocContent",
           new Object[] {request, response});
+      String aspxId = request.getDocId().getUniqueId();
+      String parentId = aspxId.substring(0, aspxId.lastIndexOf('/'));
+      response.setAcl(new Acl.Builder()
+          .setInheritFrom(new DocId(parentId))
+          .build());
       getFileDocContent(request, response);
       log.exiting("SiteDataClient", "getAspxDocContent");
     }
