@@ -1,0 +1,151 @@
+<SPContentDatabase Change="Unchanged" ItemCount="1">
+<ContentDatabase>
+<Metadata ChangeId="1;0;4fb7dea1-2912-4927-9eda-1ea2f0977cf8;634727056594000000;603"
+ ID="{4fb7dea1-2912-4927-9eda-1ea2f0977cf8}" />
+</ContentDatabase>
+<SPSite Change="Unchanged" ItemCount="1">
+<Messages><Message>1;0;4fb7dea1-2912-4927-9eda-1ea2f0977cf8;634727028976500000;600 Microsoft.SharePoint.SPChangeItem Add Done </Message>
+</Messages>
+<Site>
+<Metadata URL="http://localhost:1"
+ ID="{bb3bb2dd-6ea7-471b-a361-6fb67988755c}"
+ LastModified="2012-05-15 19:07:39Z" PortalURL=""
+ UserProfileGUID=""
+ RootWebId="{b2ea1067-3a54-4ab7-a459-c8ec864b97eb}"
+ ChangeId="1;0;4fb7dea1-2912-4927-9eda-1ea2f0977cf8;634727056594000000;603" />
+<Groups><Group><Group ID="3" Name="chinese1 Owners"
+ Description="Use this group to give people full control permissions to the SharePoint site: chinese1" OwnerID="3"
+ OwnerIsUser="False" />
+<Users>
+<User ID="1" Sid="S-1-5-21-736914693-3137354690-2813686979-500"
+ Name="GDC-PSL\administrator"
+ LoginName="GDC-PSL\administrator" Email="" Notes=""
+ IsSiteAdmin="True" IsDomainGroup="False" />
+<User ID="2" Sid="S-1-5-21-736914693-3137354690-2813686979-1130"
+ Name="spuser1" LoginName="GDC-PSL\spuser1" Email=""
+ Notes="" IsSiteAdmin="True" IsDomainGroup="False" />
+</Users></Group>
+<Group><Group ID="4" Name="chinese1 Visitors"
+ Description="Use this group to give people read permissions to the SharePoint site: chinese1"
+ OwnerID="3" OwnerIsUser="False" />
+<Users /></Group>
+<Group><Group ID="5" Name="chinese1 Members"
+ Description="Use this group to give people contribute permissions to the SharePoint site: chinese1"
+ OwnerID="3" OwnerIsUser="False" />
+<Users /></Group></Groups>
+</Site>
+<SPWeb Change="Unchanged" ItemCount="1">
+<Web><Metadata URL="http://localhost:1"
+ LastModified="2012-05-15 19:07:39Z"
+ Created="2011-10-14 18:59:25Z"
+ ID="{b2ea1067-3a54-4ab7-a459-c8ec864b97eb}" Title="chinese1"
+ Description="" Author="GDC-PSL\administrator"
+ Language="1033" CRC="558566148" NoIndex="False"
+ DefaultHomePage="default.aspx" ExternalSecurity="False"
+ ScopeID="{01abac8c-66c8-4fed-829c-8dd02bbf40dd}"
+ AllowAnonymousAccess="False" AnonymousViewListItems="False"
+ AnonymousPermMask="0" />
+<Users><User ID="1"
+ Sid="S-1-5-21-736914693-3137354690-2813686979-500"
+ Name="GDC-PSL\administrator"
+ LoginName="GDC-PSL\administrator" Email="" Notes=""
+ IsSiteAdmin="True" IsDomainGroup="False" />
+<User ID="2" Sid="S-1-5-21-736914693-3137354690-2813686979-1130"
+ Name="spuser1" LoginName="GDC-PSL\spuser1" Email=""
+ Notes="" IsSiteAdmin="True" IsDomainGroup="False" />
+</Users>
+<ACL><permissions>
+<permission memberid='2' mask='9223372036854775807' />
+<permission memberid='3' mask='9223372036854775807' />
+<permission memberid='4' mask='756052856929' />
+<permission memberid='5' mask='1856436900591' />
+</permissions></ACL>
+<Webs /><Lists />
+</Web>
+<SPList Change="Unchanged" ItemCount="1">
+<List><Metadata ID="{133fcb96-7e9b-46c9-b5f3-09770a35ad8a}"
+ LastModified="2012-05-15 18:21:38Z" Title="Announcements"
+ DefaultTitle="True"
+ Description="Use the Announcements list to post messages on the home page of your site."
+ BaseType="GenericList" BaseTemplate="Announcements"
+ DefaultViewUrl="/Lists/Announcements/AllItems.aspx"
+ DefaultViewItemUrl="/Lists/Announcements/DispForm.aspx"
+ RootFolder="Lists/Announcements" Author="System Account"
+ ItemCount="2" ReadSecurity="1" AllowAnonymousAccess="False"
+ AnonymousViewListItems="False" AnonymousPermMask="0"
+ CRC="751515778" NoIndex="False"
+ ScopeID="{01abac8c-66c8-4fed-829c-8dd02bbf40dd}" />
+<ACL><permissions>
+<permission memberid='2' mask='9223372036854775807' />
+<permission memberid='3' mask='9223372036854775807' />
+<permission memberid='4' mask='756052856929' />
+<permission memberid='5' mask='1856436900591' />
+</permissions></ACL>
+<Views><View URL="Lists/Announcements/AllItems.aspx"
+ ID="{54f41f88-ddf6-404c-bdf9-a104eabcd1a9}" Title="All items"
+ /></Views>
+<Schema>
+<Field Name="ID" Title="ID" Type="Counter" />
+<Field Name="ContentType" Title="Content Type" Type="Text" />
+<Field Name="Title" Title="Title" Type="Text" />
+<Field Name="Modified" Title="Modified" Type="DateTime" />
+<Field Name="Created" Title="Created" Type="DateTime" />
+<Field Name="Author" Title="Created By" Type="User" />
+<Field Name="Editor" Title="Modified By" Type="User" />
+<Field Name="_UIVersionString" Title="Version" Type="Text" />
+<Field Name="Attachments" Title="Attachments"
+ Type="Attachments" />
+<Field Name="Edit" Title="Edit" Type="Computed" />
+<Field Name="LinkTitleNoMenu" Title="Title" Type="Computed" />
+<Field Name="LinkTitle" Title="Title" Type="Computed" />
+<Field Name="DocIcon" Title="Type" Type="Computed" />
+<Field Name="Body" Title="Body" Type="Note" />
+<Field Name="Expires" Title="Expires" Type="DateTime" />
+</Schema> </List>
+<SPListItem Change="Add" ItemCount="0" UpdateSecurity="False"
+ Id="{5085be94-b5c1-45c8-a047-d0f03344fe31}"
+ ParentId="{133fcb96-7e9b-46c9-b5f3-09770a35ad8a}_"
+ InternalUrl="/siteurl=/siteid={bb3bb2dd-6ea7-471b-a361-6fb67988755c}/weburl=/webid={b2ea1067-3a54-4ab7-a459-c8ec864b97eb}/listid={133fcb96-7e9b-46c9-b5f3-09770a35ad8a}/folderurl=/itemid=2"
+ DisplayUrl="/Lists/Announcements/DispForm.aspx?ID=2"
+ ServerUrl="http://localhost:1" CRC="0" Url="2_.000">
+<ListItem>
+<z:row xmlns:z='#RowsetSchema' ows_ID='2'
+ ows_ContentTypeId='0x010400FDF586FAF309684984C89E7FB272808F'
+ ows_ContentType='Announcement' ows_Title='Test Announcement'
+ ows_Modified='2012-05-15T18:21:38Z'
+ ows_Created='2012-05-15T18:21:38Z'
+ ows_Author='1073741823;#System Account'
+ ows_Editor='1073741823;#System Account' ows_owshiddenversion='1'
+ ows_WorkflowVersion='1' ows__UIVersion='512'
+ ows__UIVersionString='1.0' ows_Attachments='0'
+ ows__ModerationStatus='0' ows_LinkTitleNoMenu='Test Announcement'
+ ows_LinkTitle='Test Announcement' ows_SelectTitle='2'
+ ows_Order='200.000000000000'
+ ows_GUID='{986A1401-9DE7-4CD5-8CC0-9BBC64D5F146}'
+ ows_FileRef='2;#Lists/Announcements/2_.000'
+ ows_FileDirRef='2;#Lists/Announcements'
+ ows_Last_x0020_Modified='2;#2012-05-15T18:21:38Z'
+ ows_Created_x0020_Date='2;#2012-05-15T18:21:38Z'
+ ows_FSObjType='2;#0' ows_PermMask='0x7fffffffffffffff'
+ ows_FileLeafRef='2;#2_.000'
+ ows_UniqueId='2;#{5085BE94-B5C1-45C8-A047-D0F03344FE31}'
+ ows_ProgId='2;#'
+ ows_ScopeId='2;#{01ABAC8C-66C8-4FED-829C-8DD02BBF40DD}'
+ ows__EditMenuTableStart='2_.000' ows__EditMenuTableEnd='2'
+ ows_LinkFilenameNoMenu='2_.000' ows_LinkFilename='2_.000'
+ ows_ServerUrl='/Lists/Announcements/2_.000'
+ ows_EncodedAbsUrl='http://localhost:1/Lists/Announcements/2_.000'
+ ows_BaseName='2_' ows_MetaInfo='2;#' ows__Level='1'
+ ows__IsCurrentVersion='1'
+ ows_Body='This is the body of the announcement.'
+ ows_ServerRedirected='0'/>
+<permissions>
+<permission memberid='2' mask='9223372036854775807' />
+<permission memberid='3' mask='9223372036854775807' />
+<permission memberid='4' mask='756052856929' />
+<permission memberid='5' mask='1856436900591' />
+</permissions></ListItem></SPListItem>
+</SPList>
+</SPWeb>
+</SPSite>
+</SPContentDatabase>

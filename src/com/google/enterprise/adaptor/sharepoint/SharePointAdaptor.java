@@ -824,7 +824,7 @@ public class SharePointAdaptor extends AbstractAdaptor
 
       if (allowAnonymousAccess) {
         allowAnonymousAccess 
-            = isDenyAnonymousAcessOnVirtualServer(getContentVirtualServer());
+            = !isDenyAnonymousAcessOnVirtualServer(getContentVirtualServer());
       }
 
       if (!allowAnonymousAccess) {
@@ -1074,6 +1074,23 @@ public class SharePointAdaptor extends AbstractAdaptor
         throws IOException {
       log.entering("SiteDataClient", "getAspxDocContent",
           new Object[] {request, response});
+      Web w = getContentWeb();
+      boolean allowAnonymousAccess = isAllowAnonymousReadForWeb(w);
+      // Check if anonymous access is denied by web application policy
+      // only if anonymous access is enabled for web as checking web application
+      // policy is additional web service call.
+      // TODO : Add caching for web application policy.
+      if (allowAnonymousAccess) {
+        allowAnonymousAccess 
+            = !isDenyAnonymousAcessOnVirtualServer(getContentVirtualServer());
+      }
+      if (!allowAnonymousAccess) {
+        String aspxId = request.getDocId().getUniqueId();
+        String parentId = aspxId.substring(0, aspxId.lastIndexOf('/'));
+        response.setAcl(new Acl.Builder()
+            .setInheritFrom(new DocId(parentId))
+            .build());
+      }
       getFileDocContent(request, response);
       log.exiting("SiteDataClient", "getAspxDocContent");
     }

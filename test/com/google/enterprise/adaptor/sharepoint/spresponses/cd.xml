@@ -1,0 +1,9 @@
+<ContentDatabase>
+<Metadata ChangeId="1;0;4fb7dea1-2912-4927-9eda-1ea2f0977cf8;634727056594000000;603"
+ ID="{4fb7dea1-2912-4927-9eda-1ea2f0977cf8}" />
+<Sites>
+<Site URL="http://localhost:1"
+ ID="{bb3bb2dd-6ea7-471b-a361-6fb67988755c}" />
+<Site URL="http://localhost:1/sites/SiteCollection"
+ ID="{5cbcd3b1-fca9-48b2-92db-3b5de26f837d}" />
+</Sites></ContentDatabase>

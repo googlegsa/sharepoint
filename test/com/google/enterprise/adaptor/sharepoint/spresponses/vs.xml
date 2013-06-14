@@ -1,0 +1,15 @@
+<VirtualServer>
+<Metadata URL="http://localhost:1/" />
+<ContentDatabases>
+<ContentDatabase ID="{4fb7dea1-2912-4927-9eda-1ea2f0977cf8}" />
+</ContentDatabases>
+<Policies AnonymousGrantMask="0" AnonymousDenyMask="0">
+<PolicyUser LoginName="NT AUTHORITY\LOCAL SERVICE"
+ Sid="S-1-5-19" GrantMask="4611686224789442657" DenyMask="0"/>
+<PolicyUser LoginName="GDC-PSL\spuser1"
+ Sid="S-1-5-21-736914693-3137354690-2813686979-1130"
+ GrantMask="4611686224789442657" DenyMask="0"/>
+<PolicyUser LoginName="GDC-PSL\Administrator"
+ Sid="S-1-5-21-736914693-3137354690-2813686979-500"
+ GrantMask="9223372036854775807" DenyMask="0"/>
+</Policies></VirtualServer>

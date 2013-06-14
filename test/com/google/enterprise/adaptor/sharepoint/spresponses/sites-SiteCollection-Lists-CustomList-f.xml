@@ -1,0 +1,270 @@
+<Folder><Metadata>
+<scope id="{f9cb02b3-7f29-4cac-804f-ba6e14f1eb39}">
+<permissions>
+<permission memberid='1' mask='206292717568' />
+<permission memberid='3' mask='9223372036854775807' />
+<permission memberid='4' mask='756052856929' />
+<permission memberid='5' mask='1856436900591' />
+</permissions>
+</scope>
+</Metadata>
+<xml xmlns:s='uuid:BDC6E3F0-6DA3-11d1-A2A3-00AA00C14882'
+ xmlns:dt='uuid:C2F41010-65B3-11d1-A29F-00AA00C14882'
+ xmlns:rs='urn:schemas-microsoft-com:rowset'
+ xmlns:z='#RowsetSchema'>
+<s:Schema id='RowsetSchema'>
+<s:ElementType name='row' content='eltOnly' rs:CommandTimeout='30'>
+<s:AttributeType name='ows_ContentTypeId' rs:name='Content Type ID'
+ rs:number='1'>
+<s:datatype dt:type='int' dt:maxLength='512' />
+</s:AttributeType>
+<s:AttributeType name='ows_Title' rs:name='Title' rs:number='2'>
+<s:datatype dt:type='string' dt:maxLength='512' />
+</s:AttributeType>
+<s:AttributeType name='ows__ModerationComments'
+ rs:name='Approver Comments' rs:number='3'>
+<s:datatype dt:type='string' dt:maxLength='1073741823' />
+</s:AttributeType>
+<s:AttributeType name='ows_File_x0020_Type' rs:name='File Type'
+ rs:number='4'>
+<s:datatype dt:type='string' dt:maxLength='512' />
+</s:AttributeType>
+<s:AttributeType name='ows_Additional_x0020_Info'
+ rs:name='Additional Info' rs:number='5'>
+<s:datatype dt:type='string' dt:maxLength='512' />
+</s:AttributeType>
+<s:AttributeType name='ows_ContentType' rs:name='Content Type'
+ rs:number='6'>
+<s:datatype dt:type='string' dt:maxLength='512' />
+</s:AttributeType>
+<s:AttributeType name='ows_ID' rs:name='ID' rs:number='7'>
+<s:datatype dt:type='i4' dt:maxLength='4' />
+</s:AttributeType>
+<s:AttributeType name='ows_Modified' rs:name='Modified'
+ rs:number='8'>
+<s:datatype dt:type='datetime' dt:maxLength='8' />
+</s:AttributeType>
+<s:AttributeType name='ows_Created' rs:name='Created' rs:number='9'>
+<s:datatype dt:type='datetime' dt:maxLength='8' />
+</s:AttributeType>
+<s:AttributeType name='ows_Author' rs:name='Created By'
+ rs:number='10'>
+<s:datatype dt:type='string' dt:lookup='true' dt:maxLength='512' />
+</s:AttributeType>
+<s:AttributeType name='ows_Editor' rs:name='Modified By'
+ rs:number='11'>
+<s:datatype dt:type='string' dt:lookup='true' dt:maxLength='512' />
+</s:AttributeType>
+<s:AttributeType name='ows__HasCopyDestinations'
+ rs:name='Has Copy Destinations' rs:number='12'>
+<s:datatype dt:type='boolean' dt:maxLength='1' />
+</s:AttributeType>
+<s:AttributeType name='ows__CopySource' rs:name='Copy Source'
+ rs:number='13'>
+<s:datatype dt:type='string' dt:maxLength='1073741823' />
+</s:AttributeType>
+<s:AttributeType name='ows_owshiddenversion'
+ rs:name='owshiddenversion' rs:number='14'>
+<s:datatype dt:type='i4' dt:maxLength='4' />
+</s:AttributeType>
+<s:AttributeType name='ows_WorkflowVersion'
+ rs:name='Workflow Version' rs:number='15'>
+<s:datatype dt:type='i4' dt:maxLength='4' />
+</s:AttributeType>
+<s:AttributeType name='ows__UIVersion' rs:name='UI Version'
+ rs:number='16'>
+<s:datatype dt:type='i4' dt:maxLength='4' />
+</s:AttributeType>
+<s:AttributeType name='ows__UIVersionString' rs:name='Version'
+ rs:number='17'>
+<s:datatype dt:type='string' dt:maxLength='512' />
+</s:AttributeType>
+<s:AttributeType name='ows_Attachments' rs:name='Attachments'
+ rs:number='18'>
+<s:datatype dt:type='boolean' dt:maxLength='1' />
+</s:AttributeType>
+<s:AttributeType name='ows__ModerationStatus'
+ rs:name='Approval Status' rs:number='19'>
+<s:datatype dt:type='i4' dt:maxLength='4' />
+</s:AttributeType>
+<s:AttributeType name='ows_LinkTitleNoMenu' rs:name='Title'
+ rs:number='20'>
+<s:datatype dt:type='string' dt:maxLength='512' />
+</s:AttributeType>
+<s:AttributeType name='ows_LinkTitle' rs:name='Title'
+ rs:number='21'>
+<s:datatype dt:type='string' dt:maxLength='512' />
+</s:AttributeType>
+<s:AttributeType name='ows_SelectTitle' rs:name='Select'
+ rs:number='22'>
+<s:datatype dt:type='i4' dt:maxLength='4' />
+</s:AttributeType>
+<s:AttributeType name='ows_InstanceID' rs:name='Instance ID'
+ rs:number='23'>
+<s:datatype dt:type='i4' dt:maxLength='4' />
+</s:AttributeType>
+<s:AttributeType name='ows_Order' rs:name='Order' rs:number='24'>
+<s:datatype dt:type='float' dt:maxLength='8' />
+</s:AttributeType>
+<s:AttributeType name='ows_GUID' rs:name='GUID' rs:number='25'>
+<s:datatype dt:type='string' dt:maxLength='38' />
+</s:AttributeType>
+<s:AttributeType name='ows_WorkflowInstanceID'
+ rs:name='Workflow Instance ID' rs:number='26'>
+<s:datatype dt:type='string' dt:maxLength='38' />
+</s:AttributeType>
+<s:AttributeType name='ows_FileRef' rs:name='URL Path'
+ rs:number='27'>
+<s:datatype dt:type='string' dt:lookup='true' dt:maxLength='512' />
+</s:AttributeType>
+<s:AttributeType name='ows_FileDirRef' rs:name='Path'
+ rs:number='28'>
+<s:datatype dt:type='string' dt:lookup='true' dt:maxLength='512' />
+</s:AttributeType>
+<s:AttributeType name='ows_Last_x0020_Modified' rs:name='Modified'
+ rs:number='29'>
+<s:datatype dt:type='datetime' dt:lookup='true' dt:maxLength='8' />
+</s:AttributeType>
+<s:AttributeType name='ows_Created_x0020_Date' rs:name='Created'
+ rs:number='30'>
+<s:datatype dt:type='datetime' dt:lookup='true' dt:maxLength='8' />
+</s:AttributeType>
+<s:AttributeType name='ows_FSObjType' rs:name='Item Type'
+ rs:number='31'>
+<s:datatype dt:type='ui1' dt:lookup='true' dt:maxLength='4' />
+</s:AttributeType>
+<s:AttributeType name='ows_PermMask'
+ rs:name='Effective Permissions Mask' rs:number='32'>
+<s:datatype dt:type='string' dt:maxLength='1073741823' />
+</s:AttributeType>
+<s:AttributeType name='ows_FileLeafRef' rs:name='Name'
+ rs:number='33'>
+<s:datatype dt:type='string' dt:lookup='true' dt:maxLength='512' />
+</s:AttributeType>
+<s:AttributeType name='ows_UniqueId' rs:name='Unique Id'
+ rs:number='34'>
+<s:datatype dt:type='string' dt:lookup='true' dt:maxLength='38' />
+</s:AttributeType>
+<s:AttributeType name='ows_ProgId' rs:name='ProgId' rs:number='35'>
+<s:datatype dt:type='string' dt:lookup='true' dt:maxLength='512' />
+</s:AttributeType>
+<s:AttributeType name='ows_ScopeId' rs:name='ScopeId'
+ rs:number='36'>
+<s:datatype dt:type='string' dt:lookup='true' dt:maxLength='38' />
+</s:AttributeType>
+<s:AttributeType name='ows_HTML_x0020_File_x0020_Type'
+ rs:name='HTML File Type' rs:number='37'>
+<s:datatype dt:type='string' dt:maxLength='512' />
+</s:AttributeType>
+<s:AttributeType name='ows__EditMenuTableStart'
+ rs:name='Edit Menu Table Start' rs:number='38'>
+<s:datatype dt:type='string' dt:maxLength='512' />
+</s:AttributeType>
+<s:AttributeType name='ows__EditMenuTableEnd'
+ rs:name='Edit Menu Table End' rs:number='39'>
+<s:datatype dt:type='i4' dt:maxLength='4' />
+</s:AttributeType>
+<s:AttributeType name='ows_LinkFilenameNoMenu' rs:name='Name'
+ rs:number='40'>
+<s:datatype dt:type='string' dt:maxLength='512' />
+</s:AttributeType>
+<s:AttributeType name='ows_LinkFilename' rs:name='Name'
+ rs:number='41'>
+<s:datatype dt:type='string' dt:maxLength='512' />
+</s:AttributeType>
+<s:AttributeType name='ows_DocIcon' rs:name='Type' rs:number='42'>
+<s:datatype dt:type='string' dt:maxLength='512' />
+</s:AttributeType>
+<s:AttributeType name='ows_ServerUrl' rs:name='Server Relative URL'
+ rs:number='43'>
+<s:datatype dt:type='string' dt:maxLength='1073741823' />
+</s:AttributeType>
+<s:AttributeType name='ows_EncodedAbsUrl'
+ rs:name='Encoded Absolute URL' rs:number='44'>
+<s:datatype dt:type='string' dt:maxLength='1073741823' />
+</s:AttributeType>
+<s:AttributeType name='ows_BaseName' rs:name='File Name'
+ rs:number='45'>
+<s:datatype dt:type='string' dt:maxLength='1073741823' />
+</s:AttributeType>
+<s:AttributeType name='ows_MetaInfo' rs:name='Property Bag'
+ rs:number='46'>
+<s:datatype dt:type='int' dt:lookup='true' dt:maxLength='2147483646'
+ />
+</s:AttributeType>
+<s:AttributeType name='ows__Level' rs:name='Level' rs:number='47'>
+<s:datatype dt:type='ui1' dt:maxLength='1' />
+</s:AttributeType>
+<s:AttributeType name='ows__IsCurrentVersion'
+ rs:name='Is Current Version' rs:number='48'>
+<s:datatype dt:type='boolean' dt:maxLength='1' />
+</s:AttributeType>
+</s:ElementType></s:Schema><scopes>
+<scope id='{f9cb02b3-7f29-4cac-804f-ba6e14f1eb39}' >
+<permission memberid='1' mask='206292717568' />
+<permission memberid='3' mask='9223372036854775807' />
+<permission memberid='4' mask='756052856929' />
+<permission memberid='5' mask='1856436900591' />
+</scope>
+<scope id='{d3a69dbf-b1ee-4b8d-ad30-5f64b661bf41}' >
+<permission memberid='1' mask='206292717568' />
+<permission memberid='3' mask='9223372036854775807' />
+</scope>
+</scopes>
+<rs:data ItemCount="4">
+<z:row ows_ContentTypeId='0x0100442459C9B5E59C4F9CFDC789A220FC92'
+ ows_Title='Outside Folder' ows_ContentType='Item' ows_ID='3'
+ ows_Modified='2012-05-01T22:14:17Z'
+ ows_Created='2012-05-01T22:14:17Z'
+ ows_Author='1073741823;#System Account'
+ ows_Editor='1073741823;#System Account' ows_owshiddenversion='1'
+ ows_WorkflowVersion='1' ows__UIVersion='512'
+ ows__UIVersionString='1.0' ows_Attachments='0'
+ ows__ModerationStatus='0' ows_LinkTitleNoMenu='Outside Folder'
+ ows_LinkTitle='Outside Folder' ows_SelectTitle='3'
+ ows_Order='300.000000000000'
+ ows_GUID='{10E17D90-375F-47A5-94EE-6E75A3EF0E2D}'
+ ows_FileRef='3;#sites/SiteCollection/Lists/Custom List/3_.000'
+ ows_FileDirRef='3;#sites/SiteCollection/Lists/Custom List'
+ ows_Last_x0020_Modified='3;#2012-05-01T22:14:17Z'
+ ows_Created_x0020_Date='3;#2012-05-01T22:14:17Z'
+ ows_FSObjType='3;#0' ows_PermMask='0x7fffffffffffffff'
+ ows_FileLeafRef='3;#3_.000'
+ ows_UniqueId='3;#{FD87F56D-DBE1-4EB1-8379-0B83082615E0}'
+ ows_ProgId='3;#'
+ ows_ScopeId='3;#{F9CB02B3-7F29-4CAC-804F-BA6E14F1EB39}'
+ ows__EditMenuTableStart='3_.000' ows__EditMenuTableEnd='3'
+ ows_LinkFilenameNoMenu='3_.000' ows_LinkFilename='3_.000'
+ ows_ServerUrl='/sites/SiteCollection/Lists/Custom List/3_.000'
+ ows_EncodedAbsUrl='http://w2k2r2-sp07-2.gdc-psl.net:2900/sites/SiteCollection/Lists/Custom%20List/3_.000' ows_BaseName='3_'
+ ows_MetaInfo='3;#' ows__Level='1' ows__IsCurrentVersion='1'
+ ows_ServerRedirected='0'/>
+<z:row ows_ContentTypeId='0x01200077DD29735CE61148A73F540231F24430'
+ ows_Title='Test Folder' ows_ContentType='Folder' ows_ID='1'
+ ows_Modified='2012-05-01T22:13:47Z'
+ ows_Created='2012-05-01T22:13:47Z'
+ ows_Author='1073741823;#System Account'
+ ows_Editor='1073741823;#System Account' ows_owshiddenversion='1'
+ ows_WorkflowVersion='1' ows__UIVersion='512'
+ ows__UIVersionString='1.0' ows_Attachments='0'
+ ows__ModerationStatus='0' ows_LinkTitleNoMenu='Test Folder'
+ ows_LinkTitle='Test Folder' ows_SelectTitle='1'
+ ows_Order='100.000000000000'
+ ows_GUID='{C099F4ED-6E96-4A00-B94A-EE443061EE49}'
+ ows_FileRef='1;#sites/SiteCollection/Lists/Custom List/Test Folder'
+ ows_FileDirRef='1;#sites/SiteCollection/Lists/Custom List'
+ ows_Last_x0020_Modified='1;#2012-05-02T21:13:17Z'
+ ows_Created_x0020_Date='1;#2012-05-01T22:13:47Z'
+ ows_FSObjType='1;#1' ows_PermMask='0x7fffffffffffffff'
+ ows_FileLeafRef='1;#Test Folder'
+ ows_UniqueId='1;#{CE33B6B7-9F5E-4224-8D77-9C42E6290FE6}'
+ ows_ProgId='1;#'
+ ows_ScopeId='1;#{D3A69DBF-B1EE-4B8D-AD30-5F64B661BF41}'
+ ows__EditMenuTableStart='Test Folder' ows__EditMenuTableEnd='1'
+ ows_LinkFilenameNoMenu='Test Folder' ows_LinkFilename='Test Folder'
+ ows_ServerUrl='/sites/SiteCollection/Lists/Custom List/Test Folder'
+ ows_EncodedAbsUrl='http://w2k2r2-sp07-2.gdc-psl.net:2900/sites/SiteCollection/Lists/Custom%20List/Test%20Folder'
+ ows_BaseName='Test Folder' ows_MetaInfo='1;#' ows__Level='1'
+ ows__IsCurrentVersion='1' ows_ServerRedirected='0'/>
+</rs:data>
+</xml></Folder>

@@ -1,0 +1,42 @@
+<List>
+<Metadata ID="{6f33949a-b3ff-4b0c-ba99-93cb518ac2c0}"
+ LastModified="2012-05-04 21:24:32Z" Title="Custom List"
+ DefaultTitle="True" Description="" BaseType="GenericList"
+ BaseTemplate="GenericList"
+ DefaultViewUrl="/sites/SiteCollection/Lists/Custom List/AllItems.aspx"
+ DefaultViewItemUrl="/sites/SiteCollection/Lists/Custom List/DispForm.aspx"
+ RootFolder="Lists/Custom List" Author="System Account"
+ ItemCount="7" ReadSecurity="1" AllowAnonymousAccess="False"
+ AnonymousViewListItems="False" AnonymousPermMask="0"
+ CRC="1334405648" NoIndex="False"
+ ScopeID="{f9cb02b3-7f29-4cac-804f-ba6e14f1eb39}" />
+<ACL><permissions>
+<permission memberid='1' mask='206292717568' />
+<permission memberid='3' mask='9223372036854775807' />
+<permission memberid='4' mask='756052856929' />
+<permission memberid='5' mask='1856436900591' />
+</permissions></ACL>
+<Views>
+<View URL="Lists/Custom List/AllItems.aspx"
+ ID="{18b67349-78bd-49a2-ba1a-cdbc048adf0b}" Title="All Items"
+ />
+</Views>
+<Schema>
+<Field Name="Title" Title="Title" Type="Text" />
+<Field Name="Additional_x0020_Info" Title="Additional Info"
+ Type="Text" />
+<Field Name="ContentType" Title="Content Type" Type="Choice"
+ />
+<Field Name="ID" Title="ID" Type="Counter" />
+<Field Name="Modified" Title="Modified" Type="DateTime" />
+<Field Name="Created" Title="Created" Type="DateTime" />
+<Field Name="Author" Title="Created By" Type="User" />
+<Field Name="Editor" Title="Modified By" Type="User" />
+<Field Name="_UIVersionString" Title="Version" Type="Text" />
+<Field Name="Attachments" Title="Attachments"
+ Type="Attachments" />
+<Field Name="Edit" Title="Edit" Type="Computed" />
+<Field Name="LinkTitleNoMenu" Title="Title" Type="Computed" />
+<Field Name="LinkTitle" Title="Title" Type="Computed" />
+<Field Name="DocIcon" Title="Type" Type="Computed" />
+</Schema></List>
