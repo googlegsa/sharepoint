@@ -726,7 +726,7 @@ public class SharePointAdaptor extends AbstractAdaptor
       // Check if anonymous access is denied by web application policy
       // only if anonymous access is enabled for web as checking web application
       // policy is additional web service call.
-      // TODO : Add caching for web application policy.
+      // TODO(ejona): Add caching for web application policy.
       if (allowAnonymousAccess) {
         allowAnonymousAccess 
             = !isDenyAnonymousAcessOnVirtualServer(getContentVirtualServer());
@@ -1020,7 +1020,7 @@ public class SharePointAdaptor extends AbstractAdaptor
 
     private boolean isAllowAnonymousReadForWeb(Web w) {
       boolean allowAnonymousRead
-          =(w.getMetadata().getAllowAnonymousAccess() == TrueFalseType.TRUE)
+          = (w.getMetadata().getAllowAnonymousAccess() == TrueFalseType.TRUE)
           && (w.getMetadata().getAnonymousViewListItems() == TrueFalseType.TRUE)
           && isPermitted(
             w.getMetadata().getAnonymousPermMask().longValue(), LIST_ITEM_MASK);
@@ -1079,7 +1079,7 @@ public class SharePointAdaptor extends AbstractAdaptor
       // Check if anonymous access is denied by web application policy
       // only if anonymous access is enabled for web as checking web application
       // policy is additional web service call.
-      // TODO : Add caching for web application policy.
+      // TODO(ejona): Add caching for web application policy.
       if (allowAnonymousAccess) {
         allowAnonymousAccess 
             = !isDenyAnonymousAcessOnVirtualServer(getContentVirtualServer());
