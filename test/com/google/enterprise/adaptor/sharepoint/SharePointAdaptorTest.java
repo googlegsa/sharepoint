@@ -19,6 +19,7 @@ import static com.google.enterprise.adaptor.sharepoint.SharePointAdaptor.HttpCli
 import static com.google.enterprise.adaptor.sharepoint.SharePointAdaptor.SiteDataFactory;
 import static org.junit.Assert.*;
 
+import com.google.common.base.Objects;
 import com.google.common.util.concurrent.Callables;
 import com.google.enterprise.adaptor.Acl;
 import com.google.enterprise.adaptor.Config;
@@ -99,6 +100,83 @@ import javax.xml.ws.WebServiceException;
  * Test cases for {@link SharePointAdaptor}.
  */
 public class SharePointAdaptorTest {
+  private static final String VS_ENDPOINT
+      = "http://localhost:1/_vti_bin/SiteData.asmx";
+  private static final ContentExchange VS_CONTENT_EXCHANGE
+      = new ContentExchange(ObjectType.VIRTUAL_SERVER, null, null, null,
+          true, false, null, loadTestString("vs.xml"));
+  private static final ContentExchange CD_CONTENT_EXCHANGE
+      = new ContentExchange(ObjectType.CONTENT_DATABASE,
+          "{4fb7dea1-2912-4927-9eda-1ea2f0977cf8}", null, null, true, false,
+          null, loadTestString("cd.xml"));
+  private static final String SITES_SITECOLLECTION_ENDPOINT
+      = "http://localhost:1/sites/SiteCollection/_vti_bin/SiteData.asmx";
+  private static final SiteAndWebExchange SITES_SITECOLLECTION_SAW_EXCHANGE
+      = new SiteAndWebExchange("http://localhost:1/sites/SiteCollection", 0,
+          "http://localhost:1/sites/SiteCollection",
+          "http://localhost:1/sites/SiteCollection");
+  private static final URLSegmentsExchange SITES_SITECOLLECTION_URLSEG_EXCHANGE
+      = new URLSegmentsExchange("http://localhost:1/sites/SiteCollection",
+          true, null, null, null, null);
+  private static final ContentExchange SITES_SITECOLLECTION_S_CONTENT_EXCHANGE
+      = new ContentExchange(ObjectType.SITE, null, null, null, true, false,
+          null, loadTestString("sites-SiteCollection-s.xml"));
+  private static final ContentExchange SITES_SITECOLLECTION_SC_CONTENT_EXCHANGE
+      = new ContentExchange(ObjectType.SITE_COLLECTION, null, null, null,
+          true, false, null, loadTestString("sites-SiteCollection-sc.xml"));
+  private static final URLSegmentsExchange
+      SITES_SITECOLLECTION_LISTS_CUSTOMLIST_URLSEG_EXCHANGE
+      = new URLSegmentsExchange(
+          "http://localhost:1/sites/SiteCollection/Lists/Custom List"
+            + "/AllItems.aspx",
+          true, null, null, "{6F33949A-B3FF-4B0C-BA99-93CB518AC2C0}", null);
+  private static final ContentExchange
+      SITES_SITECOLLECTION_LISTS_CUSTOMLIST_L_CONTENT_EXCHANGE
+      = new ContentExchange(ObjectType.LIST,
+          "{6F33949A-B3FF-4B0C-BA99-93CB518AC2C0}", null, null, false, false,
+          null, loadTestString("sites-SiteCollection-Lists-CustomList-l.xml"));
+  private static final ContentExchange
+      SITES_SITECOLLECTION_LISTS_CUSTOMLIST_F_CONTENT_EXCHANGE
+      = new ContentExchange(ObjectType.FOLDER,
+          "{6F33949A-B3FF-4B0C-BA99-93CB518AC2C0}", "", null, true, false,
+          null, loadTestString("sites-SiteCollection-Lists-CustomList-f.xml"));
+  private static final URLSegmentsExchange
+      SITES_SITECOLLECTION_LISTS_CUSTOMLIST_1_URLSEG_EXCHANGE
+      = new URLSegmentsExchange(
+          "http://localhost:1/sites/SiteCollection/Lists/Custom List"
+            + "/Test Folder",
+          true, null, null, "{6F33949A-B3FF-4B0C-BA99-93CB518AC2C0}", "1");
+  private static final URLSegmentsExchange
+      SITES_SITECOLLECTION_LISTS_CUSTOMLIST_2_URLSEG_EXCHANGE
+      = new URLSegmentsExchange(
+          "http://localhost:1/sites/SiteCollection/Lists/Custom List"
+            + "/Test Folder/2_.000",
+          true, null, null, "{6F33949A-B3FF-4B0C-BA99-93CB518AC2C0}", "2");
+  private static final ContentExchange
+      SITES_SITECOLLECTION_LISTS_CUSTOMLIST_1_LI_CONTENT_EXCHANGE
+      = new ContentExchange(ObjectType.LIST_ITEM,
+          "{6F33949A-B3FF-4B0C-BA99-93CB518AC2C0}", "", "1", false, false,
+          null,
+          loadTestString("sites-SiteCollection-Lists-CustomList-1-li.xml"));
+  private static final ContentExchange
+      SITES_SITECOLLECTION_LISTS_CUSTOMLIST_1_F_CONTENT_EXCHANGE
+      = new ContentExchange(ObjectType.FOLDER,
+          "{6F33949A-B3FF-4B0C-BA99-93CB518AC2C0}", "Test Folder", null,
+          true, false, null,
+          loadTestString("sites-SiteCollection-Lists-CustomList-1-f.xml"));
+  private static final ContentExchange
+      SITES_SITECOLLECTION_LISTS_CUSTOMLIST_2_LI_CONTENT_EXCHANGE
+      = new ContentExchange(ObjectType.LIST_ITEM,
+          "{6F33949A-B3FF-4B0C-BA99-93CB518AC2C0}", "", "2", false, false,
+          null,
+          loadTestString("sites-SiteCollection-Lists-CustomList-2-li.xml"));
+  private static final ContentExchange
+      SITES_SITECOLLECTION_LISTS_CUSTOMLIST_2_A_CONTENT_EXCHANGE
+      = new ContentExchange(ObjectType.LIST_ITEM_ATTACHMENTS,
+          "{6F33949A-B3FF-4B0C-BA99-93CB518AC2C0}", "", "2", true, false,
+          null,
+          loadTestString("sites-SiteCollection-Lists-CustomList-2-a.xml"));
+
   private final Charset charset = Charset.forName("UTF-8");
   private Config config;
   private SharePointAdaptor adaptor;
@@ -210,21 +288,12 @@ public class SharePointAdaptorTest {
 
   @Test
   public void testGetDocContentWrongServer() throws IOException {
-    class WrongServerSiteData extends UnsupportedSiteData {
-      @Override
-      public void getSiteAndWeb(String strUrl, Holder<Long> getSiteAndWebResult,
-          Holder<String> strSite, Holder<String> strWeb) {
-        assertEquals("http://wronghost:1/", strUrl);
+    SiteDataFactory siteDataFactory = MockSiteDataFactory.blank()
+        .endpoint(VS_ENDPOINT, MockSiteData.blank()
+            .register(new SiteAndWebExchange(
+                "http://wronghost:1/", 1, null, null)));
 
-        setValue(getSiteAndWebResult, 1L);
-        setValue(strSite, null);
-        setValue(strWeb, null);
-      }
-    }
-
-    adaptor = new SharePointAdaptor(
-        new SingleSiteDataFactory(new WrongServerSiteData(),
-          "http://localhost:1/_vti_bin/SiteData.asmx"),
+    adaptor = new SharePointAdaptor(siteDataFactory,
         new UnsupportedUserGroupFactory(),
         new UnsupportedHttpClient(), executor);
     adaptor.init(new MockAdaptorContext(config, null));
@@ -239,35 +308,14 @@ public class SharePointAdaptorTest {
   @Test
   public void testGetDocContentWrongPage() throws IOException {
     final String wrongPage = "http://localhost:1/wrongPage";
-    class WrongPageSiteData extends UnsupportedSiteData {
-      @Override
-      public void getSiteAndWeb(String strUrl, Holder<Long> getSiteAndWebResult,
-          Holder<String> strSite, Holder<String> strWeb) {
-        assertEquals(wrongPage, strUrl);
+    SiteDataFactory siteDataFactory = MockSiteDataFactory.blank()
+        .endpoint(VS_ENDPOINT, MockSiteData.blank()
+            .register(new SiteAndWebExchange(
+                wrongPage, 0, "http://localhost:1", "http://localhost:1"))
+            .register(new URLSegmentsExchange(
+                wrongPage, false, null, null, null, null)));
 
-        setValue(getSiteAndWebResult, 0L);
-        setValue(strSite, "http://localhost:1");
-        setValue(strWeb, "http://localhost:1");
-      }
-
-      @Override
-      public void getURLSegments(String strURL,
-          Holder<Boolean> getURLSegmentsResult, Holder<String> strWebID,
-          Holder<String> strBucketID, Holder<String> strListID,
-          Holder<String> strItemID) {
-        assertEquals(wrongPage, strURL);
-
-        setValue(getURLSegmentsResult, false);
-        setValue(strWebID, null);
-        setValue(strBucketID, null);
-        setValue(strListID, null);
-        setValue(strItemID, null);
-      }
-    }
-
-    adaptor = new SharePointAdaptor(
-        new SingleSiteDataFactory(new WrongPageSiteData(),
-          "http://localhost:1/_vti_bin/SiteData.asmx"),
+    adaptor = new SharePointAdaptor(siteDataFactory,
         new UnsupportedUserGroupFactory(), new UnsupportedHttpClient(),
         executor);
     adaptor.init(new MockAdaptorContext(config, null));
@@ -280,36 +328,12 @@ public class SharePointAdaptorTest {
 
   @Test
   public void testGetDocContentVirtualServer() throws IOException {
-    final String getContentVirtualServer
-        = loadTestString("vs.xml");
-    final String getContentContentDatabase
-        = loadTestString("cd.xml");
-    class VirtualServerSiteData extends UnsupportedSiteData {
-      @Override
-      public void getContent(ObjectType objectType, String objectId,
-          String folderUrl, String itemId, boolean retrieveChildItems,
-          boolean securityOnly, Holder<String> lastItemIdOnPage,
-          Holder<String> getContentResult) {
-        setValue(lastItemIdOnPage, null);
-        if (ObjectType.VIRTUAL_SERVER.equals(objectType)) {
-          assertEquals(true, retrieveChildItems);
-          assertEquals(false, securityOnly);
-          setValue(getContentResult, getContentVirtualServer);
-        } else if (ObjectType.CONTENT_DATABASE.equals(objectType)) {
-          assertEquals(true, retrieveChildItems);
-          assertEquals(false, securityOnly);
-          assertEquals("{4fb7dea1-2912-4927-9eda-1ea2f0977cf8}", objectId);
-          setValue(getContentResult, getContentContentDatabase);
-        } else {
-          fail("Unknown object type: " + objectType);
-          throw new AssertionError();
-        }
-      }
-    }
+    SiteDataFactory siteDataFactory = MockSiteDataFactory.blank()
+        .endpoint(VS_ENDPOINT, MockSiteData.blank()
+            .register(VS_CONTENT_EXCHANGE)
+            .register(CD_CONTENT_EXCHANGE));
 
-    adaptor = new SharePointAdaptor(
-        new SingleSiteDataFactory(new VirtualServerSiteData(),
-            "http://localhost:1/_vti_bin/SiteData.asmx"),
+    adaptor = new SharePointAdaptor(siteDataFactory,
         new UnsupportedUserGroupFactory(), new UnsupportedHttpClient(),
         executor);
     adaptor.init(new MockAdaptorContext(config, null));
@@ -340,72 +364,16 @@ public class SharePointAdaptorTest {
 
   @Test
   public void testGetDocContentSiteCollection() throws IOException {
-    final String getContentSiteCollection
-        = loadTestString("sites-SiteCollection-sc.xml");
-    final String getContentSite
-        = loadTestString("sites-SiteCollection-s.xml");
-    class SiteCollectionSiteData extends UnsupportedSiteData {
-      private final String endpoint;
+    SiteDataFactory siteDataFactory = MockSiteDataFactory.blank()
+        .endpoint(VS_ENDPOINT, MockSiteData.blank()
+            .register(SITES_SITECOLLECTION_SAW_EXCHANGE))
+        .endpoint(SITES_SITECOLLECTION_ENDPOINT, MockSiteData.blank()
+            .register(SITES_SITECOLLECTION_URLSEG_EXCHANGE)
+            .register(SITES_SITECOLLECTION_S_CONTENT_EXCHANGE)
+            .register(SITES_SITECOLLECTION_SC_CONTENT_EXCHANGE));
 
-      public SiteCollectionSiteData(String endpoint) {
-        this.endpoint = endpoint;
-      }
-
-      @Override
-      public void getSiteAndWeb(String strUrl, Holder<Long> getSiteAndWebResult,
-          Holder<String> strSite, Holder<String> strWeb) {
-        assertEquals(endpoint, "http://localhost:1/_vti_bin/SiteData.asmx");
-        assertEquals("http://localhost:1/sites/SiteCollection", strUrl);
-        setValue(getSiteAndWebResult, 0L);
-        setValue(strSite, "http://localhost:1/sites/SiteCollection");
-        setValue(strWeb, "http://localhost:1/sites/SiteCollection");
-      }
-
-      @Override
-      public void getURLSegments(String strURL,
-          Holder<Boolean> getURLSegmentsResult, Holder<String> strWebID,
-          Holder<String> strBucketID, Holder<String> strListID,
-          Holder<String> strItemID) {
-        assertEquals(endpoint,
-            "http://localhost:1/sites/SiteCollection/_vti_bin/SiteData.asmx");
-        assertEquals("http://localhost:1/sites/SiteCollection", strURL);
-
-        setValue(getURLSegmentsResult, true);
-        setValue(strWebID, null);
-        setValue(strBucketID, null);
-        setValue(strListID, null);
-        setValue(strItemID, null);
-      }
-
-      @Override
-      public void getContent(ObjectType objectType, String objectId,
-          String folderUrl, String itemId, boolean retrieveChildItems,
-          boolean securityOnly, Holder<String> lastItemIdOnPage,
-          Holder<String> getContentResult) {
-        if (objectType.equals(ObjectType.SITE)) {
-          assertEquals(true, retrieveChildItems);
-          assertEquals(false, securityOnly);
-          assertEquals(null, objectId);
-          setValue(lastItemIdOnPage, null);
-          setValue(getContentResult, getContentSite);
-        } else if (objectType.equals(ObjectType.SITE_COLLECTION)) {
-          assertEquals(true, retrieveChildItems);
-          assertEquals(false, securityOnly);
-          assertEquals(null, objectId);
-          setValue(lastItemIdOnPage, null);
-          setValue(getContentResult, getContentSiteCollection);
-        } else {
-          fail("Unexpected objectType: " + objectType);
-        }
-      }
-    }
-
-    adaptor = new SharePointAdaptor(new SiteDataFactory() {
-          @Override
-          public SiteDataSoap newSiteData(String endpoint) {
-            return new SiteCollectionSiteData(endpoint);
-          }
-        }, new UnsupportedUserGroupFactory(), new UnsupportedHttpClient(),
+    adaptor = new SharePointAdaptor(siteDataFactory,
+        new UnsupportedUserGroupFactory(), new UnsupportedHttpClient(),
         executor);
     adaptor.init(new MockAdaptorContext(config, null));
     ByteArrayOutputStream baos = new ByteArrayOutputStream();
@@ -449,59 +417,11 @@ public class SharePointAdaptorTest {
 
   @Test
   public void testGetDocContentList() throws IOException {
-    final String getContentListResponse
-        = loadTestString("sites-SiteCollection-Lists-CustomList-l.xml");
-    final String getContentSite
-        = loadTestString("sites-SiteCollection-s.xml");
-    final String getContentFolderResponse
-        = loadTestString("sites-SiteCollection-Lists-CustomList-f.xml");
-    SiteDataSoap siteData = new UnsupportedSiteData() {
-      @Override
-      public void getURLSegments(String strURL,
-          Holder<Boolean> getURLSegmentsResult, Holder<String> strWebID,
-          Holder<String> strBucketID, Holder<String> strListID,
-          Holder<String> strItemID) {
-        assertEquals("http://localhost:1/sites/SiteCollection/Lists/Custom List"
-            + "/AllItems.aspx", strURL);
-        setValue(getURLSegmentsResult, true);
-        setValue(strWebID, null);
-        setValue(strBucketID, null);
-        setValue(strListID, "{6F33949A-B3FF-4B0C-BA99-93CB518AC2C0}");
-        setValue(strItemID, null);
-      }
-
-      @Override
-      public void getContent(ObjectType objectType, String objectId,
-          String folderUrl, String itemId, boolean retrieveChildItems,
-          boolean securityOnly, Holder<String> lastItemIdOnPage,
-          Holder<String> getContentResult) {
-        setValue(lastItemIdOnPage, null);
-        if (ObjectType.LIST.equals(objectType)) {
-          assertEquals(false, securityOnly);
-          assertEquals("{6F33949A-B3FF-4B0C-BA99-93CB518AC2C0}", objectId);
-          assertEquals(null, folderUrl);
-          assertEquals(null, itemId);
-          setValue(getContentResult, getContentListResponse);
-        } else if (ObjectType.SITE.equals(objectType)) {
-          assertEquals(false, securityOnly);
-          assertEquals(null, objectId);
-          assertEquals(null, folderUrl);
-          assertEquals(null, itemId);
-          setValue(getContentResult, getContentSite);
-        } else if (ObjectType.FOLDER.equals(objectType)) {
-          assertEquals(false, securityOnly);
-          assertEquals("{6F33949A-B3FF-4B0C-BA99-93CB518AC2C0}", objectId);
-          assertEquals("", folderUrl);
-          assertEquals(null, itemId);
-          assertEquals(null, lastItemIdOnPage.value);
-          setValue(getContentResult, getContentFolderResponse);
-          setValue(lastItemIdOnPage, null);
-        } else {
-          fail("Unexpected object type: " + objectType);
-          throw new AssertionError();
-        }
-      }
-    };
+    SiteDataSoap siteData = MockSiteData.blank()
+        .register(SITES_SITECOLLECTION_LISTS_CUSTOMLIST_URLSEG_EXCHANGE)
+        .register(SITES_SITECOLLECTION_LISTS_CUSTOMLIST_L_CONTENT_EXCHANGE)
+        .register(SITES_SITECOLLECTION_LISTS_CUSTOMLIST_F_CONTENT_EXCHANGE)
+        .register(SITES_SITECOLLECTION_S_CONTENT_EXCHANGE);
     final MemberIdMapping memberIdMapping;
     {
       Map<Integer, String> users = new HashMap<Integer, String>();
@@ -551,63 +471,15 @@ public class SharePointAdaptorTest {
 
   @Test
   public void testGetDocContentAttachment() throws IOException {
+    SiteDataSoap siteData = MockSiteData.blank()
+        .register(SITES_SITECOLLECTION_LISTS_CUSTOMLIST_URLSEG_EXCHANGE)
+        .register(SITES_SITECOLLECTION_LISTS_CUSTOMLIST_L_CONTENT_EXCHANGE)
+        .register(SITES_SITECOLLECTION_LISTS_CUSTOMLIST_2_LI_CONTENT_EXCHANGE)
+        .register(SITES_SITECOLLECTION_LISTS_CUSTOMLIST_2_A_CONTENT_EXCHANGE);
     final String site = "http://localhost:1/sites/SiteCollection";
     final String attachmentId = site + "/Lists/Custom List/Attachments/2/104600"
         + "0.pdf";
-    final String listId = site + "/Lists/Custom List/AllItems.aspx";
-    final String listGuid = "{6F33949A-B3FF-4B0C-BA99-93CB518AC2C0}";
-    final String getContentListItemAttachments
-        = loadTestString("sites-SiteCollection-Lists-CustomList-2-a.xml");
-    final String getContentListItemResponse
-        = loadTestString("sites-SiteCollection-Lists-CustomList-2-li.xml");
-    final String getContentListResponse
-        = loadTestString("sites-SiteCollection-Lists-CustomList-l.xml");
-    SiteDataSoap siteData = new UnsupportedSiteData() {
-      @Override
-      public void getURLSegments(String strURL,
-          Holder<Boolean> getURLSegmentsResult, Holder<String> strWebID,
-          Holder<String> strBucketID, Holder<String> strListID,
-          Holder<String> strItemID) {
-        assertEquals(listId, strURL);
 
-        setValue(getURLSegmentsResult, true);
-        setValue(strWebID, null);
-        setValue(strBucketID, null);
-        setValue(strListID, listGuid);
-        setValue(strItemID, null);
-      }
-
-      @Override
-      public void getContent(ObjectType objectType, String objectId,
-          String folderUrl, String itemId, boolean retrieveChildItems,
-          boolean securityOnly, Holder<String> lastItemIdOnPage,
-          Holder<String> getContentResult) {
-        if (ObjectType.LIST_ITEM_ATTACHMENTS.equals(objectType)) {
-          assertEquals(listGuid, objectId);
-          assertEquals("", folderUrl);
-          assertEquals("2", itemId);
-
-          setValue(lastItemIdOnPage, null);
-          setValue(getContentResult, getContentListItemAttachments);
-        } else if (ObjectType.LIST_ITEM.equals(objectType)) {
-          assertEquals(false, securityOnly);
-          assertEquals(listGuid, objectId);
-          assertEquals("", folderUrl);
-          assertEquals("2", itemId);
-
-          setValue(lastItemIdOnPage, null);
-          setValue(getContentResult, getContentListItemResponse);
-        } else if (objectType.equals(ObjectType.LIST)) {
-          assertEquals(false, retrieveChildItems);
-          assertEquals(false, securityOnly);
-          assertEquals(listGuid, objectId);
-          setValue(getContentResult, getContentListResponse);
-        } else {
-          fail("Unexpected object type: " + objectType);
-          throw new AssertionError();
-        }
-      }
-    };
     final String goldenContents = "attachment contents";
     final String goldenContentType = "fake/type";
     adaptor = new SharePointAdaptor(new UnsupportedSiteDataFactory(),
@@ -653,71 +525,13 @@ public class SharePointAdaptorTest {
 
   @Test
   public void testGetDocContentListItem() throws IOException {
-    final String getContentListResponse
-        = loadTestString("sites-SiteCollection-Lists-CustomList-l.xml");
-    final String getContentListItemResponse
-        = loadTestString("sites-SiteCollection-Lists-CustomList-2-li.xml");
-    final String getContentFolderResponse
-        = loadTestString("sites-SiteCollection-Lists-CustomList-1-li.xml");
-    final String getContentListItemAttachmentsResponse
-        = loadTestString("sites-SiteCollection-Lists-CustomList-2-a.xml");
-    SiteDataSoap siteData = new UnsupportedSiteData() {
-      @Override
-      public void getURLSegments(String strURL,
-          Holder<Boolean> getURLSegmentsResult, Holder<String> strWebID,
-          Holder<String> strBucketID, Holder<String> strListID,
-          Holder<String> strItemID) {
-        if (("http://localhost:1/sites/SiteCollection/Lists/Custom List"
-            + "/Test Folder/2_.000").equals(strURL)) {
-          setValue(getURLSegmentsResult, true);
-          setValue(strWebID, null);
-          setValue(strBucketID, null);
-          setValue(strListID, "{6F33949A-B3FF-4B0C-BA99-93CB518AC2C0}");
-          setValue(strItemID, "2");
-        } else if (("http://localhost:1/sites/SiteCollection/Lists/Custom List"
-            + "/Test Folder").equals(strURL)) {
-          setValue(getURLSegmentsResult, true);
-          setValue(strWebID, null);
-          setValue(strBucketID, null);
-          setValue(strListID, "{6F33949A-B3FF-4B0C-BA99-93CB518AC2C0}");
-          setValue(strItemID, "1");
-        } else {
-          fail("Unexpected strUrl: " + strURL);
-        }
-      }
-
-      @Override
-      public void getContent(ObjectType objectType, String objectId,
-          String folderUrl, String itemId, boolean retrieveChildItems,
-          boolean securityOnly, Holder<String> lastItemIdOnPage,
-          Holder<String> getContentResult) {
-        setValue(lastItemIdOnPage, null);
-        if (ObjectType.LIST_ITEM.equals(objectType)) {
-          if ("1".equals(itemId)) {
-            assertEquals(false, securityOnly);
-            assertEquals("{6F33949A-B3FF-4B0C-BA99-93CB518AC2C0}", objectId);
-            setValue(getContentResult, getContentFolderResponse);
-          } else if ("2".equals(itemId)) {
-            assertEquals(false, securityOnly);
-            assertEquals("{6F33949A-B3FF-4B0C-BA99-93CB518AC2C0}", objectId);
-            setValue(getContentResult, getContentListItemResponse);
-          }
-        } else if (ObjectType.LIST_ITEM_ATTACHMENTS.equals(objectType)) {
-          assertEquals(false, securityOnly);
-          assertEquals("{6F33949A-B3FF-4B0C-BA99-93CB518AC2C0}", objectId);
-          assertEquals("2", itemId);
-          setValue(getContentResult, getContentListItemAttachmentsResponse);
-        } else if (objectType.equals(ObjectType.LIST)) {
-          assertEquals(false, retrieveChildItems);
-          assertEquals(false, securityOnly);
-          assertEquals("{6F33949A-B3FF-4B0C-BA99-93CB518AC2C0}", objectId);
-          setValue(getContentResult, getContentListResponse);
-        } else {
-          fail("Unexpected object type: " + objectType);
-          throw new AssertionError();
-        }
-      }
-    };
+    SiteDataSoap siteData = MockSiteData.blank()
+        .register(SITES_SITECOLLECTION_LISTS_CUSTOMLIST_1_URLSEG_EXCHANGE)
+        .register(SITES_SITECOLLECTION_LISTS_CUSTOMLIST_2_URLSEG_EXCHANGE)
+        .register(SITES_SITECOLLECTION_LISTS_CUSTOMLIST_L_CONTENT_EXCHANGE)
+        .register(SITES_SITECOLLECTION_LISTS_CUSTOMLIST_1_LI_CONTENT_EXCHANGE)
+        .register(SITES_SITECOLLECTION_LISTS_CUSTOMLIST_2_LI_CONTENT_EXCHANGE)
+        .register(SITES_SITECOLLECTION_LISTS_CUSTOMLIST_2_A_CONTENT_EXCHANGE);
     final MemberIdMapping memberIdMapping;
     {
       Map<Integer, String> users = new HashMap<Integer, String>();
@@ -812,84 +626,27 @@ public class SharePointAdaptorTest {
 
   @Test
   public void testGetDocContentListItemAnonymousAccess() throws IOException {
-    final String getContentListResponse
-        = loadTestString("sites-SiteCollection-Lists-CustomList-l.xml")
-        .replace(
-            "AllowAnonymousAccess=\"False\"", "AllowAnonymousAccess=\"True\"")
-        .replace("AnonymousViewListItems=\"False\"",
-            "AnonymousViewListItems=\"True\"")
-        .replace(
-            "AnonymousPermMask=\"0\"", "AnonymousPermMask=\"68719546465\"");
-    final String getContentSite = loadTestString("sites-SiteCollection-s.xml")
-        .replace("AnonymousPermMask=\"0\"", "AnonymousPermMask=\"65536\"");
-
-    final String getContentListItemResponse
-        = loadTestString("sites-SiteCollection-Lists-CustomList-2-li.xml")
-        .replace("ows_Attachments='1'", "ows_Attachments='0'")
-        .replace("ows_ScopeId='2;#{2E29615C-59E7-493B-B08A-3642949CC069}'",
-             "ows_ScopeId='2;#{f9cb02b3-7f29-4cac-804f-ba6e14f1eb39}'");
-
-    final String getContentVirtualServer = loadTestString("vs.xml");
-
-    SiteDataSoap siteData = new UnsupportedSiteData() {
-      @Override
-      public void getURLSegments(String strURL,
-          Holder<Boolean> getURLSegmentsResult, Holder<String> strWebID,
-          Holder<String> strBucketID, Holder<String> strListID,
-          Holder<String> strItemID) {
-        if (("http://localhost:1/sites/SiteCollection/Lists/Custom List"
-            + "/Test Folder/2_.000").equals(strURL)) {
-          setValue(getURLSegmentsResult, true);
-          setValue(strWebID, null);
-          setValue(strBucketID, null);
-          setValue(strListID, "{6F33949A-B3FF-4B0C-BA99-93CB518AC2C0}");
-          setValue(strItemID, "2");
-        } else if (("http://localhost:1/sites/SiteCollection/Lists/Custom List"
-            + "/Test Folder").equals(strURL)) {
-          setValue(getURLSegmentsResult, true);
-          setValue(strWebID, null);
-          setValue(strBucketID, null);
-          setValue(strListID, "{6F33949A-B3FF-4B0C-BA99-93CB518AC2C0}");
-          setValue(strItemID, "1");
-        } else {
-          fail("Unexpected strUrl: " + strURL);
-        }
-      }
-
-      @Override
-      public void getContent(ObjectType objectType, String objectId,
-          String folderUrl, String itemId, boolean retrieveChildItems,
-          boolean securityOnly, Holder<String> lastItemIdOnPage,
-          Holder<String> getContentResult) {
-        setValue(lastItemIdOnPage, null);
-        if (ObjectType.LIST_ITEM.equals(objectType)) {
-         if ("2".equals(itemId)) {
-            assertEquals(false, securityOnly);
-            assertEquals("{6F33949A-B3FF-4B0C-BA99-93CB518AC2C0}", objectId);
-            setValue(getContentResult, getContentListItemResponse);
-          } else {
-            fail("Unexpected item id: " + itemId);
-          }
-        } else if (objectType.equals(ObjectType.LIST)) {
-          assertEquals(false, retrieveChildItems);
-          assertEquals(false, securityOnly);
-          assertEquals("{6F33949A-B3FF-4B0C-BA99-93CB518AC2C0}", objectId);
-          setValue(getContentResult, getContentListResponse);
-        } else if (objectType.equals(ObjectType.SITE)) {
-          assertEquals(true, retrieveChildItems);
-          assertEquals(false, securityOnly);
-          assertEquals(null, objectId);
-          setValue(lastItemIdOnPage, null);
-          setValue(getContentResult, getContentSite);
-        } else if (ObjectType.VIRTUAL_SERVER.equals(objectType)) {
-          assertEquals(true, retrieveChildItems);
-          assertEquals(false, securityOnly);
-          setValue(getContentResult, getContentVirtualServer);
-        } else {
-          fail("Unexpected object type: " + objectType);
-        }
-      }
-    };
+    SiteDataSoap siteData = MockSiteData.blank()
+        .register(SITES_SITECOLLECTION_LISTS_CUSTOMLIST_1_URLSEG_EXCHANGE)
+        .register(SITES_SITECOLLECTION_LISTS_CUSTOMLIST_2_URLSEG_EXCHANGE)
+        // TODO(ejona): This access of VS doesn't look right, because it should
+        // happen on a siteData for VS_ENDPOINT.
+        .register(VS_CONTENT_EXCHANGE)
+        .register(SITES_SITECOLLECTION_S_CONTENT_EXCHANGE
+            .replaceInContent("AnonymousPermMask=\"0\"",
+              "AnonymousPermMask=\"65536\""))
+        .register(SITES_SITECOLLECTION_LISTS_CUSTOMLIST_L_CONTENT_EXCHANGE
+            .replaceInContent("AllowAnonymousAccess=\"False\"",
+              "AllowAnonymousAccess=\"True\"")
+            .replaceInContent("AnonymousViewListItems=\"False\"",
+              "AnonymousViewListItems=\"True\"")
+            .replaceInContent("AnonymousPermMask=\"0\"",
+              "AnonymousPermMask=\"68719546465\""))
+        .register(SITES_SITECOLLECTION_LISTS_CUSTOMLIST_2_LI_CONTENT_EXCHANGE
+            .replaceInContent("ows_Attachments='1'", "ows_Attachments='0'")
+            .replaceInContent(
+                "ows_ScopeId='2;#{2E29615C-59E7-493B-B08A-3642949CC069}'",
+                "ows_ScopeId='2;#{f9cb02b3-7f29-4cac-804f-ba6e14f1eb39}'"));
     final MemberIdMapping memberIdMapping;
     {
       Map<Integer, String> users = new HashMap<Integer, String>();
@@ -920,61 +677,12 @@ public class SharePointAdaptorTest {
 
   @Test
   public void testGetDocContentListItemWithReadSecurity() throws IOException {
-    final String getContentListResponse
-        = loadTestString("sites-SiteCollection-Lists-CustomList-l.xml")
-        .replace("ReadSecurity=\"1\"", "ReadSecurity=\"2\"");
-    final String getContentListItemResponse
-        = loadTestString("sites-SiteCollection-Lists-CustomList-2-li.xml")
-        .replace("ows_Attachments='1'", "ows_Attachments='0'");
-
-    SiteDataSoap siteData = new UnsupportedSiteData() {
-      @Override
-      public void getURLSegments(String strURL,
-          Holder<Boolean> getURLSegmentsResult, Holder<String> strWebID,
-          Holder<String> strBucketID, Holder<String> strListID,
-          Holder<String> strItemID) {
-        if (("http://localhost:1/sites/SiteCollection/Lists/Custom List"
-            + "/Test Folder/2_.000").equals(strURL)) {
-          setValue(getURLSegmentsResult, true);
-          setValue(strWebID, null);
-          setValue(strBucketID, null);
-          setValue(strListID, "{6F33949A-B3FF-4B0C-BA99-93CB518AC2C0}");
-          setValue(strItemID, "2");
-        } else if (("http://localhost:1/sites/SiteCollection/Lists/Custom List"
-            + "/Test Folder").equals(strURL)) {
-          setValue(getURLSegmentsResult, true);
-          setValue(strWebID, null);
-          setValue(strBucketID, null);
-          setValue(strListID, "{6F33949A-B3FF-4B0C-BA99-93CB518AC2C0}");
-          setValue(strItemID, "1");
-        } else {
-          fail("Unexpected strUrl: " + strURL);
-        }
-      }
-
-      @Override
-      public void getContent(ObjectType objectType, String objectId,
-          String folderUrl, String itemId, boolean retrieveChildItems,
-          boolean securityOnly, Holder<String> lastItemIdOnPage,
-          Holder<String> getContentResult) {
-        setValue(lastItemIdOnPage, null);
-        if (ObjectType.LIST_ITEM.equals(objectType)) {
-          if ("2".equals(itemId)) {
-            assertEquals(false, securityOnly);
-            assertEquals("{6F33949A-B3FF-4B0C-BA99-93CB518AC2C0}", objectId);
-            setValue(getContentResult, getContentListItemResponse);
-          }
-        } else if (objectType.equals(ObjectType.LIST)) {
-          assertEquals(false, retrieveChildItems);
-          assertEquals(false, securityOnly);
-          assertEquals("{6F33949A-B3FF-4B0C-BA99-93CB518AC2C0}", objectId);
-          setValue(getContentResult, getContentListResponse);
-        } else {
-          fail("Unexpected object type: " + objectType);
-          throw new AssertionError();
-        }
-      }
-    };
+    SiteDataSoap siteData = MockSiteData.blank()
+        .register(SITES_SITECOLLECTION_LISTS_CUSTOMLIST_2_URLSEG_EXCHANGE)
+        .register(SITES_SITECOLLECTION_LISTS_CUSTOMLIST_L_CONTENT_EXCHANGE
+            .replaceInContent("ReadSecurity=\"1\"", "ReadSecurity=\"2\""))
+        .register(SITES_SITECOLLECTION_LISTS_CUSTOMLIST_2_LI_CONTENT_EXCHANGE
+            .replaceInContent("ows_Attachments='1'", "ows_Attachments='0'"));
     final MemberIdMapping memberIdMapping;
     {
       Map<Integer, String> users = new HashMap<Integer, String>();
@@ -1063,47 +771,18 @@ public class SharePointAdaptorTest {
   }
 
   public void testGetDocContentListItemScopeSameAsParent() throws IOException {
-    final String getContentListResponse
-        = loadTestString("tapasnay-Lists-Announcements-l.xml");
-    final String getContentListItemResponse
-        = loadTestString("tapasnay-Lists-Announcements-1-li.xml");
-    SiteDataSoap siteData = new UnsupportedSiteData() {
-      @Override
-      public void getURLSegments(String strURL,
-          Holder<Boolean> getURLSegmentsResult, Holder<String> strWebID,
-          Holder<String> strBucketID, Holder<String> strListID,
-          Holder<String> strItemID) {
-        assertEquals("http://localhost:1/sites/SiteCollection/Lists/Custom List"
-            + "/Test Folder/2_.000", strURL);
-        setValue(getURLSegmentsResult, true);
-        setValue(strWebID, null);
-        setValue(strBucketID, null);
-        setValue(strListID, "{6F33949A-B3FF-4B0C-BA99-93CB518AC2C0}");
-        setValue(strItemID, "2");
-      }
-
-      @Override
-      public void getContent(ObjectType objectType, String objectId,
-          String folderUrl, String itemId, boolean retrieveChildItems,
-          boolean securityOnly, Holder<String> lastItemIdOnPage,
-          Holder<String> getContentResult) {
-        setValue(lastItemIdOnPage, null);
-        if (ObjectType.LIST_ITEM.equals(objectType)) {
-          assertEquals(false, securityOnly);
-          assertEquals("{6F33949A-B3FF-4B0C-BA99-93CB518AC2C0}", objectId);
-          assertEquals("2", itemId);
-          setValue(getContentResult, getContentListItemResponse);
-        } else if (objectType.equals(ObjectType.LIST)) {
-          assertEquals(false, retrieveChildItems);
-          assertEquals(false, securityOnly);
-          assertEquals("{6F33949A-B3FF-4B0C-BA99-93CB518AC2C0}", objectId);
-          setValue(getContentResult, getContentListResponse);
-        } else {
-          fail("Unexpected object type: " + objectType);
-          throw new AssertionError();
-        }
-      }
-    };
+    SiteDataSoap siteData = MockSiteData.blank()
+        .register(new URLSegmentsExchange(
+            "http://localhost:1/sites/SiteCollection/Lists/Custom List"
+              + "/Test Folder/2_.000",
+            true, null, null, "{6F33949A-B3FF-4B0C-BA99-93CB518AC2C0}", "2"))
+        .register(new ContentExchange(ObjectType.LIST_ITEM,
+              "{6F33949A-B3FF-4B0C-BA99-93CB518AC2C0}", null, "2", true, false,
+              null, loadTestString("tapasnay-Lists-Announcements-1-li.xml")))
+        .register(new ContentExchange(ObjectType.LIST,
+              "{6F33949A-B3FF-4B0C-BA99-93CB518AC2C0}", null, null, false,
+              false, null,
+              loadTestString("tapasnay-Lists-Announcements-l.xml")));
     final MemberIdMapping memberIdMapping;
     {
       Map<Integer, String> users = new HashMap<Integer, String>();
@@ -1127,73 +806,6 @@ public class SharePointAdaptorTest {
         Callables.returning(memberIdMapping),
         new UnsupportedCallable<MemberIdMapping>())
         .getDocContent(request, response);
-    String responseString = new String(baos.toByteArray(), charset);
-    final String golden
-        = "<!DOCTYPE html>\n"
-        + "<html><head><title>List Item Get Started with Microsoft SharePoint "
-        +   "Foundation!</title></head>"
-        + "<body><h1>List Item Get Started with Microsoft SharePoint "
-        +   "Foundation!</h1>"
-        + "</body></html>";
-    final Metadata goldenMetadata;
-    {
-      Metadata meta = new Metadata();
-      meta.add("Attachments", "0");
-      meta.add("Author", "GDC-PSL\\administrator");
-      meta.add("BaseName", "1_");
-      meta.add("Body", "Microsoft SharePoint Foundation helps you to be more "
-          + "effective by connecting people, information, and documents. For "
-          + "information on getting started, see Help.");
-      meta.add("ContentType", "Announcement");
-      meta.add("ContentTypeId", "0x0104007B3DA16495E1404895F5E01885B11519");
-      meta.add("Created", "2011-09-07T06:49:13Z");
-      meta.add("Created_x0020_Date", "2011-09-07T06:49:13Z");
-      meta.add("Editor", "GDC-PSL\\administrator");
-      meta.add("EncodedAbsUrl", "http://localhost/tapasnay/Lists/Announcements/"
-          + "1_.000");
-      meta.add("Expires", "2011-09-07T06:49:09Z");
-      meta.add("FSObjType", "0");
-      meta.add("FileDirRef", "tapasnay/Lists/Announcements");
-      meta.add("FileLeafRef", "1_.000");
-      meta.add("FileRef", "tapasnay/Lists/Announcements/1_.000");
-      meta.add("FolderChildCount", "0");
-      meta.add("GUID", "{AAFA6C7F-B734-4981-BCCA-8EFF00A701CB}");
-      meta.add("ID", "1");
-      meta.add("ItemChildCount", "0");
-      meta.add("Last_x0020_Modified", "2011-09-07T06:49:13Z");
-      meta.add("LinkFilename", "1_.000");
-      meta.add("LinkFilename2", "1_.000");
-      meta.add("LinkFilenameNoMenu", "1_.000");
-      meta.add("LinkTitle",
-          "Get Started with Microsoft SharePoint Foundation!");
-      meta.add("LinkTitle2",
-          "Get Started with Microsoft SharePoint Foundation!");
-      meta.add("LinkTitleNoMenu",
-          "Get Started with Microsoft SharePoint Foundation!");
-      meta.add("Modified", "2011-09-07T06:49:13Z");
-      meta.add("Order", "100.000000000000");
-      meta.add("PermMask", "0x7fffffffffffffff");
-      meta.add("ScopeId", "{1D857DC3-DD22-4326-95F0-01B27D6DA6D6}");
-      meta.add("SelectTitle", "1");
-      meta.add("ServerRedirected", "0");
-      meta.add("ServerUrl", "/tapasnay/Lists/Announcements/1_.000");
-      meta.add("SortBehavior", "0");
-      meta.add("Title", "Get Started with Microsoft SharePoint Foundation!");
-      meta.add("UniqueId", "{08CCA823-9ECF-4F91-8642-510C568230A9}");
-      meta.add("WorkflowVersion", "1");
-      meta.add("_EditMenuTableEnd", "1");
-      meta.add("_EditMenuTableStart", "1_.000");
-      meta.add("_EditMenuTableStart2", "1");
-      meta.add("_IsCurrentVersion", "1");
-      meta.add("_Level", "1");
-      meta.add("_ModerationStatus", "0");
-      meta.add("_UIVersion", "512");
-      meta.add("_UIVersionString", "1.0");
-      meta.add("owshiddenversion", "1");
-      goldenMetadata = meta.unmodifiableView();
-    }
-    assertEquals(golden, responseString);
-    assertEquals(goldenMetadata, response.getMetadata());
     // It looks odd that nobody can access the document since there are no
     // groups and users, but the policy permits GDC-PSL\administrator. Thus, the
     // policy's PARENT_OVERRIDE behavior is important.
@@ -1206,56 +818,11 @@ public class SharePointAdaptorTest {
 
   @Test
   public void testGetDocContentFolder() throws IOException {
-    final String getContentListItemResponse
-        = loadTestString("sites-SiteCollection-Lists-CustomList-1-li.xml");
-    final String getContentListResponse
-        = loadTestString("sites-SiteCollection-Lists-CustomList-l.xml");
-    final String getContentFolderResponse
-        = loadTestString("sites-SiteCollection-Lists-CustomList-1-f.xml");
-    SiteDataSoap siteData = new UnsupportedSiteData() {
-      @Override
-      public void getURLSegments(String strURL,
-          Holder<Boolean> getURLSegmentsResult, Holder<String> strWebID,
-          Holder<String> strBucketID, Holder<String> strListID,
-          Holder<String> strItemID) {
-        assertEquals("http://localhost:1/sites/SiteCollection/Lists/Custom List"
-            + "/Test Folder", strURL);
-        setValue(getURLSegmentsResult, true);
-        setValue(strWebID, null);
-        setValue(strBucketID, null);
-        setValue(strListID, "{6F33949A-B3FF-4B0C-BA99-93CB518AC2C0}");
-        setValue(strItemID, "1");
-      }
-
-      @Override
-      public void getContent(ObjectType objectType, String objectId,
-          String folderUrl, String itemId, boolean retrieveChildItems,
-          boolean securityOnly, Holder<String> lastItemIdOnPage,
-          Holder<String> getContentResult) {
-        setValue(lastItemIdOnPage, null);
-        if (ObjectType.LIST_ITEM.equals(objectType)) {
-          assertEquals(false, securityOnly);
-          assertEquals("{6F33949A-B3FF-4B0C-BA99-93CB518AC2C0}", objectId);
-          assertEquals("1", itemId);
-          setValue(getContentResult, getContentListItemResponse);
-        } else if (ObjectType.LIST.equals(objectType)) {
-          assertEquals(false, securityOnly);
-          assertEquals("{6F33949A-B3FF-4B0C-BA99-93CB518AC2C0}", objectId);
-          assertEquals(null, itemId);
-          setValue(getContentResult, getContentListResponse);
-        } else if (ObjectType.FOLDER.equals(objectType)) {
-          assertEquals(false, securityOnly);
-          assertEquals("{6F33949A-B3FF-4B0C-BA99-93CB518AC2C0}", objectId);
-          assertEquals(null, itemId);
-          assertEquals("Test Folder", folderUrl);
-          setValue(getContentResult, getContentFolderResponse);
-          setValue(lastItemIdOnPage, null);
-        } else {
-          fail("Unexpected object type: " + objectType);
-          throw new AssertionError();
-        }
-      }
-    };
+    SiteDataSoap siteData = MockSiteData.blank()
+        .register(SITES_SITECOLLECTION_LISTS_CUSTOMLIST_1_URLSEG_EXCHANGE)
+        .register(SITES_SITECOLLECTION_LISTS_CUSTOMLIST_L_CONTENT_EXCHANGE)
+        .register(SITES_SITECOLLECTION_LISTS_CUSTOMLIST_1_LI_CONTENT_EXCHANGE)
+        .register(SITES_SITECOLLECTION_LISTS_CUSTOMLIST_1_F_CONTENT_EXCHANGE);
     final MemberIdMapping memberIdMapping;
     {
       Map<Integer, String> users = new HashMap<Integer, String>();
@@ -1490,8 +1057,8 @@ public class SharePointAdaptorTest {
         }
       }
     };
-    SiteDataFactory siteDataFactory = new SingleSiteDataFactory(siteData,
-          "http://localhost:1/_vti_bin/SiteData.asmx");
+    SiteDataFactory siteDataFactory = MockSiteDataFactory.blank()
+        .endpoint(VS_ENDPOINT, siteData);
     adaptor = new SharePointAdaptor(siteDataFactory,
         new UnsupportedUserGroupFactory(), new UnsupportedHttpClient(),
         executor);
@@ -1604,8 +1171,8 @@ public class SharePointAdaptorTest {
         setValue(moreChanges, false);
       }
     };
-    SiteDataFactory siteDataFactory = new SingleSiteDataFactory(siteData,
-          "http://localhost:1/_vti_bin/SiteData.asmx");
+    SiteDataFactory siteDataFactory = MockSiteDataFactory.blank().
+        endpoint(VS_ENDPOINT, siteData);
     adaptor = new SharePointAdaptor(siteDataFactory,
         new UnsupportedUserGroupFactory(), new UnsupportedHttpClient(),
         executor);
@@ -1748,7 +1315,7 @@ public class SharePointAdaptorTest {
     builder.setHeaders(Arrays.asList("odd-length"));
   }
 
-  private <T> void setValue(Holder<T> holder, T value) {
+  private static <T> void setValue(Holder<T> holder, T value) {
     if (holder != null) {
       holder.value = value;
     }
@@ -1762,13 +1329,18 @@ public class SharePointAdaptorTest {
     return client.jaxbParse(xml, SPContentDatabase.class);
   }
 
-  private String loadTestString(String testString) throws IOException {
-    return loadResourceAsString("spresponses/" + testString);
+  private static String loadTestString(String testString) {
+    try {
+      return loadResourceAsString("spresponses/" + testString);
+    } catch (IOException ex) {
+      throw new RuntimeException(ex);
+    }
   }
 
-  private String loadResourceAsString(String resource) throws IOException {
-    return IOHelper.readInputStreamToString(
-        getClass().getResourceAsStream(resource), Charset.forName("UTF-8"));
+  private static String loadResourceAsString(String resource)
+      throws IOException {
+    return IOHelper.readInputStreamToString(SharePointAdaptorTest.class
+        .getResourceAsStream(resource), Charset.forName("UTF-8"));
   }
 
   private static class UnsupportedSiteDataFactory implements SiteDataFactory {
@@ -1795,22 +1367,6 @@ public class SharePointAdaptorTest {
     @Override
     public UserGroupSoap newUserGroup(String endpoint) {
       return new MockUserGroupSoap(users);
-    }
-  }
-  private static class SingleSiteDataFactory implements SiteDataFactory {
-    private final SiteDataSoap siteData;
-    private final String expectedEndpoint;
-
-    public SingleSiteDataFactory(SiteDataSoap siteData,
-        String expectedEndpoint) {
-      this.siteData = siteData;
-      this.expectedEndpoint = expectedEndpoint;
-    }
-
-    @Override
-    public SiteDataSoap newSiteData(String endpoint) {
-      assertEquals(expectedEndpoint, endpoint);
-      return siteData;
     }
   }
 
@@ -2205,6 +1761,207 @@ public class SharePointAdaptorTest {
     @Override
     public void execute(Runnable command) {
       throw new UnsupportedOperationException();
+    }
+  }
+
+  private static class MockSiteDataFactory implements SiteDataFactory {
+    private final String expectedEndpoint;
+    private final SiteDataSoap siteData;
+    private final MockSiteDataFactory chain;
+
+    private MockSiteDataFactory(String expectedEndpoint, SiteDataSoap siteData,
+        MockSiteDataFactory chain) {
+      this.expectedEndpoint = expectedEndpoint;
+      this.siteData = siteData;
+      this.chain = chain;
+    }
+
+    public static MockSiteDataFactory blank() {
+      return new MockSiteDataFactory(null, null, null);
+    }
+
+    public MockSiteDataFactory endpoint(String expectedEndpoint,
+        SiteDataSoap siteData) {
+      return new MockSiteDataFactory(expectedEndpoint, siteData, this);
+    }
+
+    @Override
+    public SiteDataSoap newSiteData(String endpoint) {
+      if (chain == null) {
+        fail("Could not find endpoint " + endpoint);
+      }
+      if (expectedEndpoint.equals(endpoint)) {
+        return siteData;
+      }
+      return chain.newSiteData(endpoint);
+    }
+  }
+
+  private static class MockSiteData extends UnsupportedSiteData {
+    private final List<URLSegmentsExchange> urlSegmentsList;
+    private final List<ContentExchange> contentList;
+    private final List<SiteAndWebExchange> siteAndWebList;
+
+    private MockSiteData() {
+      this.urlSegmentsList = Collections.emptyList();
+      this.contentList = Collections.emptyList();
+      this.siteAndWebList = Collections.emptyList();
+    }
+
+    private MockSiteData(List<URLSegmentsExchange> urlSegmentsList,
+        List<ContentExchange> contentList,
+        List<SiteAndWebExchange> siteAndWebList) {
+      this.urlSegmentsList = urlSegmentsList;
+      this.contentList = contentList;
+      this.siteAndWebList = siteAndWebList;
+    }
+
+    @Override
+    public void getURLSegments(String strURL,
+        Holder<Boolean> getURLSegmentsResult, Holder<String> strWebID,
+        Holder<String> strBucketID, Holder<String> strListID,
+        Holder<String> strItemID) {
+      for (URLSegmentsExchange ex : urlSegmentsList) {
+        if (!ex.strURL.equals(strURL)) {
+          continue;
+        }
+        setValue(getURLSegmentsResult, ex.getURLSegmentsResult);
+        setValue(strWebID, ex.strWebID);
+        setValue(strBucketID, ex.strBucketID);
+        setValue(strListID, ex.strListID);
+        setValue(strItemID, ex.strItemID);
+        return;
+      }
+      fail("Could not find " + strURL);
+    }
+
+    @Override
+    public void getContent(ObjectType objectType, String objectId,
+        String folderUrl, String itemId, boolean retrieveChildItems,
+        boolean securityOnly, Holder<String> lastItemIdOnPage,
+        Holder<String> getContentResult) {
+      for (ContentExchange ex : contentList) {
+        if (!ex.objectType.equals(objectType)
+            || !Objects.equal(ex.objectId, objectId)
+            || !Objects.equal(ex.folderUrl, folderUrl)
+            || !Objects.equal(ex.itemId, itemId)
+            || ex.retrieveChildItems != retrieveChildItems
+            || ex.securityOnly != securityOnly) {
+          continue;
+        }
+        setValue(lastItemIdOnPage, ex.lastItemIdOnPage);
+        setValue(getContentResult, ex.getContentResult);
+        return;
+      }
+      fail("Could not find " + objectType + ", " + objectId + ", " + folderUrl
+          + ", " + itemId + ", " + retrieveChildItems + ", " + securityOnly);
+    }
+
+    @Override
+    public void getSiteAndWeb(String strUrl, Holder<Long> getSiteAndWebResult,
+        Holder<String> strSite, Holder<String> strWeb) {
+      for (SiteAndWebExchange ex : siteAndWebList) {
+        if (!ex.strUrl.equals(strUrl)) {
+          continue;
+        }
+        setValue(getSiteAndWebResult, ex.getSiteAndWebResult);
+        setValue(strSite, ex.strSite);
+        setValue(strWeb, ex.strWeb);
+        return;
+      }
+      fail("Could not find " + strUrl);
+    }
+
+    public static MockSiteData blank() {
+      return new MockSiteData();
+    }
+
+    public MockSiteData register(URLSegmentsExchange use) {
+      return new MockSiteData(addToList(urlSegmentsList, use),
+          contentList, siteAndWebList);
+    }
+
+    public MockSiteData register(ContentExchange ce) {
+      return new MockSiteData(urlSegmentsList, addToList(contentList, ce),
+          siteAndWebList);
+    }
+
+    public MockSiteData register(SiteAndWebExchange sawe) {
+      return new MockSiteData(urlSegmentsList, contentList,
+          addToList(siteAndWebList, sawe));
+    }
+
+    /** Creates a new list that has the item appended. */
+    private <T> List<T> addToList(List<T> existingList, T item) {
+      List<T> l = new ArrayList<T>(existingList);
+      l.add(item);
+      return Collections.unmodifiableList(l);
+    }
+  }
+
+  private static class URLSegmentsExchange {
+    public final String strURL;
+    public final boolean getURLSegmentsResult;
+    public final String strWebID;
+    public final String strBucketID;
+    public final String strListID;
+    public final String strItemID;
+
+    public URLSegmentsExchange(String strURL, boolean getURLSegmentsResult,
+        String strWebID, String strBucketID, String strListID,
+        String strItemID) {
+      this.strURL = strURL;
+      this.getURLSegmentsResult = getURLSegmentsResult;
+      this.strWebID = strWebID;
+      this.strBucketID = strBucketID;
+      this.strListID = strListID;
+      this.strItemID = strItemID;
+    }
+  }
+
+  private static class ContentExchange {
+    public final ObjectType objectType;
+    public final String objectId;
+    public final String folderUrl;
+    public final String itemId;
+    public final boolean retrieveChildItems;
+    public final boolean securityOnly;
+    public final String lastItemIdOnPage;
+    public final String getContentResult;
+
+    public ContentExchange(ObjectType objectType, String objectId,
+        String folderUrl, String itemId, boolean retrieveChildItems,
+        boolean securityOnly, String lastItemIdOnPage,
+        String getContentResult) {
+      this.objectType = objectType;
+      this.objectId = objectId;
+      this.folderUrl = folderUrl;
+      this.itemId = itemId;
+      this.retrieveChildItems = retrieveChildItems;
+      this.securityOnly = securityOnly;
+      this.lastItemIdOnPage = lastItemIdOnPage;
+      this.getContentResult = getContentResult;
+    }
+
+    public ContentExchange replaceInContent(String match, String replacement) {
+      return new ContentExchange(objectType, objectId, folderUrl, itemId,
+          retrieveChildItems, securityOnly, lastItemIdOnPage,
+          getContentResult.replace(match, replacement));
+    }
+  }
+
+  private static class SiteAndWebExchange {
+    public final String strUrl;
+    public final long getSiteAndWebResult;
+    public final String strSite;
+    public final String strWeb;
+
+    public SiteAndWebExchange(String strUrl, long getSiteAndWebResult,
+        String strSite, String strWeb) {
+      this.strUrl = strUrl;
+      this.getSiteAndWebResult = getSiteAndWebResult;
+      this.strSite = strSite;
+      this.strWeb = strWeb;
     }
   }
 }
