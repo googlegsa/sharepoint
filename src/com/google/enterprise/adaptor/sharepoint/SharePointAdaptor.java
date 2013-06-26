@@ -266,7 +266,8 @@ public class SharePointAdaptor extends AbstractAdaptor
   private final UserGroupFactory userGroupFactory;
   /** Client for initiating raw HTTP connections. */
   private final HttpClient httpClient;
-  private final Executor executor;
+  private final Callable<ExecutorService> executorFactory;
+  private ExecutorService executor;
   private boolean xmlValidation;
   /** Authenticator instance that authenticates with SP. */
   /**
@@ -277,20 +278,21 @@ public class SharePointAdaptor extends AbstractAdaptor
 
   public SharePointAdaptor() {
     this(new SiteDataFactoryImpl(), new UserGroupFactoryImpl(),
-        new HttpClientImpl(), Executors.newCachedThreadPool());
+        new HttpClientImpl(), new CachedThreadPoolFactory());
   }
 
   @VisibleForTesting
   SharePointAdaptor(SiteDataFactory siteDataFactory,
-  UserGroupFactory userGroupFactory, HttpClient httpClient, Executor executor) {
+      UserGroupFactory userGroupFactory, HttpClient httpClient,
+      Callable<ExecutorService> executorFactory) {
     if (siteDataFactory == null || httpClient == null
-        || userGroupFactory == null || executor == null) {
+        || userGroupFactory == null || executorFactory == null) {
       throw new NullPointerException();
     }
     this.siteDataFactory = siteDataFactory;
     this.userGroupFactory = userGroupFactory;
     this.httpClient = httpClient;
-    this.executor = executor;
+    this.executorFactory = executorFactory;
   }
 
   /**
@@ -316,7 +318,7 @@ public class SharePointAdaptor extends AbstractAdaptor
   }
 
   @Override
-  public void init(AdaptorContext context) throws IOException {
+  public void init(AdaptorContext context) throws Exception {
     this.context = context;
     Config config = context.getConfig();
     virtualServer = config.getValue("sharepoint.server");
@@ -335,11 +337,21 @@ public class SharePointAdaptor extends AbstractAdaptor
         virtualServerUrl.getHost(), virtualServerUrl.getPort());
     // Unfortunately, this is a JVM-wide modification.
     Authenticator.setDefault(ntlmAuthenticator);
+
+    executor = executorFactory.call();
   }
 
   @Override
   public void destroy() {
     Authenticator.setDefault(null);
+    executor.shutdown();
+    try {
+      executor.awaitTermination(10, TimeUnit.SECONDS);
+    } catch (InterruptedException ex) {
+      Thread.currentThread().interrupt();
+    }
+    executor.shutdownNow();
+    executor = null;
   }
 
   @Override
@@ -2229,6 +2241,14 @@ public class SharePointAdaptor extends AbstractAdaptor
     @Override
     public MemberIdMapping load(String site) throws IOException {
       return getSiteDataClient(site, site).retrieveSiteUserMapping();
+    }
+  }
+
+  private static class CachedThreadPoolFactory
+      implements Callable<ExecutorService> {
+    @Override
+    public ExecutorService call() {
+      return Executors.newCachedThreadPool();
     }
   }
 }
