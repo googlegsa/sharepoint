@@ -30,6 +30,9 @@ import com.google.enterprise.adaptor.PollingIncrementalAdaptor;
 import com.google.enterprise.adaptor.Request;
 import com.google.enterprise.adaptor.Response;
 import com.google.enterprise.adaptor.UserPrincipal;
+import com.google.enterprise.adaptor.sharepoint.RareModificationCache.CachedList;
+import com.google.enterprise.adaptor.sharepoint.RareModificationCache.CachedVirtualServer;
+import com.google.enterprise.adaptor.sharepoint.RareModificationCache.CachedWeb;
 import com.google.enterprise.adaptor.sharepoint.SiteDataClient.CursorPaginator;
 import com.google.enterprise.adaptor.sharepoint.SiteDataClient.Paginator;
 import com.google.enterprise.adaptor.sharepoint.SiteDataClient.XmlProcessingException;
@@ -169,7 +172,7 @@ public class SharePointAdaptor extends AbstractAdaptor
    */
   private static final long MANAGE_LIST_MASK = 0x0000000000000800;
 
-  private static final long LIST_ITEM_MASK
+  static final long LIST_ITEM_MASK
       = OPEN_MASK | VIEW_PAGES_MASK | VIEW_LIST_ITEMS_MASK;
   private static final long READ_SECURITY_LIST_ITEM_MASK
       = OPEN_MASK | VIEW_PAGES_MASK | VIEW_LIST_ITEMS_MASK | MANAGE_LIST_MASK;
@@ -211,6 +214,7 @@ public class SharePointAdaptor extends AbstractAdaptor
         .refreshAfterWrite(30, TimeUnit.MINUTES)
         .expireAfterWrite(45, TimeUnit.MINUTES)
         .build(new SiteUserCacheLoader());
+  private RareModificationCache rareModCache;
   /** Map from Content Database GUID to last known Change Token for that DB. */
   private final ConcurrentSkipListMap<String, String> contentDatabaseChangeId
       = new ConcurrentSkipListMap<String, String>();
@@ -292,10 +296,14 @@ public class SharePointAdaptor extends AbstractAdaptor
 
     executor = executorFactory.call();
 
-    // Test out configuration.
     try {
-      getSiteAdaptor(virtualServer, virtualServer).getSiteDataClient()
-          .getContentVirtualServer();
+      SiteDataClient virtualServerSiteDataClient =
+          getSiteAdaptor(virtualServer, virtualServer).getSiteDataClient();
+      rareModCache = new RareModificationCache(this,
+          virtualServerSiteDataClient, executor);
+
+      // Test out configuration.
+      virtualServerSiteDataClient.getContentVirtualServer();
     } catch (Exception e) {
       // Don't leak the executor.
       destroy();
@@ -305,8 +313,6 @@ public class SharePointAdaptor extends AbstractAdaptor
 
   @Override
   public void destroy() {
-    Authenticator.setDefault(null);
-    ntlmAuthenticator = null;
     executor.shutdown();
     try {
       executor.awaitTermination(10, TimeUnit.SECONDS);
@@ -315,6 +321,9 @@ public class SharePointAdaptor extends AbstractAdaptor
     }
     executor.shutdownNow();
     executor = null;
+    rareModCache = null;
+    Authenticator.setDefault(null);
+    ntlmAuthenticator = null;
   }
 
   @Override
@@ -713,10 +722,10 @@ public class SharePointAdaptor extends AbstractAdaptor
     /**
      * Returns {@code true} if the current web should not be indexed. This
      * method may issue a request for the web content for all parent webs, so it
-     * is expensive.
+     * is expensive, although it uses cached responses to reduce cost.
      */
-    private boolean isWebNoIndex(Web w) throws IOException {
-      if ("True".equals(w.getMetadata().getNoIndex())) {
+    private boolean isWebNoIndex(CachedWeb w) throws IOException {
+      if ("True".equals(w.noIndex)) {
         return true;
       }
       if (isWebSiteCollection()) {
@@ -724,7 +733,7 @@ public class SharePointAdaptor extends AbstractAdaptor
       }
       SiteAdaptor siteAdaptor = getSiteAdaptor(siteUrl, getWebParentUrl());
       return siteAdaptor.isWebNoIndex(
-          siteAdaptor.siteDataClient.getContentWeb());
+          rareModCache.getWeb(siteAdaptor.siteDataClient));
     }
 
     private void getSiteDocContent(Request request, Response response)
@@ -733,7 +742,7 @@ public class SharePointAdaptor extends AbstractAdaptor
           new Object[] {request, response});
       Web w = siteDataClient.getContentWeb();
 
-      if (isWebNoIndex(w)) {
+      if (isWebNoIndex(new CachedWeb(w))) {
         log.fine("Document marked for NoIndex");
         response.respondNotFound();
         log.exiting("SiteAdaptor", "getSiteDocContent");
@@ -743,15 +752,11 @@ public class SharePointAdaptor extends AbstractAdaptor
       if (webUrl.endsWith("/")) {
         throw new AssertionError();
       }
-      boolean allowAnonymousAccess = isAllowAnonymousReadForWeb(w);
-      // Check if anonymous access is denied by web application policy
-      // only if anonymous access is enabled for web as checking web application
-      // policy is additional web service call.
-      // TODO(ejona): Add caching for web application policy.
-      if (allowAnonymousAccess) {
-        allowAnonymousAccess = !isDenyAnonymousAcessOnVirtualServer(
-            siteDataClient.getContentVirtualServer());
-      }
+      boolean allowAnonymousAccess
+          = isAllowAnonymousReadForWeb(new CachedWeb(w))
+          // Check if anonymous access is denied by web application policy
+          && !isDenyAnonymousAccessOnVirtualServer(
+              rareModCache.getVirtualServer());
 
       if (!allowAnonymousAccess) {
         final boolean includePermissions;
@@ -837,7 +842,7 @@ public class SharePointAdaptor extends AbstractAdaptor
       Web w = siteDataClient.getContentWeb();
 
       if (TrueFalseType.TRUE.equals(l.getMetadata().getNoIndex())
-          || isWebNoIndex(w)) {
+          || isWebNoIndex(new CachedWeb(w))) {
         log.fine("Document marked for NoIndex");
         response.respondNotFound();
         log.exiting("SiteAdaptor", "getListDocContent");
@@ -845,12 +850,10 @@ public class SharePointAdaptor extends AbstractAdaptor
       }
 
       boolean allowAnonymousAccess
-          = isAllowAnonymousReadForList(l) && isAllowAnonymousPeekForWeb(w);
-
-      if (allowAnonymousAccess) {
-        allowAnonymousAccess = !isDenyAnonymousAcessOnVirtualServer(
-            siteDataClient.getContentVirtualServer());
-      }
+          = isAllowAnonymousReadForList(new CachedList(l))
+          && isAllowAnonymousPeekForWeb(new CachedWeb(w))
+          && !isDenyAnonymousAccessOnVirtualServer(
+              rareModCache.getVirtualServer());
 
       if (!allowAnonymousAccess) {
         String scopeId
@@ -1038,48 +1041,35 @@ public class SharePointAdaptor extends AbstractAdaptor
       return (necessaryPermission & permission) == necessaryPermission;
     }
 
-    private boolean isAllowAnonymousPeekForWeb(Web w) {
-      return isPermitted(
-          w.getMetadata().getAnonymousPermMask().longValue(), OPEN_MASK);
+    private boolean isAllowAnonymousPeekForWeb(CachedWeb w) {
+      return isPermitted(w.anonymousPermMask, OPEN_MASK);
     }
 
-    private boolean isAllowAnonymousReadForWeb(Web w) {
+    private boolean isAllowAnonymousReadForWeb(CachedWeb w) {
       boolean allowAnonymousRead
-          = (w.getMetadata().getAllowAnonymousAccess() == TrueFalseType.TRUE)
-          && (w.getMetadata().getAnonymousViewListItems() == TrueFalseType.TRUE)
-          && isPermitted(
-            w.getMetadata().getAnonymousPermMask().longValue(), LIST_ITEM_MASK);
+          = (w.allowAnonymousAccess == TrueFalseType.TRUE)
+          && (w.anonymousViewListItems == TrueFalseType.TRUE)
+          && isPermitted(w.anonymousPermMask, LIST_ITEM_MASK);
       return allowAnonymousRead;
     }
 
-    private boolean isAllowAnonymousReadForList (
-        com.microsoft.schemas.sharepoint.soap.List l) {
+    private boolean isAllowAnonymousReadForList(CachedList l) {
       boolean allowAnonymousRead
-          = (l.getMetadata().getReadSecurity() != LIST_READ_SECURITY_ENABLED)
-          && (l.getMetadata().getAllowAnonymousAccess() == TrueFalseType.TRUE)
-          && (l.getMetadata().getAnonymousViewListItems() == TrueFalseType.TRUE)
-          && isPermitted(
-            l.getMetadata().getAnonymousPermMask().longValue(),
-            VIEW_LIST_ITEMS_MASK);
+          = (l.readSecurity != LIST_READ_SECURITY_ENABLED)
+          && (l.allowAnonymousAccess == TrueFalseType.TRUE)
+          && (l.anonymousViewListItems == TrueFalseType.TRUE)
+          && isPermitted(l.anonymousPermMask, VIEW_LIST_ITEMS_MASK);
       return allowAnonymousRead;
     }
 
-    private boolean isDenyAnonymousAcessOnVirtualServer(VirtualServer vs) {
-      long anonymousDenyMask
-          =  vs.getPolicies().getAnonymousDenyMask().longValue();
-      if ((LIST_ITEM_MASK & anonymousDenyMask) != 0) {
+    private boolean isDenyAnonymousAccessOnVirtualServer(
+        CachedVirtualServer vs) {
+      if ((LIST_ITEM_MASK & vs.anonymousDenyMask) != 0) {
         return true;
       }
       // Anonymous access is denied if deny read policy is specified for any
       // user or group.
-      for (PolicyUser policyUser : vs.getPolicies().getPolicyUser()) {
-        long deny = policyUser.getDenyMask().longValue();
-        // If at least one necessary bit is masked, then deny user.
-        if ((LIST_ITEM_MASK & deny) != 0) {
-          return true;
-        }
-      }
-      return false;
+      return vs.policyContainsDeny;
     }
 
     private String getUserName(int userId) throws IOException {
@@ -1099,16 +1089,11 @@ public class SharePointAdaptor extends AbstractAdaptor
         throws IOException {
       log.entering("SiteAdaptor", "getAspxDocContent",
           new Object[] {request, response});
-      Web w = siteDataClient.getContentWeb();
-      boolean allowAnonymousAccess = isAllowAnonymousReadForWeb(w);
-      // Check if anonymous access is denied by web application policy
-      // only if anonymous access is enabled for web as checking web application
-      // policy is additional web service call.
-      // TODO(ejona): Add caching for web application policy.
-      if (allowAnonymousAccess) {
-        allowAnonymousAccess = !isDenyAnonymousAcessOnVirtualServer(
-            siteDataClient.getContentVirtualServer());
-      }
+      boolean allowAnonymousAccess
+          = isAllowAnonymousReadForWeb(rareModCache.getWeb(siteDataClient))
+          // Check if anonymous access is denied by web application policy
+          && !isDenyAnonymousAccessOnVirtualServer(
+              rareModCache.getVirtualServer());
       if (!allowAnonymousAccess) {
         String aspxId = request.getDocId().getUniqueId();
         String parentId = aspxId.substring(0, aspxId.lastIndexOf('/'));
@@ -1154,12 +1139,10 @@ public class SharePointAdaptor extends AbstractAdaptor
         String listId, String itemId) throws IOException {
       log.entering("SiteAdaptor", "getListItemDocContent",
           new Object[] {request, response, listId, itemId});
-      com.microsoft.schemas.sharepoint.soap.List l
-          = siteDataClient.getContentList(listId);
-      Web w = siteDataClient.getContentWeb();
+      CachedList l = rareModCache.getList(siteDataClient, listId);
 
-      if (TrueFalseType.TRUE.equals(l.getMetadata().getNoIndex())
-          || isWebNoIndex(w)) {
+      if (TrueFalseType.TRUE.equals(l.noIndex)
+          || isWebNoIndex(rareModCache.getWeb(siteDataClient))) {
         log.fine("Document marked for NoIndex");
         response.respondNotFound();
         log.exiting("SiteAdaptor", "getListItemDocContent");
@@ -1167,7 +1150,7 @@ public class SharePointAdaptor extends AbstractAdaptor
       }
 
       boolean applyReadSecurity =
-          (l.getMetadata().getReadSecurity() == LIST_READ_SECURITY_ENABLED);
+          (l.readSecurity == LIST_READ_SECURITY_ENABLED);
       ItemData i = siteDataClient.getContentItem(listId, itemId);
 
       Xml xml = i.getXml();
@@ -1180,8 +1163,6 @@ public class SharePointAdaptor extends AbstractAdaptor
           = row.getAttribute(OWS_SCOPEID_ATTRIBUTE).split(";#", 2)[1];
       scopeId = scopeId.toLowerCase(Locale.ENGLISH);
 
-      String listScopeId
-          = l.getMetadata().getScopeID().toLowerCase(Locale.ENGLISH);
       // Anonymous access is disabled if read security is applicable for list.
       // Anonymous access for list items is disabled if it does not inherit
       // its effective permissions from list.
@@ -1191,23 +1172,10 @@ public class SharePointAdaptor extends AbstractAdaptor
       // Anonymous User must have minimum "Open" permission on Web
       // for anonymous access to work on List and List Items.
       boolean allowAnonymousAccess = isAllowAnonymousReadForList(l)
-          && scopeId.equals(listScopeId)
-          && isAllowAnonymousPeekForWeb(w);
-
-      // Check anomymous access on web only if anonymous access is applicable
-      // for list and list item.
-      if (allowAnonymousAccess) {
-        // Even if anonymous access is enabled on list, it can be turned off
-        // on Web level by setting Anonymous access to "Nothing" on Web.
-        // Anonymous User must have minimum "Open" permission on Web
-        // for anonymous access to work on List and List Items.
-        allowAnonymousAccess = isAllowAnonymousPeekForWeb(w);
-      }
-
-      if (allowAnonymousAccess) {
-        allowAnonymousAccess = !isDenyAnonymousAcessOnVirtualServer(
-            siteDataClient.getContentVirtualServer());
-      }
+          && scopeId.equals(l.scopeId.toLowerCase(Locale.ENGLISH))
+          && isAllowAnonymousPeekForWeb(rareModCache.getWeb(siteDataClient))
+          && !isDenyAnonymousAccessOnVirtualServer(
+              rareModCache.getVirtualServer());
 
       if (!allowAnonymousAccess) {
       Acl.Builder acl = null;
@@ -1217,21 +1185,19 @@ public class SharePointAdaptor extends AbstractAdaptor
         // extract the site/list/path. Path relative to host, even though it
         // doesn't have a leading '/'.
         DocId folderDocId = encodeDocId("/" + rawFileDirRef.split(";#")[1]);
-        DocId rootFolderDocId = encodeDocId(l.getMetadata().getRootFolder());
-        DocId listDocId = encodeDocId(l.getMetadata().getDefaultViewUrl());
+        DocId rootFolderDocId = encodeDocId(l.rootFolder);
+        DocId listDocId = encodeDocId(l.defaultViewUrl);
         // If the parent is the List, we must use the list's docId instead of
         // folderDocId, since the root folder is a List and not actually a
         // Folder.
         boolean parentIsList = folderDocId.equals(rootFolderDocId);
         DocId parentDocId = parentIsList ? listDocId : folderDocId;
         String parentScopeId;
-        // If a folder doesn't inherit its list's scope, then all of the
-        // folder's descendent list items are guaranteed to have a different
-        // scope than the list. We use this knowledge as a performance
-        // optimization to prevent issuing requests to discover the folder's
-        // scopeId when a child list item and list have the same scope.
-        if (parentIsList || scopeId.equals(listScopeId)) {
-          parentScopeId = listScopeId;
+        if (parentIsList) {
+          com.microsoft.schemas.sharepoint.soap.List list
+              = siteDataClient.getContentList(listId);
+          parentScopeId
+              = list.getMetadata().getScopeID().toLowerCase(Locale.ENGLISH);
         } else {
           // Instead of using getUrlSegments and getContent(ListItem), we could
           // use just getContent(Folder). However, getContent(Folder) always
@@ -1339,15 +1305,13 @@ public class SharePointAdaptor extends AbstractAdaptor
       }
 
       if (isFolder) {
-        String root
-            = encodeDocId(l.getMetadata().getRootFolder()).getUniqueId();
+        String root = encodeDocId(l.rootFolder).getUniqueId();
         root += "/";
         String folder = encodeDocId(serverUrl).getUniqueId();
         if (!folder.startsWith(root)) {
           throw new AssertionError();
         }
-        URI displayPage
-            = sharePointUrlToUri(l.getMetadata().getDefaultViewUrl());
+        URI displayPage = sharePointUrlToUri(l.defaultViewUrl);
         if (serverUrl.contains("&") || serverUrl.contains("=")
             || serverUrl.contains("%")) {
           throw new AssertionError();
@@ -1379,8 +1343,7 @@ public class SharePointAdaptor extends AbstractAdaptor
         getFileDocContent(request, response);
       } else {
         // Some list item.
-        URI displayPage
-            = sharePointUrlToUri(l.getMetadata().getDefaultViewItemUrl());
+        URI displayPage = sharePointUrlToUri(l.defaultViewItemUrl);
         try {
           response.setDisplayUrl(new URI(displayPage.getScheme(),
               displayPage.getAuthority(), displayPage.getPath(),
@@ -1457,11 +1420,9 @@ public class SharePointAdaptor extends AbstractAdaptor
       }
       log.fine("Suspected attachment verified as being a real attachment. "
           + "Proceeding to provide content.");
-      com.microsoft.schemas.sharepoint.soap.List l
-          = siteDataClient.getContentList(listId);
-      Web w = siteDataClient.getContentWeb();
-      if (TrueFalseType.TRUE.equals(l.getMetadata().getNoIndex())
-          || isWebNoIndex(w)) {
+      CachedList l = rareModCache.getList(siteDataClient, listId);
+      if (TrueFalseType.TRUE.equals(l.noIndex)
+          || isWebNoIndex(rareModCache.getWeb(siteDataClient))) {
         log.fine("Document marked for NoIndex");
         response.respondNotFound();
         log.exiting("SiteAdaptor", "getAttachmentDocContent", true);
@@ -1475,15 +1436,11 @@ public class SharePointAdaptor extends AbstractAdaptor
           = row.getAttribute(OWS_SCOPEID_ATTRIBUTE).split(";#", 2)[1];
       scopeId = scopeId.toLowerCase(Locale.ENGLISH);
 
-      String listScopeId
-          = l.getMetadata().getScopeID().toLowerCase(Locale.ENGLISH);
       boolean allowAnonymousAccess = isAllowAnonymousReadForList(l)
-          && scopeId.equals(listScopeId)
-          && isAllowAnonymousPeekForWeb(w);
-      if (allowAnonymousAccess) {
-        allowAnonymousAccess = !isDenyAnonymousAcessOnVirtualServer(
-            siteDataClient.getContentVirtualServer());
-      }
+          && scopeId.equals(l.scopeId.toLowerCase(Locale.ENGLISH))
+          && isAllowAnonymousPeekForWeb(rareModCache.getWeb(siteDataClient))
+          && !isDenyAnonymousAccessOnVirtualServer(
+              rareModCache.getVirtualServer());
       if (!allowAnonymousAccess) {
         String listItemUrl = row.getAttribute(OWS_SERVERURL_ATTRIBUTE);
         response.setAcl(new Acl.Builder()
