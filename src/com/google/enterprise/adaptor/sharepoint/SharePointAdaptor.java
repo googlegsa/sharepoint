@@ -16,7 +16,6 @@ package com.google.enterprise.adaptor.sharepoint;
 
 import com.google.common.annotations.VisibleForTesting;
 import com.google.common.cache.CacheBuilder;
-import com.google.common.cache.CacheLoader;
 import com.google.common.cache.LoadingCache;
 import com.google.enterprise.adaptor.AbstractAdaptor;
 import com.google.enterprise.adaptor.Acl;
@@ -2208,7 +2207,12 @@ public class SharePointAdaptor extends AbstractAdaptor
   }
 
   private class MemberIdsCacheLoader
-      extends CacheLoader<String, MemberIdMapping> {
+      extends AsyncCacheLoader<String, MemberIdMapping> {
+    @Override
+    protected Executor executor() {
+      return executor;
+    }
+
     @Override
     public MemberIdMapping load(String site) throws IOException {
       return getSiteDataClient(site, site).retrieveMemberIdMapping();
@@ -2216,7 +2220,12 @@ public class SharePointAdaptor extends AbstractAdaptor
   }
 
   private class SiteUserCacheLoader
-      extends CacheLoader<String, MemberIdMapping> {
+      extends AsyncCacheLoader<String, MemberIdMapping> {
+    @Override
+    protected Executor executor() {
+      return executor;
+    }
+
     @Override
     public MemberIdMapping load(String site) throws IOException {
       return getSiteDataClient(site, site).retrieveSiteUserMapping();
