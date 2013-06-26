@@ -1666,6 +1666,7 @@ public class SharePointAdaptorTest {
 
   @Test
   public void testValidationError() throws Exception {
+    config.overrideKey("sharepoint.xmlValidation", "true");
     adaptor = new SharePointAdaptor(new UnsupportedSiteDataFactory(),
         new UnsupportedUserGroupFactory(),
         new UnsupportedHttpClient(), executor);
@@ -1703,6 +1704,7 @@ public class SharePointAdaptorTest {
 
   @Test
   public void testParseUnknownXml() throws Exception {
+    config.overrideKey("sharepoint.xmlValidation", "true");
     adaptor = new SharePointAdaptor(new UnsupportedSiteDataFactory(),
         new UnsupportedUserGroupFactory(),
         new UnsupportedHttpClient(), executor);

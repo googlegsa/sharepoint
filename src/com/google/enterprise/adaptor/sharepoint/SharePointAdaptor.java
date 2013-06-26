@@ -309,7 +309,11 @@ public class SharePointAdaptor extends AbstractAdaptor
     // When running on Windows, Windows Authentication can log us in.
     config.addKey("sharepoint.username", onWindows ? "" : null);
     config.addKey("sharepoint.password", onWindows ? "" : null);
-    config.addKey("sharepoint.xmlValidation", "true");
+    // On any particular SharePoint instance, we expect that at least some
+    // responses will not pass xml validation. We keep the option around to
+    // allow us to improve the schema itself, but also allow enable users to
+    // enable checking as a form of debugging.
+    config.addKey("sharepoint.xmlValidation", "false");
   }
 
   @Override
