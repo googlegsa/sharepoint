@@ -332,11 +332,6 @@ public class SharePointAdaptor extends AbstractAdaptor
         virtualServerUrl.getHost(), virtualServerUrl.getPort());
     // Unfortunately, this is a JVM-wide modification.
     Authenticator.setDefault(ntlmAuthenticator);
-
-    if (false) {
-      contentDatabaseChangeId.put("{4fb7dea1-2912-4927-9eda-1ea2f0977cf8}",
-          "1;0;4fb7dea1-2912-4927-9eda-1ea2f0977cf8;634717634720100000;597");
-    }
   }
 
   @Override
