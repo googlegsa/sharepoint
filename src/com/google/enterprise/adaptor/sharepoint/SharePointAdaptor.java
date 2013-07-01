@@ -491,7 +491,8 @@ public class SharePointAdaptor extends AbstractAdaptor
     log.exiting("SharePointAdaptor", "getModifiedDocIds", pusher);
   }
 
-  private SiteDataClient getSiteDataClient(String site, String web) {
+  private SiteDataClient getSiteDataClient(String site, String web)
+      throws IOException {
     if (web.endsWith("/")) {
       // Always end without a '/' for a canonical form.
       web = web.substring(0, web.length() - 1);
@@ -516,6 +517,24 @@ public class SharePointAdaptor extends AbstractAdaptor
       client = clients.get(web);
     }
     return client;
+  }
+
+  private static URI spUrlToUri(String url) throws IOException {
+    // Because SP is silly, the path of the URI is unencoded, but the rest of
+    // the URI is correct. Thus, we split up the path from the host, and then
+    // turn them into URIs separately, and then turn everything into a
+    // properly-escaped string.
+    String[] parts = url.split("/", 4);
+    String host = parts[0] + "/" + parts[1] + "/" + parts[2] + "/";
+    // Host must be properly-encoded already.
+    URI hostUri = URI.create(host);
+    URI pathUri;
+    try {
+      pathUri = new URI(null, null, parts[3], null);
+    } catch (URISyntaxException ex) {
+      throw new IOException(ex);
+    }
+    return hostUri.resolve(pathUri);
   }
 
   public static void main(String[] args) {
@@ -641,22 +660,7 @@ public class SharePointAdaptor extends AbstractAdaptor
     }
 
     private URI docIdToUri(DocId docId) throws IOException {
-      String url = docId.getUniqueId();
-      // Because SP is silly, the path of the URI is unencoded, but the rest of
-      // the URI is correct. Thus, we split up the path from the host, and then
-      // turn them into URIs separately, and then turn everything into a
-      // properly-escaped string.
-      String[] parts = url.split("/", 4);
-      String host = parts[0] + "/" + parts[1] + "/" + parts[2] + "/";
-      // Host must be properly-encoded already.
-      URI hostUri = URI.create(host);
-      URI pathUri;
-      try {
-        pathUri = new URI(null, null, parts[3], null);
-      } catch (URISyntaxException ex) {
-        throw new IOException(ex);
-      }
-      return hostUri.resolve(pathUri);
+      return spUrlToUri(docId.getUniqueId());
     }
 
     /**
@@ -2008,7 +2012,11 @@ public class SharePointAdaptor extends AbstractAdaptor
 
   @VisibleForTesting
   interface SiteDataFactory {
-    public SiteDataSoap newSiteData(String endpoint);
+    /**
+     * The {@code endpoint} string is a SharePoint URL, meaning that spaces are
+     * not encoded.
+     */
+    public SiteDataSoap newSiteData(String endpoint) throws IOException;
   }
 
   static class SiteDataFactoryImpl implements SiteDataFactory {
@@ -2021,9 +2029,9 @@ public class SharePointAdaptor extends AbstractAdaptor
     }
 
     @Override
-    public SiteDataSoap newSiteData(String endpoint) {
+    public SiteDataSoap newSiteData(String endpoint) throws IOException {
       EndpointReference endpointRef = new W3CEndpointReferenceBuilder()
-          .address(endpoint).build();
+          .address(spUrlToUri(endpoint).toString()).build();
       return siteDataService.getPort(endpointRef, SiteDataSoap.class);
     }
   }

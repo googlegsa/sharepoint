@@ -250,6 +250,17 @@ public class SharePointAdaptorTest {
   }
 
   @Test
+  public void testSiteDataFactoryImpl() throws IOException {
+    SharePointAdaptor.SiteDataFactoryImpl sdfi
+        = new SharePointAdaptor.SiteDataFactoryImpl();
+    assertNotNull(
+        sdfi.newSiteData("http://localhost:1/_vti_bin/SiteData.asmx"));
+    // Test a site with a space.
+    assertNotNull(sdfi.newSiteData(
+        "http://localhost:1/Site with space/_vti_bin/SiteData.asmx"));
+  }
+
+  @Test
   public void testConstructor() {
     new SharePointAdaptor();
   }
