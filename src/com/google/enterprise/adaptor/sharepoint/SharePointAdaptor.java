@@ -1507,7 +1507,8 @@ public class SharePointAdaptor extends AbstractAdaptor
       String listScopeId
           = l.getMetadata().getScopeID().toLowerCase(Locale.ENGLISH);
       boolean allowAnonymousAccess = isAllowAnonymousReadForList(l)
-          && scopeId.equals(listScopeId);
+          && scopeId.equals(listScopeId)
+          && isAllowAnonymousPeekForWeb(w);
       if (allowAnonymousAccess) {
         allowAnonymousAccess 
             = !isDenyAnonymousAcessOnVirtualServer(getContentVirtualServer());
