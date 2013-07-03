@@ -187,6 +187,10 @@ public class SharePointAdaptorTest {
           return new CallerRunsExecutor();
         }
       };
+  private final MockSiteDataFactory initableSiteDataFactory
+      = MockSiteDataFactory.blank()
+      .endpoint(VS_ENDPOINT, MockSiteData.blank()
+          .register(VS_CONTENT_EXCHANGE));
 
   @Rule
   public ExpectedException thrown = ExpectedException.none();
@@ -295,7 +299,7 @@ public class SharePointAdaptorTest {
 
   @Test
   public void testInitDestroy() throws Exception {
-    adaptor = new SharePointAdaptor(new UnsupportedSiteDataFactory(),
+    adaptor = new SharePointAdaptor(initableSiteDataFactory,
         new UnsupportedUserGroupFactory(),
         new UnsupportedHttpClient(), executorFactory);
     adaptor.init(new MockAdaptorContext(config, null));
@@ -307,6 +311,7 @@ public class SharePointAdaptorTest {
   public void testGetDocContentWrongServer() throws Exception {
     SiteDataFactory siteDataFactory = MockSiteDataFactory.blank()
         .endpoint(VS_ENDPOINT, MockSiteData.blank()
+            .register(VS_CONTENT_EXCHANGE)
             .register(new SiteAndWebExchange(
                 "http://wronghost:1/", 1, null, null)));
 
@@ -327,6 +332,7 @@ public class SharePointAdaptorTest {
     final String wrongPage = "http://localhost:1/wrongPage";
     SiteDataFactory siteDataFactory = MockSiteDataFactory.blank()
         .endpoint(VS_ENDPOINT, MockSiteData.blank()
+            .register(VS_CONTENT_EXCHANGE)
             .register(new SiteAndWebExchange(
                 wrongPage, 0, "http://localhost:1", "http://localhost:1"))
             .register(new URLSegmentsExchange(
@@ -383,6 +389,7 @@ public class SharePointAdaptorTest {
   public void testGetDocContentSiteCollection() throws Exception {
     SiteDataFactory siteDataFactory = MockSiteDataFactory.blank()
         .endpoint(VS_ENDPOINT, MockSiteData.blank()
+            .register(VS_CONTENT_EXCHANGE)
             .register(SITES_SITECOLLECTION_SAW_EXCHANGE))
         .endpoint(SITES_SITECOLLECTION_ENDPOINT, MockSiteData.blank()
             .register(SITES_SITECOLLECTION_URLSEG_EXCHANGE)
@@ -450,7 +457,7 @@ public class SharePointAdaptorTest {
       memberIdMapping = new MemberIdMapping(users, groups);
     }
 
-    adaptor = new SharePointAdaptor(new UnsupportedSiteDataFactory(),
+    adaptor = new SharePointAdaptor(initableSiteDataFactory,
         new UnsupportedUserGroupFactory(), new UnsupportedHttpClient(),
         executorFactory);
     adaptor.init(new MockAdaptorContext(config, null));
@@ -499,7 +506,7 @@ public class SharePointAdaptorTest {
 
     final String goldenContents = "attachment contents";
     final String goldenContentType = "fake/type";
-    adaptor = new SharePointAdaptor(new UnsupportedSiteDataFactory(),
+    adaptor = new SharePointAdaptor(initableSiteDataFactory,
         new UnsupportedUserGroupFactory(), new HttpClient() {
       @Override
       public FileInfo issueGetRequest(URL url) {
@@ -560,7 +567,7 @@ public class SharePointAdaptorTest {
       memberIdMapping = new MemberIdMapping(users, groups);
     }
 
-    adaptor = new SharePointAdaptor(new UnsupportedSiteDataFactory(),
+    adaptor = new SharePointAdaptor(initableSiteDataFactory,
         new UnsupportedUserGroupFactory(), new UnsupportedHttpClient(),
         executorFactory);
     adaptor.init(new MockAdaptorContext(config, null));
@@ -675,7 +682,7 @@ public class SharePointAdaptorTest {
       memberIdMapping = new MemberIdMapping(users, groups);
     }
 
-    adaptor = new SharePointAdaptor(new UnsupportedSiteDataFactory(),
+    adaptor = new SharePointAdaptor(initableSiteDataFactory,
         new UnsupportedUserGroupFactory(), new UnsupportedHttpClient(),
         executorFactory);
     adaptor.init(new MockAdaptorContext(config, null));
@@ -725,13 +732,10 @@ public class SharePointAdaptorTest {
     MockUserGroupFactory mockUserGroupFactory
         = new MockUserGroupFactory(users);
 
-    adaptor = new SharePointAdaptor(new SiteDataFactory() {
-      @Override
-      public SiteDataSoap newSiteData(String endpoint) {
-        return new UnsupportedSiteData();
-      }
-    },
-    mockUserGroupFactory, new UnsupportedHttpClient(), executorFactory);
+    adaptor = new SharePointAdaptor(
+        initableSiteDataFactory
+          .endpoint(SITES_SITECOLLECTION_ENDPOINT, new UnsupportedSiteData()),
+        mockUserGroupFactory, new UnsupportedHttpClient(), executorFactory);
     final AccumulatingDocIdPusher docIdPusher = new AccumulatingDocIdPusher();
     adaptor.init(new MockAdaptorContext(config, null) {
       @Override
@@ -802,7 +806,7 @@ public class SharePointAdaptorTest {
       memberIdMapping = new MemberIdMapping(users, groups);
     }
 
-    adaptor = new SharePointAdaptor(new UnsupportedSiteDataFactory(),
+    adaptor = new SharePointAdaptor(initableSiteDataFactory,
         new UnsupportedUserGroupFactory(), new UnsupportedHttpClient(),
         executorFactory);
     adaptor.init(new MockAdaptorContext(config, null));
@@ -845,7 +849,7 @@ public class SharePointAdaptorTest {
       memberIdMapping = new MemberIdMapping(users, groups);
     }
 
-    adaptor = new SharePointAdaptor(new UnsupportedSiteDataFactory(),
+    adaptor = new SharePointAdaptor(initableSiteDataFactory,
         new UnsupportedUserGroupFactory(), new UnsupportedHttpClient(),
         executorFactory);
     adaptor.init(new MockAdaptorContext(config, null));
@@ -933,7 +937,7 @@ public class SharePointAdaptorTest {
 
   @Test
   public void testGetDocIds() throws Exception {
-    adaptor = new SharePointAdaptor(new UnsupportedSiteDataFactory(),
+    adaptor = new SharePointAdaptor(initableSiteDataFactory,
         new UnsupportedUserGroupFactory(), new UnsupportedHttpClient(),
         executorFactory);
     AccumulatingDocIdPusher pusher = new AccumulatingDocIdPusher();
@@ -1009,8 +1013,17 @@ public class SharePointAdaptorTest {
           Holder<String> getContentResult) {
         long state = atomicState.get();
         if (state == 0) {
-          throw new WebServiceException("fake IO error");
+          setValue(lastItemIdOnPage, null);
+          if (ObjectType.VIRTUAL_SERVER.equals(objectType)) {
+            assertEquals(true, retrieveChildItems);
+            assertEquals(false, securityOnly);
+            setValue(getContentResult, getContentVirtualServer);
+          } else {
+            throw new AssertionError();
+          }
         } else if (state == 1) {
+          throw new WebServiceException("fake IO error");
+        } else if (state == 2) {
           setValue(lastItemIdOnPage, null);
           if (ObjectType.VIRTUAL_SERVER.equals(objectType)) {
             assertEquals(true, retrieveChildItems);
@@ -1030,7 +1043,7 @@ public class SharePointAdaptorTest {
           } else {
             throw new AssertionError();
           }
-        } else if (state == 2) {
+        } else if (state == 3) {
           assertEquals(ObjectType.VIRTUAL_SERVER, objectType);
           assertEquals(true, retrieveChildItems);
           assertEquals(false, securityOnly);
@@ -1047,9 +1060,7 @@ public class SharePointAdaptorTest {
           Integer timeout, Holder<String> getChangesResult,
           Holder<Boolean> moreChanges) {
         long state = atomicState.get();
-        if (state == 0) {
-          throw new AssertionError();
-        } else if (state == 2) {
+        if (state == 3) {
           atomicNumberGetChangesCalls.getAndIncrement();
           assertEquals(ObjectType.CONTENT_DATABASE, objectType);
           assertEquals("{4fb7dea1-2912-4927-9eda-1ea2f0977cf8}",
@@ -1074,17 +1085,18 @@ public class SharePointAdaptorTest {
         new UnsupportedUserGroupFactory(), new UnsupportedHttpClient(),
         executorFactory);
     AccumulatingDocIdPusher pusher = new AccumulatingDocIdPusher();
+    atomicState.set(0);
     adaptor.init(new MockAdaptorContext(config, pusher));
 
     // Error getting content databases, so content databases remains unchanged
     // (empty).
-    atomicState.set(0);
+    atomicState.set(1);
     adaptor.getModifiedDocIds(pusher);
     assertEquals(0, pusher.getRecords().size());
     assertEquals(0, atomicNumberGetChangesCalls.get());
 
     // Find new content databases and get their current change id.
-    atomicState.set(1);
+    atomicState.set(2);
     adaptor.getModifiedDocIds(pusher);
     assertEquals(1, pusher.getRecords().size());
     assertEquals(new DocIdPusher.Record.Builder(new DocId(""))
@@ -1095,7 +1107,7 @@ public class SharePointAdaptorTest {
 
     // Discover one content database disappeared; get changes for other content
     // database.
-    atomicState.set(2);
+    atomicState.set(3);
     adaptor.getModifiedDocIds(pusher);
     assertEquals(1, pusher.getRecords().size());
     assertEquals(new DocIdPusher.Record.Builder(new DocId(""))
@@ -1202,7 +1214,7 @@ public class SharePointAdaptorTest {
   public void testModifiedGetDocIdsClient() throws Exception {
     final String getChangesContentDatabase
         = loadTestString("testModifiedGetDocIdsClient.changes-cd.xml");
-    adaptor = new SharePointAdaptor(new UnsupportedSiteDataFactory(),
+    adaptor = new SharePointAdaptor(initableSiteDataFactory,
         new UnsupportedUserGroupFactory(), new UnsupportedHttpClient(),
         executorFactory);
     AccumulatingDocIdPusher pusher = new AccumulatingDocIdPusher();
@@ -1226,7 +1238,7 @@ public class SharePointAdaptorTest {
 
   @Test
   public void testParseError() throws Exception {
-    adaptor = new SharePointAdaptor(new UnsupportedSiteDataFactory(),
+    adaptor = new SharePointAdaptor(initableSiteDataFactory,
         new UnsupportedUserGroupFactory(), new UnsupportedHttpClient(),
         executorFactory);
     adaptor.init(new MockAdaptorContext(config, null));
@@ -1243,7 +1255,7 @@ public class SharePointAdaptorTest {
   @Test
   public void testValidationError() throws Exception {
     config.overrideKey("sharepoint.xmlValidation", "true");
-    adaptor = new SharePointAdaptor(new UnsupportedSiteDataFactory(),
+    adaptor = new SharePointAdaptor(initableSiteDataFactory,
         new UnsupportedUserGroupFactory(),
         new UnsupportedHttpClient(), executorFactory);
     adaptor.init(new MockAdaptorContext(config, null));
@@ -1261,7 +1273,7 @@ public class SharePointAdaptorTest {
 
   @Test
   public void testDisabledValidation() throws Exception {
-    adaptor = new SharePointAdaptor(new UnsupportedSiteDataFactory(),
+    adaptor = new SharePointAdaptor(initableSiteDataFactory,
         new UnsupportedUserGroupFactory(),
         new UnsupportedHttpClient(), executorFactory);
     config.overrideKey("sharepoint.xmlValidation", "false");
@@ -1281,7 +1293,7 @@ public class SharePointAdaptorTest {
   @Test
   public void testParseUnknownXml() throws Exception {
     config.overrideKey("sharepoint.xmlValidation", "true");
-    adaptor = new SharePointAdaptor(new UnsupportedSiteDataFactory(),
+    adaptor = new SharePointAdaptor(initableSiteDataFactory,
         new UnsupportedUserGroupFactory(),
         new UnsupportedHttpClient(), executorFactory);
     adaptor.init(new MockAdaptorContext(config, null));

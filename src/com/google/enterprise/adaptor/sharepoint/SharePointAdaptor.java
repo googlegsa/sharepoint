@@ -339,6 +339,15 @@ public class SharePointAdaptor extends AbstractAdaptor
     Authenticator.setDefault(ntlmAuthenticator);
 
     executor = executorFactory.call();
+
+    // Test out configuration.
+    try {
+      getSiteDataClient(virtualServer, virtualServer).getContentVirtualServer();
+    } catch (Exception e) {
+      // Don't leak the executor.
+      destroy();
+      throw e;
+    }
   }
 
   @Override
