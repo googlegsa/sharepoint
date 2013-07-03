@@ -16,7 +16,6 @@ package com.google.enterprise.adaptor.sharepoint;
 
 import com.google.common.annotations.VisibleForTesting;
 import com.google.common.cache.CacheBuilder;
-import com.google.common.cache.CacheLoader;
 import com.google.common.cache.LoadingCache;
 import com.google.enterprise.adaptor.AbstractAdaptor;
 import com.google.enterprise.adaptor.Acl;
@@ -267,7 +266,8 @@ public class SharePointAdaptor extends AbstractAdaptor
   private final UserGroupFactory userGroupFactory;
   /** Client for initiating raw HTTP connections. */
   private final HttpClient httpClient;
-  private final Executor executor;
+  private final Callable<ExecutorService> executorFactory;
+  private ExecutorService executor;
   private boolean xmlValidation;
   /** Authenticator instance that authenticates with SP. */
   /**
@@ -278,20 +278,21 @@ public class SharePointAdaptor extends AbstractAdaptor
 
   public SharePointAdaptor() {
     this(new SiteDataFactoryImpl(), new UserGroupFactoryImpl(),
-        new HttpClientImpl(), Executors.newCachedThreadPool());
+        new HttpClientImpl(), new CachedThreadPoolFactory());
   }
 
   @VisibleForTesting
   SharePointAdaptor(SiteDataFactory siteDataFactory,
-  UserGroupFactory userGroupFactory, HttpClient httpClient, Executor executor) {
+      UserGroupFactory userGroupFactory, HttpClient httpClient,
+      Callable<ExecutorService> executorFactory) {
     if (siteDataFactory == null || httpClient == null
-        || userGroupFactory == null || executor == null) {
+        || userGroupFactory == null || executorFactory == null) {
       throw new NullPointerException();
     }
     this.siteDataFactory = siteDataFactory;
     this.userGroupFactory = userGroupFactory;
     this.httpClient = httpClient;
-    this.executor = executor;
+    this.executorFactory = executorFactory;
   }
 
   /**
@@ -309,11 +310,15 @@ public class SharePointAdaptor extends AbstractAdaptor
     // When running on Windows, Windows Authentication can log us in.
     config.addKey("sharepoint.username", onWindows ? "" : null);
     config.addKey("sharepoint.password", onWindows ? "" : null);
-    config.addKey("sharepoint.xmlValidation", "true");
+    // On any particular SharePoint instance, we expect that at least some
+    // responses will not pass xml validation. We keep the option around to
+    // allow us to improve the schema itself, but also allow enable users to
+    // enable checking as a form of debugging.
+    config.addKey("sharepoint.xmlValidation", "false");
   }
 
   @Override
-  public void init(AdaptorContext context) throws IOException {
+  public void init(AdaptorContext context) throws Exception {
     this.context = context;
     Config config = context.getConfig();
     virtualServer = config.getValue("sharepoint.server");
@@ -333,15 +338,20 @@ public class SharePointAdaptor extends AbstractAdaptor
     // Unfortunately, this is a JVM-wide modification.
     Authenticator.setDefault(ntlmAuthenticator);
 
-    if (false) {
-      contentDatabaseChangeId.put("{4fb7dea1-2912-4927-9eda-1ea2f0977cf8}",
-          "1;0;4fb7dea1-2912-4927-9eda-1ea2f0977cf8;634717634720100000;597");
-    }
+    executor = executorFactory.call();
   }
 
   @Override
   public void destroy() {
     Authenticator.setDefault(null);
+    executor.shutdown();
+    try {
+      executor.awaitTermination(10, TimeUnit.SECONDS);
+    } catch (InterruptedException ex) {
+      Thread.currentThread().interrupt();
+    }
+    executor.shutdownNow();
+    executor = null;
   }
 
   @Override
@@ -726,7 +736,7 @@ public class SharePointAdaptor extends AbstractAdaptor
       // Check if anonymous access is denied by web application policy
       // only if anonymous access is enabled for web as checking web application
       // policy is additional web service call.
-      // TODO : Add caching for web application policy.
+      // TODO(ejona): Add caching for web application policy.
       if (allowAnonymousAccess) {
         allowAnonymousAccess 
             = !isDenyAnonymousAcessOnVirtualServer(getContentVirtualServer());
@@ -1020,7 +1030,7 @@ public class SharePointAdaptor extends AbstractAdaptor
 
     private boolean isAllowAnonymousReadForWeb(Web w) {
       boolean allowAnonymousRead
-          =(w.getMetadata().getAllowAnonymousAccess() == TrueFalseType.TRUE)
+          = (w.getMetadata().getAllowAnonymousAccess() == TrueFalseType.TRUE)
           && (w.getMetadata().getAnonymousViewListItems() == TrueFalseType.TRUE)
           && isPermitted(
             w.getMetadata().getAnonymousPermMask().longValue(), LIST_ITEM_MASK);
@@ -1079,7 +1089,7 @@ public class SharePointAdaptor extends AbstractAdaptor
       // Check if anonymous access is denied by web application policy
       // only if anonymous access is enabled for web as checking web application
       // policy is additional web service call.
-      // TODO : Add caching for web application policy.
+      // TODO(ejona): Add caching for web application policy.
       if (allowAnonymousAccess) {
         allowAnonymousAccess 
             = !isDenyAnonymousAcessOnVirtualServer(getContentVirtualServer());
@@ -2209,7 +2219,12 @@ public class SharePointAdaptor extends AbstractAdaptor
   }
 
   private class MemberIdsCacheLoader
-      extends CacheLoader<String, MemberIdMapping> {
+      extends AsyncCacheLoader<String, MemberIdMapping> {
+    @Override
+    protected Executor executor() {
+      return executor;
+    }
+
     @Override
     public MemberIdMapping load(String site) throws IOException {
       return getSiteDataClient(site, site).retrieveMemberIdMapping();
@@ -2217,10 +2232,23 @@ public class SharePointAdaptor extends AbstractAdaptor
   }
 
   private class SiteUserCacheLoader
-      extends CacheLoader<String, MemberIdMapping> {
+      extends AsyncCacheLoader<String, MemberIdMapping> {
+    @Override
+    protected Executor executor() {
+      return executor;
+    }
+
     @Override
     public MemberIdMapping load(String site) throws IOException {
       return getSiteDataClient(site, site).retrieveSiteUserMapping();
+    }
+  }
+
+  private static class CachedThreadPoolFactory
+      implements Callable<ExecutorService> {
+    @Override
+    public ExecutorService call() {
+      return Executors.newCachedThreadPool();
     }
   }
 }

@@ -180,7 +180,13 @@ public class SharePointAdaptorTest {
   private final Charset charset = Charset.forName("UTF-8");
   private Config config;
   private SharePointAdaptor adaptor;
-  private Executor executor = new UnsupportedExecutor();
+  private Callable<ExecutorService> executorFactory
+      = new Callable<ExecutorService>() {
+        @Override
+        public ExecutorService call() {
+          return new CallerRunsExecutor();
+        }
+      };
 
   @Rule
   public ExpectedException thrown = ExpectedException.none();
@@ -252,42 +258,42 @@ public class SharePointAdaptorTest {
   public void testNullSiteDataFactory() {
     thrown.expect(NullPointerException.class);
     new SharePointAdaptor(null, new UnsupportedUserGroupFactory(),
-        new UnsupportedHttpClient(), executor);
+        new UnsupportedHttpClient(), executorFactory);
   }
   
   @Test
   public void testNullUserGroupFactory() {
     thrown.expect(NullPointerException.class);
     new SharePointAdaptor(new UnsupportedSiteDataFactory(), null,
-        new UnsupportedHttpClient(), executor);
+        new UnsupportedHttpClient(), executorFactory);
   }
 
   @Test
   public void testNullHttpClient() {
     thrown.expect(NullPointerException.class);
     new SharePointAdaptor(new UnsupportedSiteDataFactory(),
-        new UnsupportedUserGroupFactory(), null, executor);
+        new UnsupportedUserGroupFactory(), null, executorFactory);
   }
-  
+
   @Test
-  public void testNullExecutor() {
+  public void testNullExecutorFactory() {
     thrown.expect(NullPointerException.class);
     new SharePointAdaptor(new UnsupportedSiteDataFactory(),
         new UnsupportedUserGroupFactory(), new UnsupportedHttpClient(), null);
   }
 
   @Test
-  public void testInitDestroy() throws IOException {
+  public void testInitDestroy() throws Exception {
     adaptor = new SharePointAdaptor(new UnsupportedSiteDataFactory(),
         new UnsupportedUserGroupFactory(),
-        new UnsupportedHttpClient(), executor);
+        new UnsupportedHttpClient(), executorFactory);
     adaptor.init(new MockAdaptorContext(config, null));
     adaptor.destroy();
     adaptor = null;
   }
 
   @Test
-  public void testGetDocContentWrongServer() throws IOException {
+  public void testGetDocContentWrongServer() throws Exception {
     SiteDataFactory siteDataFactory = MockSiteDataFactory.blank()
         .endpoint(VS_ENDPOINT, MockSiteData.blank()
             .register(new SiteAndWebExchange(
@@ -295,7 +301,7 @@ public class SharePointAdaptorTest {
 
     adaptor = new SharePointAdaptor(siteDataFactory,
         new UnsupportedUserGroupFactory(),
-        new UnsupportedHttpClient(), executor);
+        new UnsupportedHttpClient(), executorFactory);
     adaptor.init(new MockAdaptorContext(config, null));
     ByteArrayOutputStream baos = new ByteArrayOutputStream();
     GetContentsRequest request = new GetContentsRequest(
@@ -306,7 +312,7 @@ public class SharePointAdaptorTest {
   }
 
   @Test
-  public void testGetDocContentWrongPage() throws IOException {
+  public void testGetDocContentWrongPage() throws Exception {
     final String wrongPage = "http://localhost:1/wrongPage";
     SiteDataFactory siteDataFactory = MockSiteDataFactory.blank()
         .endpoint(VS_ENDPOINT, MockSiteData.blank()
@@ -317,7 +323,7 @@ public class SharePointAdaptorTest {
 
     adaptor = new SharePointAdaptor(siteDataFactory,
         new UnsupportedUserGroupFactory(), new UnsupportedHttpClient(),
-        executor);
+        executorFactory);
     adaptor.init(new MockAdaptorContext(config, null));
     ByteArrayOutputStream baos = new ByteArrayOutputStream();
     GetContentsRequest request = new GetContentsRequest(new DocId(wrongPage));
@@ -327,7 +333,7 @@ public class SharePointAdaptorTest {
   }
 
   @Test
-  public void testGetDocContentVirtualServer() throws IOException {
+  public void testGetDocContentVirtualServer() throws Exception {
     SiteDataFactory siteDataFactory = MockSiteDataFactory.blank()
         .endpoint(VS_ENDPOINT, MockSiteData.blank()
             .register(VS_CONTENT_EXCHANGE)
@@ -335,7 +341,7 @@ public class SharePointAdaptorTest {
 
     adaptor = new SharePointAdaptor(siteDataFactory,
         new UnsupportedUserGroupFactory(), new UnsupportedHttpClient(),
-        executor);
+        executorFactory);
     adaptor.init(new MockAdaptorContext(config, null));
     ByteArrayOutputStream baos = new ByteArrayOutputStream();
     GetContentsResponse response = new GetContentsResponse(baos);
@@ -363,7 +369,7 @@ public class SharePointAdaptorTest {
   }
 
   @Test
-  public void testGetDocContentSiteCollection() throws IOException {
+  public void testGetDocContentSiteCollection() throws Exception {
     SiteDataFactory siteDataFactory = MockSiteDataFactory.blank()
         .endpoint(VS_ENDPOINT, MockSiteData.blank()
             .register(SITES_SITECOLLECTION_SAW_EXCHANGE))
@@ -374,7 +380,7 @@ public class SharePointAdaptorTest {
 
     adaptor = new SharePointAdaptor(siteDataFactory,
         new UnsupportedUserGroupFactory(), new UnsupportedHttpClient(),
-        executor);
+        executorFactory);
     adaptor.init(new MockAdaptorContext(config, null));
     ByteArrayOutputStream baos = new ByteArrayOutputStream();
     GetContentsRequest request = new GetContentsRequest(
@@ -416,7 +422,7 @@ public class SharePointAdaptorTest {
   }
 
   @Test
-  public void testGetDocContentList() throws IOException {
+  public void testGetDocContentList() throws Exception {
     SiteDataSoap siteData = MockSiteData.blank()
         .register(SITES_SITECOLLECTION_LISTS_CUSTOMLIST_URLSEG_EXCHANGE)
         .register(SITES_SITECOLLECTION_LISTS_CUSTOMLIST_L_CONTENT_EXCHANGE)
@@ -435,7 +441,7 @@ public class SharePointAdaptorTest {
 
     adaptor = new SharePointAdaptor(new UnsupportedSiteDataFactory(),
         new UnsupportedUserGroupFactory(), new UnsupportedHttpClient(),
-        executor);
+        executorFactory);
     adaptor.init(new MockAdaptorContext(config, null));
     ByteArrayOutputStream baos = new ByteArrayOutputStream();
     GetContentsRequest request = new GetContentsRequest(
@@ -470,7 +476,7 @@ public class SharePointAdaptorTest {
   }
 
   @Test
-  public void testGetDocContentAttachment() throws IOException {
+  public void testGetDocContentAttachment() throws Exception {
     SiteDataSoap siteData = MockSiteData.blank()
         .register(SITES_SITECOLLECTION_LISTS_CUSTOMLIST_URLSEG_EXCHANGE)
         .register(SITES_SITECOLLECTION_LISTS_CUSTOMLIST_L_CONTENT_EXCHANGE)
@@ -496,7 +502,7 @@ public class SharePointAdaptorTest {
             "conTent-TypE", goldenContentType, "Content-Type", "late");
         return new FileInfo.Builder(contents).setHeaders(headers).build();
       }
-    }, executor);
+    }, executorFactory);
     adaptor.init(new MockAdaptorContext(config, null));
     ByteArrayOutputStream baos = new ByteArrayOutputStream();
     GetContentsRequest request = new GetContentsRequest(
@@ -524,7 +530,7 @@ public class SharePointAdaptorTest {
   }
 
   @Test
-  public void testGetDocContentListItem() throws IOException {
+  public void testGetDocContentListItem() throws Exception {
     SiteDataSoap siteData = MockSiteData.blank()
         .register(SITES_SITECOLLECTION_LISTS_CUSTOMLIST_1_URLSEG_EXCHANGE)
         .register(SITES_SITECOLLECTION_LISTS_CUSTOMLIST_2_URLSEG_EXCHANGE)
@@ -545,7 +551,7 @@ public class SharePointAdaptorTest {
 
     adaptor = new SharePointAdaptor(new UnsupportedSiteDataFactory(),
         new UnsupportedUserGroupFactory(), new UnsupportedHttpClient(),
-        executor);
+        executorFactory);
     adaptor.init(new MockAdaptorContext(config, null));
     ByteArrayOutputStream baos = new ByteArrayOutputStream();
     GetContentsRequest request = new GetContentsRequest(
@@ -625,7 +631,7 @@ public class SharePointAdaptorTest {
   }
 
   @Test
-  public void testGetDocContentListItemAnonymousAccess() throws IOException {
+  public void testGetDocContentListItemAnonymousAccess() throws Exception {
     SiteDataSoap siteData = MockSiteData.blank()
         .register(SITES_SITECOLLECTION_LISTS_CUSTOMLIST_1_URLSEG_EXCHANGE)
         .register(SITES_SITECOLLECTION_LISTS_CUSTOMLIST_2_URLSEG_EXCHANGE)
@@ -660,7 +666,7 @@ public class SharePointAdaptorTest {
 
     adaptor = new SharePointAdaptor(new UnsupportedSiteDataFactory(),
         new UnsupportedUserGroupFactory(), new UnsupportedHttpClient(),
-        executor);
+        executorFactory);
     adaptor.init(new MockAdaptorContext(config, null));
     ByteArrayOutputStream baos = new ByteArrayOutputStream();
     GetContentsRequest request = new GetContentsRequest(
@@ -676,7 +682,7 @@ public class SharePointAdaptorTest {
   }
 
   @Test
-  public void testGetDocContentListItemWithReadSecurity() throws IOException {
+  public void testGetDocContentListItemWithReadSecurity() throws Exception {
     SiteDataSoap siteData = MockSiteData.blank()
         .register(SITES_SITECOLLECTION_LISTS_CUSTOMLIST_2_URLSEG_EXCHANGE)
         .register(SITES_SITECOLLECTION_LISTS_CUSTOMLIST_L_CONTENT_EXCHANGE
@@ -714,13 +720,7 @@ public class SharePointAdaptorTest {
         return new UnsupportedSiteData();
       }
     },
-    mockUserGroupFactory, new UnsupportedHttpClient(),
-    new Executor() {
-      @Override
-      public void execute(Runnable command) {
-        command.run();
-      }
-    });
+    mockUserGroupFactory, new UnsupportedHttpClient(), executorFactory);
     final AccumulatingDocIdPusher docIdPusher = new AccumulatingDocIdPusher();
     adaptor.init(new MockAdaptorContext(config, null) {
       @Override
@@ -770,7 +770,7 @@ public class SharePointAdaptorTest {
         docIdPusher.getNamedResources());
   }
 
-  public void testGetDocContentListItemScopeSameAsParent() throws IOException {
+  public void testGetDocContentListItemScopeSameAsParent() throws Exception {
     SiteDataSoap siteData = MockSiteData.blank()
         .register(new URLSegmentsExchange(
             "http://localhost:1/sites/SiteCollection/Lists/Custom List"
@@ -793,7 +793,7 @@ public class SharePointAdaptorTest {
 
     adaptor = new SharePointAdaptor(new UnsupportedSiteDataFactory(),
         new UnsupportedUserGroupFactory(), new UnsupportedHttpClient(),
-        executor);
+        executorFactory);
     adaptor.init(new MockAdaptorContext(config, null));
     ByteArrayOutputStream baos = new ByteArrayOutputStream();
     GetContentsRequest request = new GetContentsRequest(
@@ -817,7 +817,7 @@ public class SharePointAdaptorTest {
   }
 
   @Test
-  public void testGetDocContentFolder() throws IOException {
+  public void testGetDocContentFolder() throws Exception {
     SiteDataSoap siteData = MockSiteData.blank()
         .register(SITES_SITECOLLECTION_LISTS_CUSTOMLIST_1_URLSEG_EXCHANGE)
         .register(SITES_SITECOLLECTION_LISTS_CUSTOMLIST_L_CONTENT_EXCHANGE)
@@ -836,7 +836,7 @@ public class SharePointAdaptorTest {
 
     adaptor = new SharePointAdaptor(new UnsupportedSiteDataFactory(),
         new UnsupportedUserGroupFactory(), new UnsupportedHttpClient(),
-        executor);
+        executorFactory);
     adaptor.init(new MockAdaptorContext(config, null));
     ByteArrayOutputStream baos = new ByteArrayOutputStream();
     GetContentsRequest request = new GetContentsRequest(
@@ -921,10 +921,10 @@ public class SharePointAdaptorTest {
   }
 
   @Test
-  public void testGetDocIds() throws IOException, InterruptedException {
+  public void testGetDocIds() throws Exception {
     adaptor = new SharePointAdaptor(new UnsupportedSiteDataFactory(),
         new UnsupportedUserGroupFactory(), new UnsupportedHttpClient(),
-        executor);
+        executorFactory);
     AccumulatingDocIdPusher pusher = new AccumulatingDocIdPusher();
     adaptor.init(new MockAdaptorContext(config, pusher));
     assertEquals(0, pusher.getRecords().size());
@@ -935,7 +935,7 @@ public class SharePointAdaptorTest {
   }
 
   @Test
-  public void testModifiedGetDocIds() throws IOException, InterruptedException {
+  public void testModifiedGetDocIds() throws Exception {
     final String getContentVirtualServer
         = "<VirtualServer>"
         + "<Metadata URL=\"http://localhost:1/\" />"
@@ -1061,7 +1061,7 @@ public class SharePointAdaptorTest {
         .endpoint(VS_ENDPOINT, siteData);
     adaptor = new SharePointAdaptor(siteDataFactory,
         new UnsupportedUserGroupFactory(), new UnsupportedHttpClient(),
-        executor);
+        executorFactory);
     AccumulatingDocIdPusher pusher = new AccumulatingDocIdPusher();
     adaptor.init(new MockAdaptorContext(config, pusher));
 
@@ -1094,8 +1094,7 @@ public class SharePointAdaptorTest {
   }
 
   @Test
-  public void testModifiedGetDocIdsSP2010() throws IOException,
-         InterruptedException {
+  public void testModifiedGetDocIdsSP2010() throws Exception {
     final String getContentVirtualServer
         = "<VirtualServer>"
         + "<Metadata ID=\"{3a125232-0c27-495f-8c92-65ad85b5a17c}\""
@@ -1175,7 +1174,7 @@ public class SharePointAdaptorTest {
         endpoint(VS_ENDPOINT, siteData);
     adaptor = new SharePointAdaptor(siteDataFactory,
         new UnsupportedUserGroupFactory(), new UnsupportedHttpClient(),
-        executor);
+        executorFactory);
     AccumulatingDocIdPusher pusher = new AccumulatingDocIdPusher();
     adaptor.init(new MockAdaptorContext(config, pusher));
 
@@ -1189,13 +1188,12 @@ public class SharePointAdaptorTest {
   }
 
   @Test
-  public void testModifiedGetDocIdsClient() throws IOException,
-      InterruptedException {
+  public void testModifiedGetDocIdsClient() throws Exception {
     final String getChangesContentDatabase
         = loadTestString("testModifiedGetDocIdsClient.changes-cd.xml");
     adaptor = new SharePointAdaptor(new UnsupportedSiteDataFactory(),
         new UnsupportedUserGroupFactory(), new UnsupportedHttpClient(),
-        executor);
+        executorFactory);
     AccumulatingDocIdPusher pusher = new AccumulatingDocIdPusher();
     adaptor.init(new MockAdaptorContext(config, pusher));
     SharePointAdaptor.SiteDataClient client = adaptor.new SiteDataClient(
@@ -1219,7 +1217,7 @@ public class SharePointAdaptorTest {
   public void testParseError() throws Exception {
     adaptor = new SharePointAdaptor(new UnsupportedSiteDataFactory(),
         new UnsupportedUserGroupFactory(), new UnsupportedHttpClient(),
-        executor);
+        executorFactory);
     adaptor.init(new MockAdaptorContext(config, null));
     SharePointAdaptor.SiteDataClient client = adaptor.new SiteDataClient(
         "http://localhost:1", "http://localhost:1",
@@ -1233,9 +1231,10 @@ public class SharePointAdaptorTest {
 
   @Test
   public void testValidationError() throws Exception {
+    config.overrideKey("sharepoint.xmlValidation", "true");
     adaptor = new SharePointAdaptor(new UnsupportedSiteDataFactory(),
         new UnsupportedUserGroupFactory(),
-        new UnsupportedHttpClient(), executor);
+        new UnsupportedHttpClient(), executorFactory);
     adaptor.init(new MockAdaptorContext(config, null));
     SharePointAdaptor.SiteDataClient client = adaptor.new SiteDataClient(
         "http://localhost:1", "http://localhost:1",
@@ -1253,7 +1252,7 @@ public class SharePointAdaptorTest {
   public void testDisabledValidation() throws Exception {
     adaptor = new SharePointAdaptor(new UnsupportedSiteDataFactory(),
         new UnsupportedUserGroupFactory(),
-        new UnsupportedHttpClient(), executor);
+        new UnsupportedHttpClient(), executorFactory);
     config.overrideKey("sharepoint.xmlValidation", "false");
     adaptor.init(new MockAdaptorContext(config, null));
     SharePointAdaptor.SiteDataClient client = adaptor.new SiteDataClient(
@@ -1270,9 +1269,10 @@ public class SharePointAdaptorTest {
 
   @Test
   public void testParseUnknownXml() throws Exception {
+    config.overrideKey("sharepoint.xmlValidation", "true");
     adaptor = new SharePointAdaptor(new UnsupportedSiteDataFactory(),
         new UnsupportedUserGroupFactory(),
-        new UnsupportedHttpClient(), executor);
+        new UnsupportedHttpClient(), executorFactory);
     adaptor.init(new MockAdaptorContext(config, null));
     SharePointAdaptor.SiteDataClient client = adaptor.new SiteDataClient(
         "http://localhost:1", "http://localhost:1",
@@ -1753,13 +1753,6 @@ public class SharePointAdaptorTest {
   private static class UnsupportedCallable<V> implements Callable<V> {
     @Override
     public V call() {
-      throw new UnsupportedOperationException();
-    }
-  }
-  
-  private static class UnsupportedExecutor implements Executor {
-    @Override
-    public void execute(Runnable command) {
       throw new UnsupportedOperationException();
     }
   }
