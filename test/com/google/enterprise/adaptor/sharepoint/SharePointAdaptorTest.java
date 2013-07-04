@@ -951,39 +951,6 @@ public class SharePointAdaptorTest {
 
   @Test
   public void testModifiedGetDocIds() throws Exception {
-    final String getContentVirtualServer
-        = "<VirtualServer>"
-        + "<Metadata URL=\"http://localhost:1/\" />"
-        + "<ContentDatabases>"
-        + "<ContentDatabase ID=\"{4fb7dea1-2912-4927-9eda-1ea2f0977cf8}\" />"
-        + "<ContentDatabase ID=\"{3ac1e3b3-2326-7341-4afe-16751eafbc51}\" />"
-        + "</ContentDatabases>"
-        + "<Policies AnonymousGrantMask=\"0\" AnonymousDenyMask=\"0\">"
-        + "<PolicyUser LoginName=\"NT AUTHORITY\\LOCAL SERVICE\""
-        + " Sid=\"S-1-5-19\" GrantMask=\"4611686224789442657\" DenyMask=\"0\"/>"
-        + "<PolicyUser LoginName=\"GDC-PSL\\spuser1\""
-        + " Sid=\"S-1-5-21-736914693-3137354690-2813686979-1130\""
-        + " GrantMask=\"4611686224789442657\" DenyMask=\"0\"/>"
-        + "<PolicyUser LoginName=\"GDC-PSL\\Administrator\""
-        + " Sid=\"S-1-5-21-736914693-3137354690-2813686979-500\""
-        + " GrantMask=\"9223372036854775807\" DenyMask=\"0\"/>"
-        + "</Policies></VirtualServer>";
-    final String getContentVirtualServer2
-        = "<VirtualServer>"
-        + "<Metadata URL=\"http://localhost:1/\" />"
-        + "<ContentDatabases>"
-        + "<ContentDatabase ID=\"{4fb7dea1-2912-4927-9eda-1ea2f0977cf8}\" />"
-        + "</ContentDatabases>"
-        + "<Policies AnonymousGrantMask=\"0\" AnonymousDenyMask=\"0\">"
-        + "<PolicyUser LoginName=\"NT AUTHORITY\\LOCAL SERVICE\""
-        + " Sid=\"S-1-5-19\" GrantMask=\"4611686224789442657\" DenyMask=\"0\"/>"
-        + "<PolicyUser LoginName=\"GDC-PSL\\spuser1\""
-        + " Sid=\"S-1-5-21-736914693-3137354690-2813686979-1130\""
-        + " GrantMask=\"4611686224789442657\" DenyMask=\"0\"/>"
-        + "<PolicyUser LoginName=\"GDC-PSL\\Administrator\""
-        + " Sid=\"S-1-5-21-736914693-3137354690-2813686979-500\""
-        + " GrantMask=\"9223372036854775807\" DenyMask=\"0\"/>"
-        + "</Policies></VirtualServer>";
     final String getContentContentDatabase4fb
         = "<ContentDatabase>"
         + "<Metadata ChangeId=\"1;0;4fb7dea1-2912-4927-9eda-1ea2f0977cf8;634727"
@@ -1003,100 +970,74 @@ public class SharePointAdaptorTest {
         +   "056594000000;603\""
         + " ID=\"{4fb7dea1-2912-4927-9eda-1ea2f0977cf8}\" />"
         + "</ContentDatabase></SPContentDatabase>";
-    final AtomicLong atomicState = new AtomicLong();
-    final AtomicLong atomicNumberGetChangesCalls = new AtomicLong(0);
-    SiteDataSoap siteData = new UnsupportedSiteData() {
+    final ReferenceSiteData siteData = new ReferenceSiteData();
+    SiteDataSoap state0 = MockSiteData.blank()
+        .register(VS_CONTENT_EXCHANGE);
+    SiteDataSoap state1 = new UnsupportedSiteData() {
       @Override
       public void getContent(ObjectType objectType, String objectId,
           String folderUrl, String itemId, boolean retrieveChildItems,
           boolean securityOnly, Holder<String> lastItemIdOnPage,
           Holder<String> getContentResult) {
-        long state = atomicState.get();
-        if (state == 0) {
-          setValue(lastItemIdOnPage, null);
-          if (ObjectType.VIRTUAL_SERVER.equals(objectType)) {
-            assertEquals(true, retrieveChildItems);
-            assertEquals(false, securityOnly);
-            setValue(getContentResult, getContentVirtualServer);
-          } else {
-            throw new AssertionError();
-          }
-        } else if (state == 1) {
-          throw new WebServiceException("fake IO error");
-        } else if (state == 2) {
-          setValue(lastItemIdOnPage, null);
-          if (ObjectType.VIRTUAL_SERVER.equals(objectType)) {
-            assertEquals(true, retrieveChildItems);
-            assertEquals(false, securityOnly);
-            setValue(getContentResult, getContentVirtualServer);
-          } else if (ObjectType.CONTENT_DATABASE.equals(objectType)) {
-            if ("{4fb7dea1-2912-4927-9eda-1ea2f0977cf8}".equals(objectId)) {
-              setValue(getContentResult, getContentContentDatabase4fb);
-            } else if ("{3ac1e3b3-2326-7341-4afe-16751eafbc51}"
-                .equals(objectId)) {
-              setValue(getContentResult, getContentContentDatabase3ac);
-            } else {
-              throw new AssertionError();
-            }
-            assertEquals(false, retrieveChildItems);
-            assertEquals(false, securityOnly);
-          } else {
-            throw new AssertionError();
-          }
-        } else if (state == 3) {
-          assertEquals(ObjectType.VIRTUAL_SERVER, objectType);
-          assertEquals(true, retrieveChildItems);
-          assertEquals(false, securityOnly);
-          setValue(lastItemIdOnPage, null);
-          setValue(getContentResult, getContentVirtualServer2);
-        } else {
-          throw new AssertionError();
-        }
+        throw new WebServiceException("fake IO error");
+      }
+    };
+    SiteDataSoap state2 = MockSiteData.blank()
+        .register(VS_CONTENT_EXCHANGE.replaceInContent(
+          "<ContentDatabase ID=\"{4fb7dea1-2912-4927-9eda-1ea2f0977cf8}\" />",
+          "<ContentDatabase ID=\"{4fb7dea1-2912-4927-9eda-1ea2f0977cf8}\" />"
+           + "<ContentDatabase ID=\"{3ac1e3b3-2326-7341-4afe-16751eafbc51}\" />"
+          ))
+        .register(new ContentExchange(ObjectType.CONTENT_DATABASE,
+              "{4fb7dea1-2912-4927-9eda-1ea2f0977cf8}", null, null, false,
+              false, null, getContentContentDatabase4fb))
+        .register(new ContentExchange(ObjectType.CONTENT_DATABASE,
+              "{3ac1e3b3-2326-7341-4afe-16751eafbc51}", null, null, false,
+              false, null, getContentContentDatabase3ac));
+    SiteDataSoap state3 = MockSiteData.blank()
+        .register(VS_CONTENT_EXCHANGE)
+        .register(new ChangesExchange(ObjectType.CONTENT_DATABASE,
+              "{4fb7dea1-2912-4927-9eda-1ea2f0977cf8}",
+              "1;0;4fb7dea1-2912-4927-9eda-1ea2f0977cf8;634727056594000000;603",
+              "1;0;4fb7dea1-2912-4927-9eda-1ea2f0977cf8;634727056594000000;603",
+              null,
+              "1;0;4fb7dea1-2912-4927-9eda-1ea2f0977cf8;634727056594000000;603",
+              15, getChangesContentDatabase4fb, false));
+    final AtomicLong atomicNumberGetChangesCalls = new AtomicLong(0);
+    SiteDataSoap countingSiteData = new DelegatingSiteData() {
+      @Override
+      protected SiteDataSoap delegate() {
+        return siteData;
       }
 
       @Override
-      public void getChanges(ObjectType objectType, String contentDatabaseId,
-          Holder<String> lastChangeId, Holder<String> currentChangeId,
-          Integer timeout, Holder<String> getChangesResult,
-          Holder<Boolean> moreChanges) {
-        long state = atomicState.get();
-        if (state == 3) {
-          atomicNumberGetChangesCalls.getAndIncrement();
-          assertEquals(ObjectType.CONTENT_DATABASE, objectType);
-          assertEquals("{4fb7dea1-2912-4927-9eda-1ea2f0977cf8}",
-              contentDatabaseId);
-          assertEquals(
-              "1;0;4fb7dea1-2912-4927-9eda-1ea2f0977cf8;634727056594000000;603",
-              lastChangeId.value);
-          String newLastChangeId = "1;0;4fb7dea1-2912-4927-9eda-1ea2f0977cf8;63"
-              + "4727056594000000;603";
-          setValue(lastChangeId, newLastChangeId);
-          setValue(currentChangeId, newLastChangeId);
-          setValue(getChangesResult, getChangesContentDatabase4fb);
-          setValue(moreChanges, false);
-        } else {
-          throw new AssertionError();
-        }
+      public void getChanges(ObjectType objectType,
+          String contentDatabaseId, Holder<String> lastChangeId,
+          Holder<String> currentChangeId, Integer timeout,
+          Holder<String> getChangesResult, Holder<Boolean> moreChanges) {
+        atomicNumberGetChangesCalls.getAndIncrement();
+        super.getChanges(objectType, contentDatabaseId, lastChangeId,
+            currentChangeId, timeout, getChangesResult, moreChanges);
       }
     };
     SiteDataFactory siteDataFactory = MockSiteDataFactory.blank()
-        .endpoint(VS_ENDPOINT, siteData);
+        .endpoint(VS_ENDPOINT, countingSiteData);
     adaptor = new SharePointAdaptor(siteDataFactory,
         new UnsupportedUserGroupFactory(), new UnsupportedHttpClient(),
         executorFactory);
     AccumulatingDocIdPusher pusher = new AccumulatingDocIdPusher();
-    atomicState.set(0);
+    siteData.setSiteDataSoap(state0);
     adaptor.init(new MockAdaptorContext(config, pusher));
 
     // Error getting content databases, so content databases remains unchanged
     // (empty).
-    atomicState.set(1);
+    siteData.setSiteDataSoap(state1);
     adaptor.getModifiedDocIds(pusher);
     assertEquals(0, pusher.getRecords().size());
     assertEquals(0, atomicNumberGetChangesCalls.get());
 
     // Find new content databases and get their current change id.
-    atomicState.set(2);
+    siteData.setSiteDataSoap(state2);
     adaptor.getModifiedDocIds(pusher);
     assertEquals(1, pusher.getRecords().size());
     assertEquals(new DocIdPusher.Record.Builder(new DocId(""))
@@ -1107,7 +1048,7 @@ public class SharePointAdaptorTest {
 
     // Discover one content database disappeared; get changes for other content
     // database.
-    atomicState.set(3);
+    siteData.setSiteDataSoap(state3);
     adaptor.getModifiedDocIds(pusher);
     assertEquals(1, pusher.getRecords().size());
     assertEquals(new DocIdPusher.Record.Builder(new DocId(""))
@@ -1118,24 +1059,6 @@ public class SharePointAdaptorTest {
 
   @Test
   public void testModifiedGetDocIdsSP2010() throws Exception {
-    final String getContentVirtualServer
-        = "<VirtualServer>"
-        + "<Metadata ID=\"{3a125232-0c27-495f-8c92-65ad85b5a17c}\""
-        + " Version=\"14.0.4762.1000\" URL=\"http://localhost:1/\""
-        + " URLZone=\"Default\" URLIsHostHeader=\"False\" />"
-        + "<ContentDatabases>"
-        + "<ContentDatabase ID=\"{4fb7dea1-2912-4927-9eda-1ea2f0977cf8}\" />"
-        + "</ContentDatabases>"
-        + "<Policies AnonymousGrantMask=\"0\" AnonymousDenyMask=\"0\">"
-        + "<PolicyUser LoginName=\"NT AUTHORITY\\LOCAL SERVICE\""
-        + " Sid=\"S-1-5-19\" GrantMask=\"4611686224789442657\" DenyMask=\"0\"/>"
-        + "<PolicyUser LoginName=\"GDC-PSL\\spuser1\""
-        + " Sid=\"S-1-5-21-736914693-3137354690-2813686979-1130\""
-        + " GrantMask=\"4611686224789442657\" DenyMask=\"0\"/>"
-        + "<PolicyUser LoginName=\"GDC-PSL\\Administrator\""
-        + " Sid=\"S-1-5-21-736914693-3137354690-2813686979-500\""
-        + " GrantMask=\"9223372036854775807\" DenyMask=\"0\"/>"
-        + "</Policies></VirtualServer>";
     final String getContentContentDatabase4fb
         = "<ContentDatabase>"
         + "<Metadata ChangeId=\"1;0;4fb7dea1-2912-4927-9eda-1ea2f0977cf8;634727"
@@ -1149,52 +1072,45 @@ public class SharePointAdaptorTest {
         +   "056595000000;604\""
         + " ID=\"{4fb7dea1-2912-4927-9eda-1ea2f0977cf8}\" />"
         + "</ContentDatabase></SPContentDatabase>";
+    // SP 2010 provides more metadata than 2007.
+    ContentExchange vsContentExchange = VS_CONTENT_EXCHANGE.replaceInContent(
+        "<Metadata URL=\"http://localhost:1/\" />",
+        "<Metadata ID=\"{3a125232-0c27-495f-8c92-65ad85b5a17c}\""
+          + " Version=\"14.0.4762.1000\" URL=\"http://localhost:1/\""
+          + " URLZone=\"Default\" URLIsHostHeader=\"False\" />");
     final AtomicLong atomicNumberGetChangesCalls = new AtomicLong(0);
-    SiteDataSoap siteData = new UnsupportedSiteData() {
+    final SiteDataSoap siteData = MockSiteData.blank()
+        .register(vsContentExchange)
+        .register(new ContentExchange(ObjectType.CONTENT_DATABASE,
+              "{4fb7dea1-2912-4927-9eda-1ea2f0977cf8}", null, null, false,
+              false, null, getContentContentDatabase4fb))
+        // The timeout in SP 2010 is not a timeout and should always be at least
+        // 60 to get a result.
+        .register(new ChangesExchange(ObjectType.CONTENT_DATABASE,
+              "{4fb7dea1-2912-4927-9eda-1ea2f0977cf8}",
+              "1;0;4fb7dea1-2912-4927-9eda-1ea2f0977cf8;634727056594000000;603",
+              "1;0;4fb7dea1-2912-4927-9eda-1ea2f0977cf8;634727056594000000;603",
+              null,
+              "1;0;4fb7dea1-2912-4927-9eda-1ea2f0977cf8;634727056594000000;603",
+              600, getChangesContentDatabase4fb, false));
+    SiteDataSoap countingSiteData = new DelegatingSiteData() {
       @Override
-      public void getContent(ObjectType objectType, String objectId,
-          String folderUrl, String itemId, boolean retrieveChildItems,
-          boolean securityOnly, Holder<String> lastItemIdOnPage,
-          Holder<String> getContentResult) {
-        setValue(lastItemIdOnPage, null);
-        if (ObjectType.VIRTUAL_SERVER.equals(objectType)) {
-          assertEquals(true, retrieveChildItems);
-          assertEquals(false, securityOnly);
-          setValue(getContentResult, getContentVirtualServer);
-        } else if (ObjectType.CONTENT_DATABASE.equals(objectType)) {
-          assertEquals("{4fb7dea1-2912-4927-9eda-1ea2f0977cf8}", objectId);
-          assertEquals(false, retrieveChildItems);
-          assertEquals(false, securityOnly);
-          setValue(getContentResult, getContentContentDatabase4fb);
-        } else {
-          throw new AssertionError();
-        }
+      protected SiteDataSoap delegate() {
+        return siteData;
       }
 
       @Override
-      public void getChanges(ObjectType objectType, String contentDatabaseId,
-          Holder<String> lastChangeId, Holder<String> currentChangeId,
-          Integer timeout, Holder<String> getChangesResult,
-          Holder<Boolean> moreChanges) {
+      public void getChanges(ObjectType objectType,
+          String contentDatabaseId, Holder<String> lastChangeId,
+          Holder<String> currentChangeId, Integer timeout,
+          Holder<String> getChangesResult, Holder<Boolean> moreChanges) {
         atomicNumberGetChangesCalls.getAndIncrement();
-        // The timeout in SP 2010 is not a timeout and should always be at least
-        // 60. Otherwise, you will always get zero results.
-        assertTrue(timeout >= 60);
-        assertEquals(ObjectType.CONTENT_DATABASE, objectType);
-        assertEquals("{4fb7dea1-2912-4927-9eda-1ea2f0977cf8}",
-            contentDatabaseId);
-        assertEquals(
-            "1;0;4fb7dea1-2912-4927-9eda-1ea2f0977cf8;634727056594000000;603",
-            lastChangeId.value);
-        setValue(currentChangeId, "1;0;4fb7dea1-2912-4927-9eda-1ea2f0977cf9;634"
-            + "727056595000000;604");
-        setValue(lastChangeId, currentChangeId.value);
-        setValue(getChangesResult, getChangesContentDatabase4fb);
-        setValue(moreChanges, false);
+        super.getChanges(objectType, contentDatabaseId, lastChangeId,
+            currentChangeId, timeout, getChangesResult, moreChanges);
       }
     };
     SiteDataFactory siteDataFactory = MockSiteDataFactory.blank().
-        endpoint(VS_ENDPOINT, siteData);
+        endpoint(VS_ENDPOINT, countingSiteData);
     adaptor = new SharePointAdaptor(siteDataFactory,
         new UnsupportedUserGroupFactory(), new UnsupportedHttpClient(),
         executorFactory);
@@ -1679,14 +1595,13 @@ public class SharePointAdaptorTest {
     }    
   }
 
-  /**
-   * Throw UnsupportedOperationException for all calls.
-   */
-  private static class UnsupportedSiteData implements SiteDataSoap {
+  private abstract static class DelegatingSiteData implements SiteDataSoap {
+    protected abstract SiteDataSoap delegate();
+
     @Override
     public void getSiteAndWeb(String strUrl, Holder<Long> getSiteAndWebResult,
         Holder<String> strSite, Holder<String> strWeb) {
-      throw new UnsupportedOperationException();
+      delegate().getSiteAndWeb(strUrl, getSiteAndWebResult, strSite, strWeb);
     }
 
     @Override
@@ -1694,7 +1609,8 @@ public class SharePointAdaptorTest {
         Holder<SSiteMetadata> sSiteMetadata, Holder<ArrayOfSWebWithTime> vWebs,
         Holder<String> strUsers, Holder<String> strGroups,
         Holder<ArrayOfString> vGroups) {
-      throw new UnsupportedOperationException();
+      delegate().getSite(getSiteResult, sSiteMetadata, vWebs, strUsers,
+          strGroups, vGroups);
     }
 
     @Override
@@ -1703,32 +1619,36 @@ public class SharePointAdaptorTest {
         Holder<ArrayOfSListWithTime> vLists, Holder<ArrayOfSFPUrl> vFPUrls,
         Holder<String> strRoles, Holder<ArrayOfString> vRolesUsers,
         Holder<ArrayOfString> vRolesGroups) {
-      throw new UnsupportedOperationException();
+      delegate().getWeb(getWebResult, sWebMetadata, vWebs, vLists, vFPUrls,
+          strRoles, vRolesUsers, vRolesGroups);
     }
 
     @Override
     public void getList(String strListName, Holder<Long> getListResult,
         Holder<SListMetadata> sListMetadata,
         Holder<ArrayOfSProperty> vProperties) {
-      throw new UnsupportedOperationException();
+      delegate()
+          .getList(strListName, getListResult, sListMetadata, vProperties);
     }
 
     @Override
     public String getListItems(String strListName, String strQuery,
         String strViewFields, long uRowLimit) {
-      throw new UnsupportedOperationException();
+      return delegate()
+          .getListItems(strListName, strQuery, strViewFields, uRowLimit);
     }
 
     @Override
     public void enumerateFolder(String strFolderUrl,
         Holder<Long> enumerateFolderResult, Holder<ArrayOfSFPUrl> vUrls) {
-      throw new UnsupportedOperationException();
+      delegate().enumerateFolder(strFolderUrl, enumerateFolderResult, vUrls);
     }
 
     @Override
     public void getAttachments(String strListName, String strItemId,
         Holder<Long> getAttachmentsResult, Holder<ArrayOfString> vAttachments) {
-      throw new UnsupportedOperationException();
+      delegate().getAttachments(strListName, strItemId, getAttachmentsResult,
+          vAttachments);
     }
 
     @Override
@@ -1736,13 +1656,14 @@ public class SharePointAdaptorTest {
         Holder<Boolean> getURLSegmentsResult, Holder<String> strWebID,
         Holder<String> strBucketID, Holder<String> strListID,
         Holder<String> strItemID) {
-      throw new UnsupportedOperationException();
+      delegate().getURLSegments(strURL, getURLSegmentsResult, strWebID,
+          strBucketID, strListID, strItemID);
     }
 
     @Override
     public void getListCollection(Holder<Long> getListCollectionResult,
         Holder<ArrayOfSList> vLists) {
-      throw new UnsupportedOperationException();
+      delegate().getListCollection(getListCollectionResult, vLists);
     }
 
     @Override
@@ -1750,13 +1671,14 @@ public class SharePointAdaptorTest {
         String folderUrl, String itemId, boolean retrieveChildItems,
         boolean securityOnly, Holder<String> lastItemIdOnPage,
         Holder<String> getContentResult) {
-      throw new UnsupportedOperationException();
+      delegate().getContent(objectType, objectId, folderUrl, itemId,
+          retrieveChildItems, securityOnly, lastItemIdOnPage, getContentResult);
     }
 
     @Override
     public void getSiteUrl(String url, Holder<Long> getSiteUrlResult,
         Holder<String> siteUrl, Holder<String> siteId) {
-      throw new UnsupportedOperationException();
+      delegate().getSiteUrl(url, getSiteUrlResult, siteUrl, siteId);
     }
 
     @Override
@@ -1764,11 +1686,22 @@ public class SharePointAdaptorTest {
         Holder<String> lastChangeId, Holder<String> currentChangeId,
         Integer timeout, Holder<String> getChangesResult,
         Holder<Boolean> moreChanges) {
-      throw new UnsupportedOperationException();
+      delegate().getChanges(objectType, contentDatabaseId, lastChangeId,
+          currentChangeId, timeout, getChangesResult, moreChanges);
     }
 
     @Override
     public String getChangesEx(int version, String xmlInput) {
+      return delegate().getChangesEx(version, xmlInput);
+    }
+  }
+
+  /**
+   * Throw UnsupportedOperationException for all calls.
+   */
+  private static class UnsupportedSiteData extends DelegatingSiteData {
+    @Override
+    protected SiteDataSoap delegate() {
       throw new UnsupportedOperationException();
     }
   }
@@ -1813,22 +1746,41 @@ public class SharePointAdaptorTest {
     }
   }
 
+  private static class ReferenceSiteData extends DelegatingSiteData {
+    private volatile SiteDataSoap siteData = new UnsupportedSiteData();
+
+    @Override
+    protected SiteDataSoap delegate() {
+      return siteData;
+    }
+
+    public void setSiteDataSoap(SiteDataSoap siteData) {
+      if (siteData == null) {
+        throw new NullPointerException();
+      }
+      this.siteData = siteData;
+    }
+  }
+
   private static class MockSiteData extends UnsupportedSiteData {
     private final List<URLSegmentsExchange> urlSegmentsList;
     private final List<ContentExchange> contentList;
+    private final List<ChangesExchange> changesList;
     private final List<SiteAndWebExchange> siteAndWebList;
 
     private MockSiteData() {
       this.urlSegmentsList = Collections.emptyList();
       this.contentList = Collections.emptyList();
+      this.changesList = Collections.emptyList();
       this.siteAndWebList = Collections.emptyList();
     }
 
     private MockSiteData(List<URLSegmentsExchange> urlSegmentsList,
-        List<ContentExchange> contentList,
+        List<ContentExchange> contentList, List<ChangesExchange> changesList,
         List<SiteAndWebExchange> siteAndWebList) {
       this.urlSegmentsList = urlSegmentsList;
       this.contentList = contentList;
+      this.changesList = changesList;
       this.siteAndWebList = siteAndWebList;
     }
 
@@ -1874,6 +1826,29 @@ public class SharePointAdaptorTest {
     }
 
     @Override
+    public void getChanges(ObjectType objectType, String contentDatabaseId,
+        Holder<String> lastChangeId, Holder<String> currentChangeId,
+        Integer timeout, Holder<String> getChangesResult,
+        Holder<Boolean> moreChanges) {
+      for (ChangesExchange ex : changesList) {
+        if (!ex.objectType.equals(objectType)
+            || !Objects.equal(ex.contentDatabaseId, contentDatabaseId)
+            || !Objects.equal(ex.lastChangeIdIn, lastChangeId.value)
+            || !Objects.equal(ex.currentChangeIdIn, currentChangeId.value)
+            || !Objects.equal(ex.timeout, timeout)) {
+          continue;
+        }
+        setValue(lastChangeId, ex.lastChangeIdOut);
+        setValue(currentChangeId, ex.currentChangeIdOut);
+        setValue(getChangesResult, ex.getChangesResult);
+        setValue(moreChanges, ex.moreChanges);
+        return;
+      }
+      fail("Could not find " + objectType + ", " + contentDatabaseId + ", "
+          + lastChangeId.value + ", " + currentChangeId.value + ", " + timeout);
+    }
+
+    @Override
     public void getSiteAndWeb(String strUrl, Holder<Long> getSiteAndWebResult,
         Holder<String> strSite, Holder<String> strWeb) {
       for (SiteAndWebExchange ex : siteAndWebList) {
@@ -1894,16 +1869,21 @@ public class SharePointAdaptorTest {
 
     public MockSiteData register(URLSegmentsExchange use) {
       return new MockSiteData(addToList(urlSegmentsList, use),
-          contentList, siteAndWebList);
+          contentList, changesList, siteAndWebList);
     }
 
     public MockSiteData register(ContentExchange ce) {
       return new MockSiteData(urlSegmentsList, addToList(contentList, ce),
-          siteAndWebList);
+          changesList, siteAndWebList);
+    }
+
+    public MockSiteData register(ChangesExchange ce) {
+      return new MockSiteData(urlSegmentsList, contentList,
+          addToList(changesList, ce), siteAndWebList);
     }
 
     public MockSiteData register(SiteAndWebExchange sawe) {
-      return new MockSiteData(urlSegmentsList, contentList,
+      return new MockSiteData(urlSegmentsList, contentList, changesList,
           addToList(siteAndWebList, sawe));
     }
 
@@ -1963,6 +1943,33 @@ public class SharePointAdaptorTest {
       return new ContentExchange(objectType, objectId, folderUrl, itemId,
           retrieveChildItems, securityOnly, lastItemIdOnPage,
           getContentResult.replace(match, replacement));
+    }
+  }
+
+  private static class ChangesExchange {
+    public final ObjectType objectType;
+    public final String contentDatabaseId;
+    public final String lastChangeIdIn;
+    public final String lastChangeIdOut;
+    public final String currentChangeIdIn;
+    public final String currentChangeIdOut;
+    public final Integer timeout;
+    public final String getChangesResult;
+    public final boolean moreChanges;
+
+    public ChangesExchange(ObjectType objectType, String contentDatabaseId,
+        String lastChangeIdIn, String lastChangeIdOut, String currentChangeIdIn,
+        String currentChangeIdOut, Integer timeout, String getChangesResult,
+        boolean moreChanges) {
+      this.objectType = objectType;
+      this.contentDatabaseId = contentDatabaseId;
+      this.lastChangeIdIn = lastChangeIdIn;
+      this.lastChangeIdOut = lastChangeIdOut;
+      this.currentChangeIdIn = currentChangeIdIn;
+      this.currentChangeIdOut = currentChangeIdOut;
+      this.timeout = timeout;
+      this.getChangesResult = getChangesResult;
+      this.moreChanges = moreChanges;
     }
   }
 
