@@ -275,6 +275,7 @@ public class SharePointAdaptor extends AbstractAdaptor
    * value is used in case of error in certain situations.
    */
   private boolean isSp2010;
+  private NtlmAuthenticator ntlmAuthenticator;
 
   public SharePointAdaptor() {
     this(new SiteDataFactoryImpl(), new UserGroupFactoryImpl(),
@@ -332,9 +333,7 @@ public class SharePointAdaptor extends AbstractAdaptor
     log.log(Level.CONFIG, "Username: {0}", username);
     log.log(Level.CONFIG, "Password: {0}", password);
 
-    URL virtualServerUrl = new URL(virtualServer);
-    Authenticator ntlmAuthenticator = new NtlmAuthenticator(username, password,
-        virtualServerUrl.getHost(), virtualServerUrl.getPort());
+    ntlmAuthenticator = new NtlmAuthenticator(username, password);
     // Unfortunately, this is a JVM-wide modification.
     Authenticator.setDefault(ntlmAuthenticator);
 
@@ -353,6 +352,7 @@ public class SharePointAdaptor extends AbstractAdaptor
   @Override
   public void destroy() {
     Authenticator.setDefault(null);
+    ntlmAuthenticator = null;
     executor.shutdown();
     try {
       executor.awaitTermination(10, TimeUnit.SECONDS);
@@ -512,6 +512,7 @@ public class SharePointAdaptor extends AbstractAdaptor
         // Always end without a '/' for a canonical form.
         site = site.substring(0, site.length() - 1);
       }
+      ntlmAuthenticator.addPermitForHost(new URL(web));
       String endpoint = web + "/_vti_bin/SiteData.asmx";
       SiteDataSoap siteDataSoap = siteDataFactory.newSiteData(endpoint);
 
@@ -2070,24 +2071,31 @@ public class SharePointAdaptor extends AbstractAdaptor
   private static class NtlmAuthenticator extends Authenticator {
     private final String username;
     private final char[] password;
-    private final String host;
-    private final int port;
+    private final Set<String> permittedHosts = new HashSet<String>();
 
-    public NtlmAuthenticator(String username, String password, String host,
-        int port) {
+    public NtlmAuthenticator(String username, String password) {
       this.username = username;
       this.password = password.toCharArray();
-      this.host = host;
-      this.port = port;
+    }
+
+    public void addPermitForHost(URL urlContainingHost) {
+      permittedHosts.add(urlToHostString(urlContainingHost));
+    }
+
+    private String urlToHostString(URL url) {
+      // If the port is missing (so that the default is used), we replace it
+      // with the default port for the protocol in order to prevent being able
+      // to prevent being tricked into connecting to a different port (consider
+      // being configured for https, but then getting tricked to use http and
+      // evenything being in the clear).
+      return "" + url.getHost()
+          + ":" + (url.getPort() != -1 ? url.getPort() : url.getDefaultPort());
     }
 
     @Override
     protected PasswordAuthentication getPasswordAuthentication() {
       URL url = getRequestingURL();
-      // If the port is missing (so that the default is used), then the port
-      // will be -1 here. The port needs to be consistently specified or
-      // missing.
-      if (host.equals(url.getHost()) && port == url.getPort()) {
+      if (permittedHosts.contains(urlToHostString(url))) {
         return new PasswordAuthentication(username, password);
       } else {
         return super.getPasswordAuthentication();
