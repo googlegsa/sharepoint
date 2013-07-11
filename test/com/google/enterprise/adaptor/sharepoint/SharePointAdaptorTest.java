@@ -440,6 +440,41 @@ public class SharePointAdaptorTest {
   }
 
   @Test
+  public void testGetDocContentSiteCollectionWithAdGroup() throws Exception {
+    SiteDataFactory siteDataFactory = MockSiteDataFactory.blank()
+        .endpoint(VS_ENDPOINT, MockSiteData.blank()
+            .register(VS_CONTENT_EXCHANGE)
+            .register(SITES_SITECOLLECTION_SAW_EXCHANGE))
+        .endpoint(SITES_SITECOLLECTION_ENDPOINT, MockSiteData.blank()
+            .register(SITES_SITECOLLECTION_URLSEG_EXCHANGE)
+            .register(SITES_SITECOLLECTION_S_CONTENT_EXCHANGE
+              .replaceInContent("Name=\"spuser1\"", "Name=\"GDC-PSL\\group\"")
+              .replaceInContent("IsDomainGroup=\"False\"",
+                "IsDomainGroup=\"True\""))
+            .register(SITES_SITECOLLECTION_SC_CONTENT_EXCHANGE
+              .replaceInContent("Name=\"spuser1\"", "Name=\"GDC-PSL\\group\"")
+              .replaceInContent("IsDomainGroup=\"False\"",
+                "IsDomainGroup=\"True\"")));
+
+    adaptor = new SharePointAdaptor(siteDataFactory,
+        new UnsupportedUserGroupFactory(), new UnsupportedHttpClient(),
+        executorFactory);
+    adaptor.init(new MockAdaptorContext(config, null));
+    ByteArrayOutputStream baos = new ByteArrayOutputStream();
+    GetContentsRequest request = new GetContentsRequest(
+        new DocId("http://localhost:1/sites/SiteCollection"));
+    GetContentsResponse response = new GetContentsResponse(baos);
+    adaptor.getDocContent(request, response);
+    assertEquals(new Acl.Builder()
+        .setEverythingCaseInsensitive()
+        .setInheritFrom(new DocId(""))
+        .setInheritanceType(Acl.InheritanceType.PARENT_OVERRIDES)
+        .setPermitGroups(groups("chinese1 Members", "chinese1 Owners",
+            "chinese1 Visitors", "GDC-PSL\\group")).build(),
+        response.getAcl());
+  }
+
+  @Test
   public void testGetDocContentList() throws Exception {
     SiteDataSoap siteData = MockSiteData.blank()
         .register(SITES_SITECOLLECTION_LISTS_CUSTOMLIST_URLSEG_EXCHANGE)

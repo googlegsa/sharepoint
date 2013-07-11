@@ -1603,7 +1603,11 @@ public class SharePointAdaptor extends AbstractAdaptor
       }
       Map<Integer, String> userMap = new HashMap<Integer, String>();
       for (UserDescription user : site.getWeb().getUsers().getUser()) {
-        userMap.put(user.getID(), user.getLoginName().intern());
+        if (user.getIsDomainGroup() == TrueFalseType.TRUE) {
+          groupMap.put(user.getID(), user.getName().intern());
+        } else {
+          userMap.put(user.getID(), user.getLoginName().intern());
+        }
       }
       MemberIdMapping mapping = new MemberIdMapping(userMap, groupMap);
       log.exiting("SiteDataClient", "retrieveMemberIdMapping", mapping);
