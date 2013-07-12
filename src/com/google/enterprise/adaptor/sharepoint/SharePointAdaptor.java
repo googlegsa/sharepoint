@@ -718,8 +718,8 @@ public class SharePointAdaptor extends AbstractAdaptor
       if (isWebSiteCollection()) {
         return false;
       }
-      return isWebNoIndex(
-          getAdaptorForUrl(getWebParentUrl()).siteDataClient.getContentWeb());
+      return isWebNoIndex(getSiteAdaptor(siteUrl, getWebParentUrl())
+          .siteDataClient.getContentWeb());
     }
 
     private void getSiteDocContent(Request request, Response response)
@@ -753,7 +753,8 @@ public class SharePointAdaptor extends AbstractAdaptor
         if (isWebSiteCollection()) {
           includePermissions = true;
         } else {
-          SiteAdaptor parentSiteAdaptor = getAdaptorForUrl(getWebParentUrl());
+          SiteAdaptor parentSiteAdaptor
+              = getSiteAdaptor(siteUrl, getWebParentUrl());
           Web parentW = parentSiteAdaptor.siteDataClient.getContentWeb();
           String parentScopeId
               = parentW.getMetadata().getScopeID().toLowerCase(Locale.ENGLISH);
