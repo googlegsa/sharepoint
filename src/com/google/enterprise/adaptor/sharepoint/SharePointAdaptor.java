@@ -718,8 +718,9 @@ public class SharePointAdaptor extends AbstractAdaptor
       if (isWebSiteCollection()) {
         return false;
       }
-      return isWebNoIndex(getSiteAdaptor(siteUrl, getWebParentUrl())
-          .siteDataClient.getContentWeb());
+      SiteAdaptor siteAdaptor = getSiteAdaptor(siteUrl, getWebParentUrl());
+      return siteAdaptor.isWebNoIndex(
+          siteAdaptor.siteDataClient.getContentWeb());
     }
 
     private void getSiteDocContent(Request request, Response response)
