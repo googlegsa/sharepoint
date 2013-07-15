@@ -18,6 +18,18 @@
 <User ID="2" Sid="S-1-5-21-736914693-3137354690-2813686979-1130"
  Name="spuser1" LoginName="GDC-PSL\spuser1" Email=""
  Notes="" IsSiteAdmin="True" IsDomainGroup="False" />
+<User ID="11" Sid="" Name="Everyone" LoginName="c:0(.s|true"
+ IsSiteAdmin="False" IsDomainGroup="True" Flags="0" UserKey="c:0(.s|true" />
+<User ID="12" Sid="" Name="GSA-CONNECTORS\domain users"
+ LoginName="c:0+.w|s-1-5-21-3993744865-3521423997-1479072767-513"
+ IsSiteAdmin="False" IsDomainGroup="True" Flags="0"
+ UserKey="c:0+.w|s-1-5-21-3993744865-3521423997-1479072767-513" />
+<User ID="13" Sid="" Name="NT AUTHORITY\authenticated users"
+ LoginName="c:0!.s|windows" IsSiteAdmin="False" IsDomainGroup="True"
+ Flags="0" UserKey="c:0!.s|windows" />
+<User ID="14" Sid="" Name="User1" LoginName="i:0#.w|gsa-connectors\user1"
+ IsSiteAdmin="False" IsDomainGroup="False" Flags="0"
+ UserKey="i:0).w|s-1-5-21-3993744865-3521423997-1479072767-1720" />
 </Users>
 <ACL><permissions>
 <permission memberid='2' mask='9223372036854775807' />

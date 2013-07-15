@@ -474,6 +474,44 @@ public class SharePointAdaptorTest {
         response.getAcl());
   }
 
+    @Test
+  public void testGetDocContentSiteCollectionWithClaims() throws Exception {
+    String permissions = "<permission memberid='11' mask='756052856929' />"
+        + "<permission memberid='12' mask='756052856929' />"
+        + "<permission memberid='13' mask='756052856929' />"
+        + "<permission memberid='14' mask='756052856929' /></permissions>";
+    SiteDataFactory siteDataFactory = MockSiteDataFactory.blank()
+        .endpoint(VS_ENDPOINT, MockSiteData.blank()
+            .register(VS_CONTENT_EXCHANGE)
+            .register(SITES_SITECOLLECTION_SAW_EXCHANGE))
+        .endpoint(SITES_SITECOLLECTION_ENDPOINT, MockSiteData.blank()
+            .register(SITES_SITECOLLECTION_URLSEG_EXCHANGE)
+            .register(SITES_SITECOLLECTION_S_CONTENT_EXCHANGE
+              .replaceInContent("</permissions>", permissions))
+            .register(SITES_SITECOLLECTION_SC_CONTENT_EXCHANGE
+              .replaceInContent("</permissions>", permissions)));
+
+    
+    adaptor = new SharePointAdaptor(siteDataFactory,
+        new UnsupportedUserGroupFactory(), new UnsupportedHttpClient(),
+        executorFactory);
+    adaptor.init(new MockAdaptorContext(config, null));
+    ByteArrayOutputStream baos = new ByteArrayOutputStream();
+    GetContentsRequest request = new GetContentsRequest(
+        new DocId("http://localhost:1/sites/SiteCollection"));
+    GetContentsResponse response = new GetContentsResponse(baos);
+    adaptor.getDocContent(request, response);
+    assertEquals(new Acl.Builder()
+        .setEverythingCaseInsensitive()
+        .setInheritFrom(new DocId(""))
+        .setInheritanceType(Acl.InheritanceType.PARENT_OVERRIDES)
+        .setPermitUsers(users("GDC-PSL\\spuser1", "GSA-CONNECTORS\\User1"))
+        .setPermitGroups(groups("chinese1 Members", "chinese1 Owners",
+            "chinese1 Visitors", "GSA-CONNECTORS\\domain users",
+            "Everyone", "NT AUTHORITY\\authenticated users")).build(),
+        response.getAcl());
+  }
+
   public void testGetDocContentSiteCollectionNoIndex() throws Exception {
     SiteDataFactory siteDataFactory = MockSiteDataFactory.blank()
         .endpoint(VS_ENDPOINT, MockSiteData.blank()

@@ -176,6 +176,10 @@ public class SharePointAdaptor extends AbstractAdaptor
 
   private static final int LIST_READ_SECURITY_ENABLED = 2;
 
+  private static final String IDENTITY_CLAIMS_PREFIX = "i:0";
+
+  private static final String OTHER_CLAIMS_PREFIX = "c:0";
+
   private static final Logger log
       = Logger.getLogger(SharePointAdaptor.class.getName());
 
@@ -1060,10 +1064,10 @@ public class SharePointAdaptor extends AbstractAdaptor
       return allowAnonymousRead;
     }
 
-    private boolean isDenyAnonymousAcessOnVirtualServer(VirtualServer vs) { 
+    private boolean isDenyAnonymousAcessOnVirtualServer(VirtualServer vs) {
       long anonymousDenyMask
           =  vs.getPolicies().getAnonymousDenyMask().longValue();
-      if ((LIST_ITEM_MASK & anonymousDenyMask) != 0) {   
+      if ((LIST_ITEM_MASK & anonymousDenyMask) != 0) {
         return true;
       }
       // Anonymous access is denied if deny read policy is specified for any
@@ -1616,6 +1620,27 @@ public class SharePointAdaptor extends AbstractAdaptor
       return !"Unchanged".equals(change) && !"Delete".equals(change);
     }
 
+    private String decodeClaim(String loginName, String name
+        , boolean isDomainGroup) {
+      if (!loginName.startsWith(IDENTITY_CLAIMS_PREFIX)
+          && !loginName.startsWith(OTHER_CLAIMS_PREFIX)) {
+        return isDomainGroup ? name : loginName;
+      }
+      // AD User
+      if (loginName.startsWith("i:0#.w|")) {
+        return loginName.substring(7);
+      // AD Group
+      } else if (loginName.startsWith("c:0+.w|")) {
+        return name;
+      } else if (loginName.equals("c:0(.s|true")) {
+        return "Everyone";
+      } else if (loginName.equals("c:0!.s|windows")) {
+        return "NT AUTHORITY\\authenticated users";
+      }
+      log.log(Level.WARNING, "Unsupported claims value {0}", loginName);
+      return null;
+    }
+
     private MemberIdMapping retrieveMemberIdMapping() throws IOException {
       log.entering("SiteAdaptor", "retrieveMemberIdMapping");
       Site site = siteDataClient.getContentSite();
@@ -1626,10 +1651,19 @@ public class SharePointAdaptor extends AbstractAdaptor
       }
       Map<Integer, String> userMap = new HashMap<Integer, String>();
       for (UserDescription user : site.getWeb().getUsers().getUser()) {
-        if (user.getIsDomainGroup() == TrueFalseType.TRUE) {
-          groupMap.put(user.getID(), user.getName().intern());
+        boolean isDomainGroup = (user.getIsDomainGroup() == TrueFalseType.TRUE);
+        String userName
+            = decodeClaim(user.getLoginName(), user.getName(), isDomainGroup);
+        if (userName == null) {
+          log.log(Level.WARNING,
+              "Unable to determine login name. Skipping user with ID {0}",
+              user.getID());
+          continue;
+        }
+        if (isDomainGroup) {
+          groupMap.put(user.getID(), userName.intern());
         } else {
-          userMap.put(user.getID(), user.getLoginName().intern());
+          userMap.put(user.getID(), userName.intern());
         }
       }
       MemberIdMapping mapping = new MemberIdMapping(userMap, groupMap);
@@ -1658,7 +1692,18 @@ public class SharePointAdaptor extends AbstractAdaptor
         return mapping;
       }
       for (User user : siteUsers.getUsers().getUser()) {
-        userMap.put((int) user.getID(), user.getLoginName());
+        boolean isDomainGroup = (user.getIsDomainGroup()
+            == com.microsoft.schemas.sharepoint.soap.directory.TrueFalseType.TRUE);
+        String userName =
+            decodeClaim(user.getLoginName(), user.getName(), isDomainGroup);
+
+        if (userName == null) {
+          log.log(Level.WARNING,
+              "Unable to determine login name. Skipping user with ID {0}",
+              user.getID());
+          continue;
+        }
+        userMap.put((int) user.getID(), userName.intern());
       }
       mapping = new MemberIdMapping(userMap, groupMap);
       log.exiting("SiteAdaptor", "retrieveSiteUserMapping", mapping);
