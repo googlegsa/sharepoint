@@ -619,8 +619,7 @@ public class SharePointAdaptorTest {
         .register(SITES_SITECOLLECTION_S_CONTENT_EXCHANGE)
         .register(SITES_SITECOLLECTION_LISTS_CUSTOMLIST_URLSEG_EXCHANGE)
         .register(SITES_SITECOLLECTION_LISTS_CUSTOMLIST_L_CONTENT_EXCHANGE)
-        .register(SITES_SITECOLLECTION_LISTS_CUSTOMLIST_2_LI_CONTENT_EXCHANGE)
-        .register(SITES_SITECOLLECTION_LISTS_CUSTOMLIST_2_A_CONTENT_EXCHANGE);
+        .register(SITES_SITECOLLECTION_LISTS_CUSTOMLIST_2_LI_CONTENT_EXCHANGE);
     final String site = "http://localhost:1/sites/SiteCollection";
     final String attachmentId = site + "/Lists/Custom List/Attachments/2/104600"
         + "0.pdf";

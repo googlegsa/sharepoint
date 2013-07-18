@@ -1405,21 +1405,11 @@ public class SharePointAdaptor extends AbstractAdaptor
         log.exiting("SiteAdaptor", "getAttachmentDocContent", false);
         return false;
       }
-      Item item = siteDataClient.getContentListItemAttachments(listId, itemId);
-      boolean verifiedIsAttachment = false;
-      for (Item.Attachment attachment : item.getAttachment()) {
-        if (url.equals(attachment.getURL())) {
-          verifiedIsAttachment = true;
-          break;
-        }
-      }
-      if (!verifiedIsAttachment) {
-        log.fine("Suspected attachment not listed in item's attachment list");
-        log.exiting("SiteAdaptor", "getAttachmentDocContent", false);
-        return false;
-      }
-      log.fine("Suspected attachment verified as being a real attachment. "
-          + "Proceeding to provide content.");
+      // We have verified that the part before /Attachments/ is a List. Since
+      // lists can't have "Attachments" as a child folder, we are very certain
+      // that if the document exists it is an attachment.
+      log.fine("Suspected attachment verified as being an attachment, assuming "
+          + "it exists.");
       CachedList l = rareModCache.getList(siteDataClient, listId);
       if (TrueFalseType.TRUE.equals(l.noIndex)
           || isWebNoIndex(rareModCache.getWeb(siteDataClient))) {
@@ -1428,6 +1418,9 @@ public class SharePointAdaptor extends AbstractAdaptor
         log.exiting("SiteAdaptor", "getAttachmentDocContent", true);
         return true;
       }
+      // TODO(ejona): Figure out a way to give a Not Found if the itemId is
+      // wrong. getContentItem() will throw an exception if the itemId does not
+      // exist.
       ItemData itemData = siteDataClient.getContentItem(listId, itemId);
       Xml xml = itemData.getXml();
       Element data = getFirstChildWithName(xml, DATA_ELEMENT);
@@ -1447,6 +1440,7 @@ public class SharePointAdaptor extends AbstractAdaptor
             .setInheritFrom(encodeDocId(listItemUrl))
             .build());
       }
+      // If the attachment doesn't exist, then this responds Not Found.
       getFileDocContent(request, response);
       log.exiting("SiteAdaptor", "getAttachmentDocContent", true);
       return true;
