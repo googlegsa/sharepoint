@@ -233,6 +233,11 @@ public class SharePointAdaptor extends AbstractAdaptor
    */
   private boolean isSp2010;
   private NtlmAuthenticator ntlmAuthenticator;
+  /**
+   * Lock for refreshing MemberIdMapping. We use a unique lock because it is
+   * held while waiting on I/O.
+   */
+  private final Object refreshMemberIdMappingLock = new Object();
 
   public SharePointAdaptor() {
     this(new SiteDataClient.SiteDataFactoryImpl(), new UserGroupFactoryImpl(),
@@ -561,6 +566,27 @@ public class SharePointAdaptor extends AbstractAdaptor
       } catch (Exception ex) {
         throw new IOException(ex);
       }
+    }
+
+    /**
+     * Provide a more recent MemberIdMapping than {@code mapping}, because the
+     * mapping is known to be out-of-date.
+     */
+    private MemberIdMapping refreshMemberIdMapping(MemberIdMapping mapping)
+        throws IOException {
+      // Synchronize callers to prevent a rush of invalidations due to multiple
+      // callers noticing that the map was out of date at the same time.
+      synchronized (refreshMemberIdMappingLock) {
+        // NOTE: This may block on I/O, so we must be wary of what locks are
+        // held.
+        MemberIdMapping maybeNewMapping = getMemberIdMapping();
+        if (mapping != maybeNewMapping) {
+          // The map has already been refreshed.
+          return maybeNewMapping;
+        }
+        memberIdsCache.invalidate(siteUrl);
+      }
+      return getMemberIdMapping();
     }
 
      private MemberIdMapping getSiteUserMapping() throws IOException {
@@ -997,6 +1023,7 @@ public class SharePointAdaptor extends AbstractAdaptor
       List<UserPrincipal> permitUsers = new LinkedList<UserPrincipal>();
       List<GroupPrincipal> permitGroups = new LinkedList<GroupPrincipal>();
       MemberIdMapping mapping = getMemberIdMapping();
+      MemberIdMapping newMapping = null;
       for (Permission permission : permissions) {
         // Although it is named "mask", this is really a bit-field of
         // permissions.
@@ -1007,6 +1034,13 @@ public class SharePointAdaptor extends AbstractAdaptor
         Integer id = permission.getMemberid();
         String userName = mapping.getUserName(id);
         String groupName = mapping.getGroupName(id);
+        if (userName == null && groupName == null) {
+          if (newMapping == null) {
+            newMapping = refreshMemberIdMapping(mapping);
+          }
+          userName = newMapping.getUserName(id);
+          groupName = newMapping.getGroupName(id);
+        }
         if (userName != null) {
           permitUsers.add(new UserPrincipal(userName));
         } else if (groupName != null) {

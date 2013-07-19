@@ -512,6 +512,64 @@ public class SharePointAdaptorTest {
         response.getAcl());
   }
 
+  @Test
+  public void testGetDocContentSiteCollectionWithOutOfDateMemberCache()
+      throws Exception {
+    ReferenceSiteData siteData = new ReferenceSiteData();
+    SiteDataFactory siteDataFactory = MockSiteDataFactory.blank()
+        .endpoint(VS_ENDPOINT, MockSiteData.blank()
+            .register(VS_CONTENT_EXCHANGE)
+            .register(SITES_SITECOLLECTION_SAW_EXCHANGE))
+        .endpoint(SITES_SITECOLLECTION_ENDPOINT, siteData);
+    SiteDataSoap siteDataState1 = MockSiteData.blank()
+            .register(SITES_SITECOLLECTION_URLSEG_EXCHANGE)
+            .register(SITES_SITECOLLECTION_S_CONTENT_EXCHANGE)
+            .register(SITES_SITECOLLECTION_SC_CONTENT_EXCHANGE);
+    SiteDataSoap siteDataState2 = MockSiteData.blank()
+            .register(SITES_SITECOLLECTION_URLSEG_EXCHANGE)
+            .register(SITES_SITECOLLECTION_S_CONTENT_EXCHANGE
+              .replaceInContent(" memberid='2'", " memberid='100'"))
+            .register(SITES_SITECOLLECTION_SC_CONTENT_EXCHANGE
+              // Purposefully leave ID=2 alone. The 6 and spuser2 here is simply
+              // an otherwise-unused entry.
+              .replaceInContent("<User ID=\"6\"", "<User ID=\"100\"")
+              .replaceInContent("spuser2", "spuser100"));
+
+    adaptor = new SharePointAdaptor(siteDataFactory,
+        new UnsupportedUserGroupFactory(), new UnsupportedHttpClient(),
+        executorFactory);
+    adaptor.init(new MockAdaptorContext(config, null));
+
+    // This populates the cache, but otherwise doesn't test anything new.
+    siteData.setSiteDataSoap(siteDataState1);
+    ByteArrayOutputStream baos = new ByteArrayOutputStream();
+    GetContentsRequest request = new GetContentsRequest(
+        new DocId("http://localhost:1/sites/SiteCollection"));
+    GetContentsResponse response = new GetContentsResponse(baos);
+    adaptor.getDocContent(request, response);
+    assertEquals(new Acl.Builder()
+        .setEverythingCaseInsensitive()
+        .setInheritFrom(new DocId(""))
+        .setInheritanceType(Acl.InheritanceType.PARENT_OVERRIDES)
+        .setPermitGroups(groups("chinese1 Members", "chinese1 Owners",
+            "chinese1 Visitors"))
+        .setPermitUsers(users("GDC-PSL\\spuser1")).build(),
+        response.getAcl());
+
+    // Were we able to pick up the new user in the ACLs?
+    siteData.setSiteDataSoap(siteDataState2);
+    response = new GetContentsResponse(new ByteArrayOutputStream());
+    adaptor.getDocContent(request, response);
+    assertEquals(new Acl.Builder()
+        .setEverythingCaseInsensitive()
+        .setInheritFrom(new DocId(""))
+        .setInheritanceType(Acl.InheritanceType.PARENT_OVERRIDES)
+        .setPermitGroups(groups("chinese1 Members", "chinese1 Owners",
+            "chinese1 Visitors"))
+        .setPermitUsers(users("GDC-PSL\\spuser100")).build(),
+        response.getAcl());
+  }
+
   public void testGetDocContentSiteCollectionNoIndex() throws Exception {
     SiteDataFactory siteDataFactory = MockSiteDataFactory.blank()
         .endpoint(VS_ENDPOINT, MockSiteData.blank()
