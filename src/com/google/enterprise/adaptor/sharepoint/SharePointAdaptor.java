@@ -304,8 +304,8 @@ public class SharePointAdaptor extends AbstractAdaptor
     try {
       SiteDataClient virtualServerSiteDataClient =
           getSiteAdaptor(virtualServer, virtualServer).getSiteDataClient();
-      rareModCache = new RareModificationCache(this,
-          virtualServerSiteDataClient, executor);
+      rareModCache
+          = new RareModificationCache(virtualServerSiteDataClient, executor);
 
       // Test out configuration.
       virtualServerSiteDataClient.getContentVirtualServer();

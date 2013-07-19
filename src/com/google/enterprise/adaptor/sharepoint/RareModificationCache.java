@@ -14,6 +14,7 @@
 
 package com.google.enterprise.adaptor.sharepoint;
 
+import com.google.common.annotations.VisibleForTesting;
 import com.google.common.cache.CacheBuilder;
 import com.google.common.cache.LoadingCache;
 
@@ -35,7 +36,6 @@ import java.util.concurrent.TimeUnit;
  * cache.
  */
 class RareModificationCache {
-  private final SharePointAdaptor sharePointAdaptor;
   private final Executor executor;
   private final VirtualServerKey virtualServerKey;
   private final LoadingCache<CacheKey<?>, Object> cache
@@ -54,33 +54,27 @@ class RareModificationCache {
         }
       });
 
-  public RareModificationCache(SharePointAdaptor adaptor,
-      SiteDataClient virtualServerSiteDataClient, Executor executor) {
-    if (adaptor == null || virtualServerSiteDataClient == null
-        || executor == null) {
+  public RareModificationCache(SiteDataClient virtualServerSiteDataClient,
+      Executor executor) {
+    if (virtualServerSiteDataClient == null || executor == null) {
       throw new NullPointerException();
     }
-    this.sharePointAdaptor = adaptor;
     this.executor = executor;
     this.virtualServerKey = new VirtualServerKey(virtualServerSiteDataClient);
   }
 
-  private <T> T get(CacheKey<T> key) throws IOException {
+  /**
+   * Getter that handles type-safety, and expected to be used for all retrievals
+   * from the cache.
+   */
+  @VisibleForTesting
+  <T> T get(CacheKey<T> key) throws IOException {
     try {
       @SuppressWarnings("unchecked")
       T t = (T) cache.get(key);
       return t;
     } catch (ExecutionException e) {
-      Throwable cause = e.getCause();
-      if (cause instanceof IOException) {
-        throw (IOException) cause;
-      } else if (cause instanceof RuntimeException) {
-        throw (RuntimeException) cause;
-      } else if (cause instanceof Error) {
-        throw (Error) cause;
-      } else {
-        throw new IOException(cause);
-      }
+      throw new IOException(e);
     }
   }
 
@@ -97,12 +91,21 @@ class RareModificationCache {
     return get(new ListKey(siteDataClient, listId));
   }
 
-  private interface CacheKey<V> {
+  /**
+   * The key used to identify a cache entry. Therefore, {@link Object#equals}
+   * and {@link Object#hashCode} must be valid.
+   */
+  @VisibleForTesting
+  interface CacheKey<V> {
     public V computeValue() throws IOException;
   }
 
-  private static final class VirtualServerKey
-      implements CacheKey<CachedVirtualServer> {
+  /**
+   * Key for the Virtual Server, of which there is only one instance. Therefore,
+   * it does not need to override equals and hashCode.
+   */
+  @VisibleForTesting
+  static final class VirtualServerKey implements CacheKey<CachedVirtualServer> {
     private final SiteDataClient siteDataClient;
 
     public VirtualServerKey(SiteDataClient siteDataClient) {
@@ -135,7 +138,8 @@ class RareModificationCache {
     }
   }
 
-  private static final class WebKey implements CacheKey<CachedWeb> {
+  @VisibleForTesting
+  static final class WebKey implements CacheKey<CachedWeb> {
     private final SiteDataClient siteDataClient;
 
     public WebKey(SiteDataClient siteDataClient) {
@@ -177,7 +181,8 @@ class RareModificationCache {
     }
   }
 
-  private static final class ListKey implements CacheKey<CachedList> {
+  @VisibleForTesting
+  static final class ListKey implements CacheKey<CachedList> {
     private final SiteDataClient siteDataClient;
     private final String listId;
 
@@ -217,9 +222,9 @@ class RareModificationCache {
     public final String defaultViewUrl;
     public final String defaultViewItemUrl;
     /**
-     * This must not be used for general ACL inheritance of direct decendants
-     * of the list. This is intended only for use when determining whether
-     * anonymous access is permitted for list items and attachments.
+     * This field must not be used for general ACL inheritance of direct
+     * decendants of the list. This is intended only for use when determining
+     * whether anonymous access is permitted for list items and attachments.
      */
     public final String scopeId;
 
