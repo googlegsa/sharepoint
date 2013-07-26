@@ -99,6 +99,8 @@ public class SharePointAdaptor extends AbstractAdaptor
     implements PollingIncrementalAdaptor {
   /** Charset used in generated HTML responses. */
   private static final Charset CHARSET = Charset.forName("UTF-8");
+  private static final String GENERATED_HTML_CONTENT_TYPE
+      = "text/html; charset=utf-8";
   private static final String XMLNS_DIRECTORY
       = "http://schemas.microsoft.com/sharepoint/soap/directory/";
 
@@ -705,7 +707,7 @@ public class SharePointAdaptor extends AbstractAdaptor
           .setPermitUsers(permitUsers).setPermitGroups(permitGroups)
           .setDenyUsers(denyUsers).setDenyGroups(denyGroups).build());
 
-      response.setContentType("text/html");
+      response.setContentType(GENERATED_HTML_CONTENT_TYPE);
       HtmlResponseWriter writer = createHtmlResponseWriter(response);
       writer.start(request.getDocId(), ObjectType.VIRTUAL_SERVER,
           vs.getMetadata().getURL());
@@ -813,7 +815,7 @@ public class SharePointAdaptor extends AbstractAdaptor
       }
 
       response.setDisplayUrl(spUrlToUri(w.getMetadata().getURL()));
-      response.setContentType("text/html");
+      response.setContentType(GENERATED_HTML_CONTENT_TYPE);
       HtmlResponseWriter writer = createHtmlResponseWriter(response);
       writer.start(request.getDocId(), ObjectType.SITE,
           w.getMetadata().getTitle());
@@ -903,7 +905,7 @@ public class SharePointAdaptor extends AbstractAdaptor
 
       response.setDisplayUrl(sharePointUrlToUri(
           l.getMetadata().getDefaultViewUrl()));
-      response.setContentType("text/html");
+      response.setContentType(GENERATED_HTML_CONTENT_TYPE);
       HtmlResponseWriter writer = createHtmlResponseWriter(response);
       writer.start(request.getDocId(), ObjectType.LIST,
           l.getMetadata().getTitle());
@@ -1369,7 +1371,7 @@ public class SharePointAdaptor extends AbstractAdaptor
         } catch (URISyntaxException ex) {
           throw new IOException(ex);
         }
-        response.setContentType("text/html");
+        response.setContentType(GENERATED_HTML_CONTENT_TYPE);
         HtmlResponseWriter writer = createHtmlResponseWriter(response);
         writer.start(request.getDocId(), ObjectType.FOLDER, null);
         processFolder(listId, folder.substring(root.length()), writer);
@@ -1393,7 +1395,7 @@ public class SharePointAdaptor extends AbstractAdaptor
         } catch (URISyntaxException ex) {
           throw new IOException(ex);
         }
-        response.setContentType("text/html");
+        response.setContentType(GENERATED_HTML_CONTENT_TYPE);
         HtmlResponseWriter writer = createHtmlResponseWriter(response);
         writer.start(request.getDocId(), ObjectType.LIST_ITEM, title);
         String strAttachments = row.getAttribute(OWS_ATTACHMENTS_ATTRIBUTE);
@@ -1831,6 +1833,12 @@ public class SharePointAdaptor extends AbstractAdaptor
   static class HttpClientImpl implements HttpClient {
     @Override
     public FileInfo issueGetRequest(URL url) throws IOException {
+      // Handle Unicode. Java does not properly encode the GET.
+      try {
+        url = new URL(url.toURI().toASCIIString());
+      } catch (URISyntaxException ex) {
+        throw new IOException(ex);
+      }
       HttpURLConnection conn = (HttpURLConnection) url.openConnection();
       conn.setDoInput(true);
       conn.setDoOutput(false);
