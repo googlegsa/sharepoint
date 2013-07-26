@@ -841,6 +841,10 @@ public class SharePointAdaptor extends AbstractAdaptor
           for (Folders folders : f.getFolders()) {
             if (folders.getFolder() != null) {
               for (Folders.Folder folder : folders.getFolder()) {
+                // Lists is always present in the listing but never exists.
+                if ("Lists".equals(folder.getURL())) {
+                  continue;
+                }
                 writer.addLink(encodeDocId(folder.getURL()), null);
               }
             }

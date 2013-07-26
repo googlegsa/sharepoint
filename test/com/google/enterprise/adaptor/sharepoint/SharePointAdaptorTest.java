@@ -412,7 +412,7 @@ public class SharePointAdaptorTest {
         + "/sites/SiteCollection/Shared Documents/Forms/AllItems.aspx</a>"
         + "</li></ul>"
         + "<p>Folders</p>"
-        + "<ul><li><a href=\"SiteCollection/Lists\">Lists</a></li></ul>"
+        + "<ul></ul>"
         + "<p>List Items</p>"
         + "<ul><li><a href=\"SiteCollection/default.aspx\">"
         + "default.aspx</a></li></ul>"
