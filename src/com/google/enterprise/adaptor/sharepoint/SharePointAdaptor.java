@@ -1130,7 +1130,8 @@ public class SharePointAdaptor extends AbstractAdaptor
       log.entering("SiteAdaptor", "getAspxDocContent",
           new Object[] {request, response});
 
-      if (isWebNoIndex(rareModCache.getWeb(siteDataClient))) {
+      CachedWeb w = rareModCache.getWeb(siteDataClient);
+      if (isWebNoIndex(w)) {
         log.fine("Document marked for NoIndex");
         response.respondNotFound();
         log.exiting("SiteAdaptor", "getAspxDocContent");
@@ -1138,7 +1139,7 @@ public class SharePointAdaptor extends AbstractAdaptor
       }
 
       boolean allowAnonymousAccess
-          = isAllowAnonymousReadForWeb(rareModCache.getWeb(siteDataClient))
+          = isAllowAnonymousReadForWeb(w)
           // Check if anonymous access is denied by web application policy
           && !isDenyAnonymousAccessOnVirtualServer(
               rareModCache.getVirtualServer());
@@ -1189,8 +1190,8 @@ public class SharePointAdaptor extends AbstractAdaptor
           new Object[] {request, response, listId, itemId});
       CachedList l = rareModCache.getList(siteDataClient, listId);
 
-      if (TrueFalseType.TRUE.equals(l.noIndex)
-          || isWebNoIndex(rareModCache.getWeb(siteDataClient))) {
+      CachedWeb w = rareModCache.getWeb(siteDataClient);
+      if (TrueFalseType.TRUE.equals(l.noIndex) || isWebNoIndex(w)) {
         log.fine("Document marked for NoIndex");
         response.respondNotFound();
         log.exiting("SiteAdaptor", "getListItemDocContent");
@@ -1221,7 +1222,7 @@ public class SharePointAdaptor extends AbstractAdaptor
       // for anonymous access to work on List and List Items.
       boolean allowAnonymousAccess = isAllowAnonymousReadForList(l)
           && scopeId.equals(l.scopeId.toLowerCase(Locale.ENGLISH))
-          && isAllowAnonymousPeekForWeb(rareModCache.getWeb(siteDataClient))
+          && isAllowAnonymousPeekForWeb(w)
           && !isDenyAnonymousAccessOnVirtualServer(
               rareModCache.getVirtualServer());
 
@@ -1459,8 +1460,8 @@ public class SharePointAdaptor extends AbstractAdaptor
       log.fine("Suspected attachment verified as being an attachment, assuming "
           + "it exists.");
       CachedList l = rareModCache.getList(siteDataClient, listId);
-      if (TrueFalseType.TRUE.equals(l.noIndex)
-          || isWebNoIndex(rareModCache.getWeb(siteDataClient))) {
+      CachedWeb w = rareModCache.getWeb(siteDataClient);
+      if (TrueFalseType.TRUE.equals(l.noIndex) || isWebNoIndex(w)) {
         log.fine("Document marked for NoIndex");
         response.respondNotFound();
         log.exiting("SiteAdaptor", "getAttachmentDocContent", true);
@@ -1479,7 +1480,7 @@ public class SharePointAdaptor extends AbstractAdaptor
 
       boolean allowAnonymousAccess = isAllowAnonymousReadForList(l)
           && scopeId.equals(l.scopeId.toLowerCase(Locale.ENGLISH))
-          && isAllowAnonymousPeekForWeb(rareModCache.getWeb(siteDataClient))
+          && isAllowAnonymousPeekForWeb(w)
           && !isDenyAnonymousAccessOnVirtualServer(
               rareModCache.getVirtualServer());
       if (!allowAnonymousAccess) {
