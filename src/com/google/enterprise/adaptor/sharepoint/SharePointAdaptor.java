@@ -812,7 +812,7 @@ public class SharePointAdaptor extends AbstractAdaptor
             .build());
       }
 
-      response.setDisplayUrl(URI.create(w.getMetadata().getURL()));
+      response.setDisplayUrl(spUrlToUri(w.getMetadata().getURL()));
       response.setContentType("text/html");
       HtmlResponseWriter writer = createHtmlResponseWriter(response);
       writer.start(request.getDocId(), ObjectType.SITE,
