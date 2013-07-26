@@ -1123,6 +1123,14 @@ public class SharePointAdaptor extends AbstractAdaptor
         throws IOException {
       log.entering("SiteAdaptor", "getAspxDocContent",
           new Object[] {request, response});
+
+      if (isWebNoIndex(rareModCache.getWeb(siteDataClient))) {
+        log.fine("Document marked for NoIndex");
+        response.respondNotFound();
+        log.exiting("SiteAdaptor", "getAspxDocContent");
+        return;
+      }
+
       boolean allowAnonymousAccess
           = isAllowAnonymousReadForWeb(rareModCache.getWeb(siteDataClient))
           // Check if anonymous access is denied by web application policy
