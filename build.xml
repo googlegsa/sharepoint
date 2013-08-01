@@ -265,6 +265,26 @@ lib/plexi submodule or add the the command line argument
       </manifest>
     </jar>
 
+    <!-- adaptor-sharepoint-user-profile.jar -->
+    <jar filesetmanifest="mergewithoutmain"
+      destfile="${dist.staging.dir}/adaptor-sharepoint-user-profile${adaptor.suffix}.jar">
+      <zipfileset
+        src="${dist.staging.dir}/adaptor-sharepoint${adaptor.suffix}.jar"/>
+      <manifest>
+        <attribute name="Main-Class" value="${adaptor2.class}"/>
+      </manifest>
+    </jar>
+
+    <!-- adaptor-sharepoint-user-profile-withlib.jar -->
+    <jar filesetmanifest="mergewithoutmain"
+      destfile="${dist.staging.dir}/adaptor-sharepoint-user-profile${adaptor.suffix}-withlib.jar">
+      <zipfileset
+        src="${dist.staging.dir}/adaptor-sharepoint${adaptor.suffix}-withlib.jar"/>
+      <manifest>
+        <attribute name="Main-Class" value="${adaptor2.class}"/>
+      </manifest>
+    </jar>
+
     <!-- adaptor-bin.zip -->
     <move file="${dist.staging.dir}"
       tofile="${build.dir}/dist/adaptor-sharepoint${adaptor.suffix}"/>
