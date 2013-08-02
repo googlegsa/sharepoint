@@ -506,12 +506,19 @@ public class SharePointAdaptor extends AbstractAdaptor
     // turn them into URIs separately, and then turn everything into a
     // properly-escaped string.
     String[] parts = url.split("/", 4);
-    String host = parts[0] + "/" + parts[1] + "/" + parts[2] + "/";
+    if (parts.length < 3) {
+      throw new IllegalArgumentException("Too few '/'s: " + url);
+    }
+    String host = parts[0] + "/" + parts[1] + "/" + parts[2];
     // Host must be properly-encoded already.
     URI hostUri = URI.create(host);
+    if (parts.length == 3) {
+      // There was no path.
+      return hostUri;
+    }
     URI pathUri;
     try {
-      pathUri = new URI(null, null, parts[3], null);
+      pathUri = new URI(null, null, "/" + parts[3], null);
     } catch (URISyntaxException ex) {
       throw new IOException(ex);
     }

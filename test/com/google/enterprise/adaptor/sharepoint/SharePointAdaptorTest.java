@@ -299,6 +299,29 @@ public class SharePointAdaptorTest {
   }
 
   @Test
+  public void testSpUrlToUriPassthrough() throws Exception {
+    assertEquals("http://somehost:1/path/file",
+        SharePointAdaptor.spUrlToUri("http://somehost:1/path/file").toString());
+  }
+
+  @Test
+  public void testSpUrlToUriSpace() throws Exception {
+    assertEquals("http://somehost/A%20space",
+        SharePointAdaptor.spUrlToUri("http://somehost/A space").toString());
+  }
+
+  @Test
+  public void testSpUrlToUriPassthroughNoPath() throws Exception {
+    assertEquals("https://somehost",
+        SharePointAdaptor.spUrlToUri("https://somehost").toString());
+  }
+
+  @Test(expected = IllegalArgumentException.class)
+  public void testSpUrlToUriNoSceme() throws Exception {
+    SharePointAdaptor.spUrlToUri("http:/");
+  }
+
+  @Test
   public void testGetDocContentWrongServer() throws Exception {
     SiteDataFactory siteDataFactory = MockSiteDataFactory.blank()
         .endpoint(VS_ENDPOINT, MockSiteData.blank()
