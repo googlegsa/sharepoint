@@ -1,7 +1,10 @@
 <html>
 <body>
+<h3>Table Of Contents</h3>
+<li><a href="#spadaptor">SharePoint Adaptor</a></li>
+<li><a href="#spuserprofileadaptor">SharePoint User Profile Adaptor</a></li>
 
-<h3>Adaptor for SharePoint Deployment</h3>
+<h3 id="spadaptor">Adaptor for SharePoint Deployment</h3>
 
 <p>Each adaptor instance is only able to support one SharePoint Web Application.
 Therefore, you will need to deploy one adaptor instance per Web Applicaton.
@@ -60,7 +63,67 @@ java.util.logging.ConsoleHandler.formatter=com.google.enterprise.adaptor.CustomF
 
   <li>Run the adaptor using cmd.exe:
   <pre>java -Djava.util.logging.config.file=logging.properties -jar adaptor-sharepoint-YYYYMMDD-withlib.jar</pre>
-<ol>
+</ol>
+<h3 id="spuserprofileadaptor">Adaptor for SharePoint User Profiles Deployment</h3>
 
+<p>Each adaptor instance is only able to support one User Profile Service 
+Application. Therefore, you will need to deploy one adaptor instance per User 
+Profile Service Application.
+
+<h4>Requirements</h4>
+<ul>
+  <li>GSA 7.0 P1 or higher
+  <li>GSA user authentication configured for authentication system in use
+    (typically Active Directory)
+  <li>Java JRE 1.6u27 or higher on computer that runs adaptor
+  <li>SharePoint User Profile Adaptor JAR executable
+  <li>User account for adaptor, with Full Control permissions to SharePoint User
+      Profile Service Application
+</ul>
+
+<h4>Configure GSA for Adaptor</h4>
+<ol>
+  <li>Add the IP address of the computer that hosts the adaptor to the <b>List
+    of Trusted IP Addresses</b> on the GSA.
+    <p>In the GSA's Admin Console, go to <b>Crawl and Index &gt; Feeds</b>,
+    and scroll down to <b>List of Trusted IP Addresses</b>. Add the IP address
+    for the adaptor to the list.
+  <li>Add the URLs provided by the adaptor to the <b>Follow and Crawl Only
+    URLs with the Following Patterns</b> on the GSA.
+    <p>In the Admin console, go to <b>Crawl And Index &gt; Crawl URLs</b>, and
+    scroll down to <b>Follow and Crawl Only URLs with the Following
+    Patterns</b>. Add an entry like <code>http://adaptor.example.com:5678/doc/
+    </code> where <code>adaptor.example.com</code> is the hostname of the
+    machine that hosts the adaptor. By default the adaptor runs on port 5678.
+</ol>
+
+
+<h4>Configure Adaptor</h4>
+<ol>
+  <li>Create a file named <code>adaptor-config.properties</code> in the
+  directory that contains the adaptor binary. Within the file, provide the
+  configuration (replacing bolded items with your real configuration):
+  <pre>gsa.hostname=<b>yourgsa.example.com</b>
+  sharepoint.server=<b>http://yoursharepoint.example.com/</b></pre>
+
+  <li>If the adaptor will <em>not</em> be running as the user account that has
+  appropriate SharePoint permissions, then add these additional configuration
+  options to <code>adaptor-config.properties</code>:
+  <pre>sharepoint.username=<b>YOURDOMAIN\\AdaptorUser</b>
+  sharepoint.password=<b>uS3R_passWoRD</b></pre>
+
+  <li>Create a file named <code>logging.properties</code> in the same directory
+  that contains logging configuration:
+  <pre>level=INFO
+  handlers=java.util.logging.FileHandler,java.util.logging.ConsoleHandler
+  java.util.logging.FileHandler.formatter=com.google.enterprise.adaptor.CustomFormatter
+  java.util.logging.FileHandler.pattern=adaptor.%g.log
+  java.util.logging.FileHandler.limit=10485760
+  java.util.logging.FileHandler.count=20
+  java.util.logging.ConsoleHandler.formatter=com.google.enterprise.adaptor.CustomFormatter
+
+  <li>Run the adaptor using cmd.exe:
+  <pre>java -Djava.util.logging.config.file=logging.properties -jar adaptor-sharepoint-user-profile-YYYYMMDD-withlib.jar</pre>
+</ol>
 </body>
 </html>
