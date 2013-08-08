@@ -171,6 +171,7 @@ public class SharePointAdaptorTest {
   private final Charset charset = Charset.forName("UTF-8");
   private Config config;
   private SharePointAdaptor adaptor;
+  private DocIdPusher pusher = new UnsupportedDocIdPusher();
   private Callable<ExecutorService> executorFactory
       = new Callable<ExecutorService>() {
         @Override
@@ -293,9 +294,32 @@ public class SharePointAdaptorTest {
     adaptor = new SharePointAdaptor(initableSiteDataFactory,
         new UnsupportedUserGroupFactory(),
         new UnsupportedHttpClient(), executorFactory);
-    adaptor.init(new MockAdaptorContext(config, null));
+    adaptor.init(new MockAdaptorContext(config, pusher));
     adaptor.destroy();
     adaptor = null;
+  }
+
+  @Test
+  public void testSpUrlToUriPassthrough() throws Exception {
+    assertEquals("http://somehost:1/path/file",
+        SharePointAdaptor.spUrlToUri("http://somehost:1/path/file").toString());
+  }
+
+  @Test
+  public void testSpUrlToUriSpace() throws Exception {
+    assertEquals("http://somehost/A%20space",
+        SharePointAdaptor.spUrlToUri("http://somehost/A space").toString());
+  }
+
+  @Test
+  public void testSpUrlToUriPassthroughNoPath() throws Exception {
+    assertEquals("https://somehost",
+        SharePointAdaptor.spUrlToUri("https://somehost").toString());
+  }
+
+  @Test(expected = IllegalArgumentException.class)
+  public void testSpUrlToUriNoSceme() throws Exception {
+    SharePointAdaptor.spUrlToUri("http:/");
   }
 
   @Test
@@ -309,7 +333,7 @@ public class SharePointAdaptorTest {
     adaptor = new SharePointAdaptor(siteDataFactory,
         new UnsupportedUserGroupFactory(),
         new UnsupportedHttpClient(), executorFactory);
-    adaptor.init(new MockAdaptorContext(config, null));
+    adaptor.init(new MockAdaptorContext(config, pusher));
     ByteArrayOutputStream baos = new ByteArrayOutputStream();
     GetContentsRequest request = new GetContentsRequest(
         new DocId("http://wronghost:1/"));
@@ -332,7 +356,7 @@ public class SharePointAdaptorTest {
     adaptor = new SharePointAdaptor(siteDataFactory,
         new UnsupportedUserGroupFactory(), new UnsupportedHttpClient(),
         executorFactory);
-    adaptor.init(new MockAdaptorContext(config, null));
+    adaptor.init(new MockAdaptorContext(config, pusher));
     ByteArrayOutputStream baos = new ByteArrayOutputStream();
     GetContentsRequest request = new GetContentsRequest(new DocId(wrongPage));
     GetContentsResponse response = new GetContentsResponse(baos);
@@ -350,7 +374,7 @@ public class SharePointAdaptorTest {
     adaptor = new SharePointAdaptor(siteDataFactory,
         new UnsupportedUserGroupFactory(), new UnsupportedHttpClient(),
         executorFactory);
-    adaptor.init(new MockAdaptorContext(config, null));
+    adaptor.init(new MockAdaptorContext(config, pusher));
     ByteArrayOutputStream baos = new ByteArrayOutputStream();
     GetContentsResponse response = new GetContentsResponse(baos);
     adaptor.getDocContent(new GetContentsRequest(new DocId("")), response);
@@ -390,7 +414,7 @@ public class SharePointAdaptorTest {
     adaptor = new SharePointAdaptor(siteDataFactory,
         new UnsupportedUserGroupFactory(), new UnsupportedHttpClient(),
         executorFactory);
-    adaptor.init(new MockAdaptorContext(config, null));
+    adaptor.init(new MockAdaptorContext(config, pusher));
     ByteArrayOutputStream baos = new ByteArrayOutputStream();
     GetContentsRequest request = new GetContentsRequest(
         new DocId("http://localhost:1/sites/SiteCollection"));
@@ -450,7 +474,7 @@ public class SharePointAdaptorTest {
     adaptor = new SharePointAdaptor(siteDataFactory,
         new UnsupportedUserGroupFactory(), new UnsupportedHttpClient(),
         executorFactory);
-    adaptor.init(new MockAdaptorContext(config, null));
+    adaptor.init(new MockAdaptorContext(config, pusher));
     ByteArrayOutputStream baos = new ByteArrayOutputStream();
     GetContentsRequest request = new GetContentsRequest(
         new DocId("http://localhost:1/sites/SiteCollection"));
@@ -486,7 +510,7 @@ public class SharePointAdaptorTest {
     adaptor = new SharePointAdaptor(siteDataFactory,
         new UnsupportedUserGroupFactory(), new UnsupportedHttpClient(),
         executorFactory);
-    adaptor.init(new MockAdaptorContext(config, null));
+    adaptor.init(new MockAdaptorContext(config, pusher));
     ByteArrayOutputStream baos = new ByteArrayOutputStream();
     GetContentsRequest request = new GetContentsRequest(
         new DocId("http://localhost:1/sites/SiteCollection"));
@@ -529,7 +553,7 @@ public class SharePointAdaptorTest {
     adaptor = new SharePointAdaptor(siteDataFactory,
         new UnsupportedUserGroupFactory(), new UnsupportedHttpClient(),
         executorFactory);
-    adaptor.init(new MockAdaptorContext(config, null));
+    adaptor.init(new MockAdaptorContext(config, pusher));
 
     // This populates the cache, but otherwise doesn't test anything new.
     siteData.setSiteDataSoap(siteDataState1);
@@ -573,7 +597,7 @@ public class SharePointAdaptorTest {
     adaptor = new SharePointAdaptor(siteDataFactory,
         new UnsupportedUserGroupFactory(), new UnsupportedHttpClient(),
         executorFactory);
-    adaptor.init(new MockAdaptorContext(config, null));
+    adaptor.init(new MockAdaptorContext(config, pusher));
     ByteArrayOutputStream baos = new ByteArrayOutputStream();
     GetContentsRequest request = new GetContentsRequest(
         new DocId("http://localhost:1/sites/SiteCollection"));
@@ -603,7 +627,7 @@ public class SharePointAdaptorTest {
     adaptor = new SharePointAdaptor(initableSiteDataFactory,
         new UnsupportedUserGroupFactory(), new UnsupportedHttpClient(),
         executorFactory);
-    adaptor.init(new MockAdaptorContext(config, null));
+    adaptor.init(new MockAdaptorContext(config, pusher));
     ByteArrayOutputStream baos = new ByteArrayOutputStream();
     GetContentsRequest request = new GetContentsRequest(
         new DocId("http://localhost:1/sites/SiteCollection/Lists/Custom List/"
@@ -647,7 +671,7 @@ public class SharePointAdaptorTest {
     adaptor = new SharePointAdaptor(initableSiteDataFactory,
         new UnsupportedUserGroupFactory(), new UnsupportedHttpClient(),
         executorFactory);
-    adaptor.init(new MockAdaptorContext(config, null));
+    adaptor.init(new MockAdaptorContext(config, pusher));
     ByteArrayOutputStream baos = new ByteArrayOutputStream();
     GetContentsRequest request = new GetContentsRequest(
         new DocId("http://localhost:1/sites/SiteCollection/Lists/Custom List/"
@@ -690,7 +714,7 @@ public class SharePointAdaptorTest {
         return new FileInfo.Builder(contents).setHeaders(headers).build();
       }
     }, executorFactory);
-    adaptor.init(new MockAdaptorContext(config, null));
+    adaptor.init(new MockAdaptorContext(config, pusher));
     ByteArrayOutputStream baos = new ByteArrayOutputStream();
     GetContentsRequest request = new GetContentsRequest(
         new DocId(attachmentId));
@@ -740,7 +764,7 @@ public class SharePointAdaptorTest {
     adaptor = new SharePointAdaptor(initableSiteDataFactory,
         new UnsupportedUserGroupFactory(), new UnsupportedHttpClient(),
         executorFactory);
-    adaptor.init(new MockAdaptorContext(config, null));
+    adaptor.init(new MockAdaptorContext(config, pusher));
     ByteArrayOutputStream baos = new ByteArrayOutputStream();
     GetContentsRequest request = new GetContentsRequest(
         new DocId("http://localhost:1/sites/SiteCollection/Lists/Custom List/"
@@ -855,7 +879,7 @@ public class SharePointAdaptorTest {
     adaptor = new SharePointAdaptor(initableSiteDataFactory,
         new UnsupportedUserGroupFactory(), new UnsupportedHttpClient(),
         executorFactory);
-    adaptor.init(new MockAdaptorContext(config, null));
+    adaptor.init(new MockAdaptorContext(config, pusher));
     ByteArrayOutputStream baos = new ByteArrayOutputStream();
     GetContentsRequest request = new GetContentsRequest(
         new DocId("http://localhost:1/sites/SiteCollection/Lists/Custom List/"
@@ -908,7 +932,7 @@ public class SharePointAdaptorTest {
           .endpoint(SITES_SITECOLLECTION_ENDPOINT, new UnsupportedSiteData()),
         mockUserGroupFactory, new UnsupportedHttpClient(), executorFactory);
     final AccumulatingDocIdPusher docIdPusher = new AccumulatingDocIdPusher();
-    adaptor.init(new MockAdaptorContext(config, null) {
+    adaptor.init(new MockAdaptorContext(config, pusher) {
       @Override
       public DocIdPusher getDocIdPusher() {
         return docIdPusher;
@@ -980,7 +1004,7 @@ public class SharePointAdaptorTest {
     adaptor = new SharePointAdaptor(initableSiteDataFactory,
         new UnsupportedUserGroupFactory(), new UnsupportedHttpClient(),
         executorFactory);
-    adaptor.init(new MockAdaptorContext(config, null));
+    adaptor.init(new MockAdaptorContext(config, pusher));
     ByteArrayOutputStream baos = new ByteArrayOutputStream();
     GetContentsRequest request = new GetContentsRequest(
         new DocId("http://localhost:1/sites/SiteCollection/Lists/Custom List/"
@@ -1024,7 +1048,7 @@ public class SharePointAdaptorTest {
     adaptor = new SharePointAdaptor(initableSiteDataFactory,
         new UnsupportedUserGroupFactory(), new UnsupportedHttpClient(),
         executorFactory);
-    adaptor.init(new MockAdaptorContext(config, null));
+    adaptor.init(new MockAdaptorContext(config, pusher));
     ByteArrayOutputStream baos = new ByteArrayOutputStream();
     GetContentsRequest request = new GetContentsRequest(
         new DocId("http://localhost:1/sites/SiteCollection/Lists/Custom List/"
