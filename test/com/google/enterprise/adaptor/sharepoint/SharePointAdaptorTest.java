@@ -16,7 +16,7 @@ package com.google.enterprise.adaptor.sharepoint;
 
 import static com.google.enterprise.adaptor.sharepoint.SharePointAdaptor.FileInfo;
 import static com.google.enterprise.adaptor.sharepoint.SharePointAdaptor.HttpClient;
-import static com.google.enterprise.adaptor.sharepoint.SiteDataClient.SiteDataFactory;
+import static com.google.enterprise.adaptor.sharepoint.SharePointAdaptor.SoapFactory;
 import static org.junit.Assert.*;
 
 import com.google.common.base.Objects;
@@ -30,7 +30,7 @@ import com.google.enterprise.adaptor.IOHelper;
 import com.google.enterprise.adaptor.Metadata;
 import com.google.enterprise.adaptor.UserPrincipal;
 import com.google.enterprise.adaptor.sharepoint.SharePointAdaptor.SiteUserIdMappingCallable;
-import com.google.enterprise.adaptor.sharepoint.SharePointAdaptor.UserGroupFactory;
+import com.google.enterprise.adaptor.sharepoint.SharePointAdaptor.SoapFactory;
 
 import com.microsoft.schemas.sharepoint.soap.ObjectType;
 import com.microsoft.schemas.sharepoint.soap.SPContentDatabase;
@@ -179,8 +179,8 @@ public class SharePointAdaptorTest {
           return new CallerRunsExecutor();
         }
       };
-  private final MockSiteDataFactory initableSiteDataFactory
-      = MockSiteDataFactory.blank()
+  private final MockSoapFactory initableSoapFactory
+      = MockSoapFactory.blank()
       .endpoint(VS_ENDPOINT, MockSiteData.blank()
           .register(VS_CONTENT_EXCHANGE));
 
@@ -247,8 +247,8 @@ public class SharePointAdaptorTest {
 
   @Test
   public void testSiteDataFactoryImpl() throws IOException {
-    SiteDataClient.SiteDataFactoryImpl sdfi
-        = new SiteDataClient.SiteDataFactoryImpl();
+    SharePointAdaptor.SoapFactoryImpl sdfi
+        = new SharePointAdaptor.SoapFactoryImpl();
     assertNotNull(
         sdfi.newSiteData("http://localhost:1/_vti_bin/SiteData.asmx"));
     // Test a site with a space.
@@ -262,37 +262,27 @@ public class SharePointAdaptorTest {
   }
 
   @Test
-  public void testNullSiteDataFactory() {
+  public void testNullSoapFactory() {
     thrown.expect(NullPointerException.class);
-    new SharePointAdaptor(null, new UnsupportedUserGroupFactory(),
-        new UnsupportedHttpClient(), executorFactory);
-  }
-  
-  @Test
-  public void testNullUserGroupFactory() {
-    thrown.expect(NullPointerException.class);
-    new SharePointAdaptor(new UnsupportedSiteDataFactory(), null,
-        new UnsupportedHttpClient(), executorFactory);
+    new SharePointAdaptor(null, new UnsupportedHttpClient(), executorFactory);
   }
 
   @Test
   public void testNullHttpClient() {
     thrown.expect(NullPointerException.class);
-    new SharePointAdaptor(new UnsupportedSiteDataFactory(),
-        new UnsupportedUserGroupFactory(), null, executorFactory);
+    new SharePointAdaptor(MockSoapFactory.blank(), null, executorFactory);
   }
 
   @Test
   public void testNullExecutorFactory() {
     thrown.expect(NullPointerException.class);
-    new SharePointAdaptor(new UnsupportedSiteDataFactory(),
-        new UnsupportedUserGroupFactory(), new UnsupportedHttpClient(), null);
+    new SharePointAdaptor(MockSoapFactory.blank(), new UnsupportedHttpClient(),
+        null);
   }
 
   @Test
   public void testInitDestroy() throws Exception {
-    adaptor = new SharePointAdaptor(initableSiteDataFactory,
-        new UnsupportedUserGroupFactory(),
+    adaptor = new SharePointAdaptor(initableSoapFactory,
         new UnsupportedHttpClient(), executorFactory);
     adaptor.init(new MockAdaptorContext(config, pusher));
     adaptor.destroy();
@@ -324,14 +314,13 @@ public class SharePointAdaptorTest {
 
   @Test
   public void testGetDocContentWrongServer() throws Exception {
-    SiteDataFactory siteDataFactory = MockSiteDataFactory.blank()
+    SoapFactory siteDataFactory = MockSoapFactory.blank()
         .endpoint(VS_ENDPOINT, MockSiteData.blank()
             .register(VS_CONTENT_EXCHANGE)
             .register(new SiteAndWebExchange(
                 "http://wronghost:1/", 1, null, null)));
 
     adaptor = new SharePointAdaptor(siteDataFactory,
-        new UnsupportedUserGroupFactory(),
         new UnsupportedHttpClient(), executorFactory);
     adaptor.init(new MockAdaptorContext(config, pusher));
     ByteArrayOutputStream baos = new ByteArrayOutputStream();
@@ -345,7 +334,7 @@ public class SharePointAdaptorTest {
   @Test
   public void testGetDocContentWrongPage() throws Exception {
     final String wrongPage = "http://localhost:1/wrongPage";
-    SiteDataFactory siteDataFactory = MockSiteDataFactory.blank()
+    SoapFactory siteDataFactory = MockSoapFactory.blank()
         .endpoint(VS_ENDPOINT, MockSiteData.blank()
             .register(VS_CONTENT_EXCHANGE)
             .register(new SiteAndWebExchange(
@@ -354,8 +343,7 @@ public class SharePointAdaptorTest {
                 wrongPage, false, null, null, null, null)));
 
     adaptor = new SharePointAdaptor(siteDataFactory,
-        new UnsupportedUserGroupFactory(), new UnsupportedHttpClient(),
-        executorFactory);
+        new UnsupportedHttpClient(), executorFactory);
     adaptor.init(new MockAdaptorContext(config, pusher));
     ByteArrayOutputStream baos = new ByteArrayOutputStream();
     GetContentsRequest request = new GetContentsRequest(new DocId(wrongPage));
@@ -366,14 +354,13 @@ public class SharePointAdaptorTest {
 
   @Test
   public void testGetDocContentVirtualServer() throws Exception {
-    SiteDataFactory siteDataFactory = MockSiteDataFactory.blank()
+    SoapFactory siteDataFactory = MockSoapFactory.blank()
         .endpoint(VS_ENDPOINT, MockSiteData.blank()
             .register(VS_CONTENT_EXCHANGE)
             .register(CD_CONTENT_EXCHANGE));
 
     adaptor = new SharePointAdaptor(siteDataFactory,
-        new UnsupportedUserGroupFactory(), new UnsupportedHttpClient(),
-        executorFactory);
+        new UnsupportedHttpClient(), executorFactory);
     adaptor.init(new MockAdaptorContext(config, pusher));
     ByteArrayOutputStream baos = new ByteArrayOutputStream();
     GetContentsResponse response = new GetContentsResponse(baos);
@@ -402,7 +389,7 @@ public class SharePointAdaptorTest {
 
   @Test
   public void testGetDocContentSiteCollection() throws Exception {
-    SiteDataFactory siteDataFactory = MockSiteDataFactory.blank()
+    SoapFactory siteDataFactory = MockSoapFactory.blank()
         .endpoint(VS_ENDPOINT, MockSiteData.blank()
             .register(VS_CONTENT_EXCHANGE)
             .register(SITES_SITECOLLECTION_SAW_EXCHANGE))
@@ -412,8 +399,7 @@ public class SharePointAdaptorTest {
             .register(SITES_SITECOLLECTION_SC_CONTENT_EXCHANGE));
 
     adaptor = new SharePointAdaptor(siteDataFactory,
-        new UnsupportedUserGroupFactory(), new UnsupportedHttpClient(),
-        executorFactory);
+        new UnsupportedHttpClient(), executorFactory);
     adaptor.init(new MockAdaptorContext(config, pusher));
     ByteArrayOutputStream baos = new ByteArrayOutputStream();
     GetContentsRequest request = new GetContentsRequest(
@@ -456,7 +442,7 @@ public class SharePointAdaptorTest {
 
   @Test
   public void testGetDocContentSiteCollectionWithAdGroup() throws Exception {
-    SiteDataFactory siteDataFactory = MockSiteDataFactory.blank()
+    SoapFactory siteDataFactory = MockSoapFactory.blank()
         .endpoint(VS_ENDPOINT, MockSiteData.blank()
             .register(VS_CONTENT_EXCHANGE)
             .register(SITES_SITECOLLECTION_SAW_EXCHANGE))
@@ -472,8 +458,7 @@ public class SharePointAdaptorTest {
                 "IsDomainGroup=\"True\"")));
 
     adaptor = new SharePointAdaptor(siteDataFactory,
-        new UnsupportedUserGroupFactory(), new UnsupportedHttpClient(),
-        executorFactory);
+        new UnsupportedHttpClient(), executorFactory);
     adaptor.init(new MockAdaptorContext(config, pusher));
     ByteArrayOutputStream baos = new ByteArrayOutputStream();
     GetContentsRequest request = new GetContentsRequest(
@@ -495,7 +480,7 @@ public class SharePointAdaptorTest {
         + "<permission memberid='12' mask='756052856929' />"
         + "<permission memberid='13' mask='756052856929' />"
         + "<permission memberid='14' mask='756052856929' /></permissions>";
-    SiteDataFactory siteDataFactory = MockSiteDataFactory.blank()
+    SoapFactory siteDataFactory = MockSoapFactory.blank()
         .endpoint(VS_ENDPOINT, MockSiteData.blank()
             .register(VS_CONTENT_EXCHANGE)
             .register(SITES_SITECOLLECTION_SAW_EXCHANGE))
@@ -508,8 +493,7 @@ public class SharePointAdaptorTest {
 
     
     adaptor = new SharePointAdaptor(siteDataFactory,
-        new UnsupportedUserGroupFactory(), new UnsupportedHttpClient(),
-        executorFactory);
+        new UnsupportedHttpClient(), executorFactory);
     adaptor.init(new MockAdaptorContext(config, pusher));
     ByteArrayOutputStream baos = new ByteArrayOutputStream();
     GetContentsRequest request = new GetContentsRequest(
@@ -531,7 +515,7 @@ public class SharePointAdaptorTest {
   public void testGetDocContentSiteCollectionWithOutOfDateMemberCache()
       throws Exception {
     ReferenceSiteData siteData = new ReferenceSiteData();
-    SiteDataFactory siteDataFactory = MockSiteDataFactory.blank()
+    SoapFactory siteDataFactory = MockSoapFactory.blank()
         .endpoint(VS_ENDPOINT, MockSiteData.blank()
             .register(VS_CONTENT_EXCHANGE)
             .register(SITES_SITECOLLECTION_SAW_EXCHANGE))
@@ -551,8 +535,7 @@ public class SharePointAdaptorTest {
               .replaceInContent("spuser2", "spuser100"));
 
     adaptor = new SharePointAdaptor(siteDataFactory,
-        new UnsupportedUserGroupFactory(), new UnsupportedHttpClient(),
-        executorFactory);
+        new UnsupportedHttpClient(), executorFactory);
     adaptor.init(new MockAdaptorContext(config, pusher));
 
     // This populates the cache, but otherwise doesn't test anything new.
@@ -586,7 +569,7 @@ public class SharePointAdaptorTest {
   }
 
   public void testGetDocContentSiteCollectionNoIndex() throws Exception {
-    SiteDataFactory siteDataFactory = MockSiteDataFactory.blank()
+    SoapFactory siteDataFactory = MockSoapFactory.blank()
         .endpoint(VS_ENDPOINT, MockSiteData.blank()
             .register(SITES_SITECOLLECTION_SAW_EXCHANGE))
         .endpoint(SITES_SITECOLLECTION_ENDPOINT, MockSiteData.blank()
@@ -595,8 +578,7 @@ public class SharePointAdaptorTest {
               .replaceInContent("NoIndex=\"False\"", "NoIndex=\"True\"")));
 
     adaptor = new SharePointAdaptor(siteDataFactory,
-        new UnsupportedUserGroupFactory(), new UnsupportedHttpClient(),
-        executorFactory);
+        new UnsupportedHttpClient(), executorFactory);
     adaptor.init(new MockAdaptorContext(config, pusher));
     ByteArrayOutputStream baos = new ByteArrayOutputStream();
     GetContentsRequest request = new GetContentsRequest(
@@ -624,9 +606,8 @@ public class SharePointAdaptorTest {
       memberIdMapping = new MemberIdMapping(users, groups);
     }
 
-    adaptor = new SharePointAdaptor(initableSiteDataFactory,
-        new UnsupportedUserGroupFactory(), new UnsupportedHttpClient(),
-        executorFactory);
+    adaptor = new SharePointAdaptor(initableSoapFactory,
+        new UnsupportedHttpClient(), executorFactory);
     adaptor.init(new MockAdaptorContext(config, pusher));
     ByteArrayOutputStream baos = new ByteArrayOutputStream();
     GetContentsRequest request = new GetContentsRequest(
@@ -668,9 +649,8 @@ public class SharePointAdaptorTest {
         .register(SITES_SITECOLLECTION_LISTS_CUSTOMLIST_L_CONTENT_EXCHANGE
           .replaceInContent("NoIndex=\"False\"", "NoIndex=\"True\""));
 
-    adaptor = new SharePointAdaptor(initableSiteDataFactory,
-        new UnsupportedUserGroupFactory(), new UnsupportedHttpClient(),
-        executorFactory);
+    adaptor = new SharePointAdaptor(initableSoapFactory,
+        new UnsupportedHttpClient(), executorFactory);
     adaptor.init(new MockAdaptorContext(config, pusher));
     ByteArrayOutputStream baos = new ByteArrayOutputStream();
     GetContentsRequest request = new GetContentsRequest(
@@ -699,8 +679,8 @@ public class SharePointAdaptorTest {
 
     final String goldenContents = "attachment contents";
     final String goldenContentType = "fake/type";
-    adaptor = new SharePointAdaptor(initableSiteDataFactory,
-        new UnsupportedUserGroupFactory(), new HttpClient() {
+    adaptor = new SharePointAdaptor(initableSoapFactory,
+        new HttpClient() {
       @Override
       public FileInfo issueGetRequest(URL url) {
         assertEquals(
@@ -761,9 +741,8 @@ public class SharePointAdaptorTest {
       memberIdMapping = new MemberIdMapping(users, groups);
     }
 
-    adaptor = new SharePointAdaptor(initableSiteDataFactory,
-        new UnsupportedUserGroupFactory(), new UnsupportedHttpClient(),
-        executorFactory);
+    adaptor = new SharePointAdaptor(initableSoapFactory,
+        new UnsupportedHttpClient(), executorFactory);
     adaptor.init(new MockAdaptorContext(config, pusher));
     ByteArrayOutputStream baos = new ByteArrayOutputStream();
     GetContentsRequest request = new GetContentsRequest(
@@ -876,9 +855,8 @@ public class SharePointAdaptorTest {
       memberIdMapping = new MemberIdMapping(users, groups);
     }
 
-    adaptor = new SharePointAdaptor(initableSiteDataFactory,
-        new UnsupportedUserGroupFactory(), new UnsupportedHttpClient(),
-        executorFactory);
+    adaptor = new SharePointAdaptor(initableSoapFactory,
+        new UnsupportedHttpClient(), executorFactory);
     adaptor.init(new MockAdaptorContext(config, pusher));
     ByteArrayOutputStream baos = new ByteArrayOutputStream();
     GetContentsRequest request = new GetContentsRequest(
@@ -924,13 +902,15 @@ public class SharePointAdaptorTest {
         "S-1-5-21-7369343", "System Account", "System.Account@domain.com",
         false, true));
 
-    MockUserGroupFactory mockUserGroupFactory
-        = new MockUserGroupFactory(users);
+    MockUserGroupSoap mockUserGroupSoap = new MockUserGroupSoap(users);
 
     adaptor = new SharePointAdaptor(
-        initableSiteDataFactory
+        initableSoapFactory
+          .endpoint(
+              "http://localhost:1/sites/SiteCollection/_vti_bin/UserGroup.asmx",
+              mockUserGroupSoap)
           .endpoint(SITES_SITECOLLECTION_ENDPOINT, new UnsupportedSiteData()),
-        mockUserGroupFactory, new UnsupportedHttpClient(), executorFactory);
+        new UnsupportedHttpClient(), executorFactory);
     final AccumulatingDocIdPusher docIdPusher = new AccumulatingDocIdPusher();
     adaptor.init(new MockAdaptorContext(config, pusher) {
       @Override
@@ -945,9 +925,7 @@ public class SharePointAdaptorTest {
     GetContentsResponse response = new GetContentsResponse(baos);
     adaptor.new SiteAdaptor("http://localhost:1/sites/SiteCollection",
           "http://localhost:1/sites/SiteCollection", siteData,
-          mockUserGroupFactory.newUserGroup(
-              "http://localhost:1/sites/SiteCollection"),
-          Callables.returning(memberIdMapping),
+          mockUserGroupSoap, Callables.returning(memberIdMapping),
           adaptor.new SiteUserIdMappingCallable(
               "http://localhost:1/sites/SiteCollection"))
         .getDocContent(request, response);
@@ -1001,9 +979,8 @@ public class SharePointAdaptorTest {
       memberIdMapping = new MemberIdMapping(users, groups);
     }
 
-    adaptor = new SharePointAdaptor(initableSiteDataFactory,
-        new UnsupportedUserGroupFactory(), new UnsupportedHttpClient(),
-        executorFactory);
+    adaptor = new SharePointAdaptor(initableSoapFactory,
+        new UnsupportedHttpClient(), executorFactory);
     adaptor.init(new MockAdaptorContext(config, pusher));
     ByteArrayOutputStream baos = new ByteArrayOutputStream();
     GetContentsRequest request = new GetContentsRequest(
@@ -1045,9 +1022,8 @@ public class SharePointAdaptorTest {
       memberIdMapping = new MemberIdMapping(users, groups);
     }
 
-    adaptor = new SharePointAdaptor(initableSiteDataFactory,
-        new UnsupportedUserGroupFactory(), new UnsupportedHttpClient(),
-        executorFactory);
+    adaptor = new SharePointAdaptor(initableSoapFactory,
+        new UnsupportedHttpClient(), executorFactory);
     adaptor.init(new MockAdaptorContext(config, pusher));
     ByteArrayOutputStream baos = new ByteArrayOutputStream();
     GetContentsRequest request = new GetContentsRequest(
@@ -1133,9 +1109,8 @@ public class SharePointAdaptorTest {
 
   @Test
   public void testGetDocIds() throws Exception {
-    adaptor = new SharePointAdaptor(initableSiteDataFactory,
-        new UnsupportedUserGroupFactory(), new UnsupportedHttpClient(),
-        executorFactory);
+    adaptor = new SharePointAdaptor(initableSoapFactory,
+        new UnsupportedHttpClient(), executorFactory);
     AccumulatingDocIdPusher pusher = new AccumulatingDocIdPusher();
     adaptor.init(new MockAdaptorContext(config, pusher));
     assertEquals(0, pusher.getRecords().size());
@@ -1216,11 +1191,10 @@ public class SharePointAdaptorTest {
             currentChangeId, timeout, getChangesResult, moreChanges);
       }
     };
-    SiteDataFactory siteDataFactory = MockSiteDataFactory.blank()
+    SoapFactory siteDataFactory = MockSoapFactory.blank()
         .endpoint(VS_ENDPOINT, countingSiteData);
     adaptor = new SharePointAdaptor(siteDataFactory,
-        new UnsupportedUserGroupFactory(), new UnsupportedHttpClient(),
-        executorFactory);
+        new UnsupportedHttpClient(), executorFactory);
     AccumulatingDocIdPusher pusher = new AccumulatingDocIdPusher();
     siteData.setSiteDataSoap(state0);
     adaptor.init(new MockAdaptorContext(config, pusher));
@@ -1305,11 +1279,10 @@ public class SharePointAdaptorTest {
             currentChangeId, timeout, getChangesResult, moreChanges);
       }
     };
-    SiteDataFactory siteDataFactory = MockSiteDataFactory.blank().
-        endpoint(VS_ENDPOINT, countingSiteData);
+    SoapFactory siteDataFactory = MockSoapFactory.blank()
+        .endpoint(VS_ENDPOINT, countingSiteData);
     adaptor = new SharePointAdaptor(siteDataFactory,
-        new UnsupportedUserGroupFactory(), new UnsupportedHttpClient(),
-        executorFactory);
+        new UnsupportedHttpClient(), executorFactory);
     AccumulatingDocIdPusher pusher = new AccumulatingDocIdPusher();
     adaptor.init(new MockAdaptorContext(config, pusher));
 
@@ -1326,9 +1299,8 @@ public class SharePointAdaptorTest {
   public void testModifiedGetDocIdsClient() throws Exception {
     final String getChangesContentDatabase
         = loadTestString("testModifiedGetDocIdsClient.changes-cd.xml");
-    adaptor = new SharePointAdaptor(initableSiteDataFactory,
-        new UnsupportedUserGroupFactory(), new UnsupportedHttpClient(),
-        executorFactory);
+    adaptor = new SharePointAdaptor(initableSoapFactory,
+        new UnsupportedHttpClient(), executorFactory);
     AccumulatingDocIdPusher pusher = new AccumulatingDocIdPusher();
     adaptor.init(new MockAdaptorContext(config, pusher));
     SPContentDatabase result = parseChanges(getChangesContentDatabase);
@@ -1444,33 +1416,6 @@ public class SharePointAdaptorTest {
         .getResourceAsStream(resource), Charset.forName("UTF-8"));
   }
 
-  private static class UnsupportedSiteDataFactory implements SiteDataFactory {
-    @Override
-    public SiteDataSoap newSiteData(String endpoint) {
-      throw new UnsupportedOperationException();
-    }
-  }
-
-  private static class UnsupportedUserGroupFactory
-      implements UserGroupFactory {
-    @Override
-    public UserGroupSoap newUserGroup(String endpoint) {
-      return new UnsupportedUserGroupSoap();
-    }
-  }
-
-  private static class MockUserGroupFactory implements UserGroupFactory {
-    final Users users;
-    public MockUserGroupFactory(Users users) {
-      this.users = users;
-    }
-
-    @Override
-    public UserGroupSoap newUserGroup(String endpoint) {
-      return new MockUserGroupSoap(users);
-    }
-  }
-
   private static class UnsupportedHttpClient implements HttpClient {
     @Override
     public FileInfo issueGetRequest(URL url) {
@@ -1499,262 +1444,284 @@ public class SharePointAdaptorTest {
       return result;      
     }
   }
-  
-  private static class UnsupportedUserGroupSoap implements UserGroupSoap {
+
+  private static class UnsupportedUserGroupSoap
+      extends DelegatingUserGroupSoap {
+    private final String endpoint;
+
+    public UnsupportedUserGroupSoap() {
+      this(null);
+    }
+
+    public UnsupportedUserGroupSoap(String endpoint) {
+      this.endpoint = endpoint;
+    }
+
     @Override
-    public GetUserCollectionFromSiteResponse.GetUserCollectionFromSiteResult 
+    protected UserGroupSoap delegate() {
+      if (endpoint == null) {
+        throw new UnsupportedOperationException();
+      } else {
+        throw new UnsupportedOperationException("Endpoint: " + endpoint);
+      }
+    }
+  }
+
+  private abstract static class DelegatingUserGroupSoap
+      implements UserGroupSoap {
+    protected abstract UserGroupSoap delegate();
+
+    @Override
+    public GetUserCollectionFromSiteResponse.GetUserCollectionFromSiteResult
         getUserCollectionFromSite() {
-      throw new UnsupportedOperationException(); 
+      return delegate().getUserCollectionFromSite();
     }
 
     @Override
-    public GetUserCollectionFromWebResponse.GetUserCollectionFromWebResult 
+    public GetUserCollectionFromWebResponse.GetUserCollectionFromWebResult
         getUserCollectionFromWeb() {
-      throw new UnsupportedOperationException(); 
+      return delegate().getUserCollectionFromWeb();
     }
 
     @Override
-    public GetAllUserCollectionFromWebResponse.GetAllUserCollectionFromWebResult 
+    public GetAllUserCollectionFromWebResponse.GetAllUserCollectionFromWebResult
         getAllUserCollectionFromWeb() {
-      throw new UnsupportedOperationException(); 
+      return delegate().getAllUserCollectionFromWeb();
     }
 
     @Override
-    public GetUserCollectionFromGroupResponse.GetUserCollectionFromGroupResult 
+    public GetUserCollectionFromGroupResponse.GetUserCollectionFromGroupResult
         getUserCollectionFromGroup(String string) {
-      throw new UnsupportedOperationException(); 
+      return delegate().getUserCollectionFromGroup(string);
     }
 
     @Override
-    public GetUserCollectionFromRoleResponse.GetUserCollectionFromRoleResult 
+    public GetUserCollectionFromRoleResponse.GetUserCollectionFromRoleResult
         getUserCollectionFromRole(String string) {
-      throw new UnsupportedOperationException(); 
+      return delegate().getUserCollectionFromRole(string);
     }
 
     @Override
-    public GetUserCollectionResponse.GetUserCollectionResult 
+    public GetUserCollectionResponse.GetUserCollectionResult
         getUserCollection(GetUserCollection.UserLoginNamesXml ulnx) {
-      throw new UnsupportedOperationException(); 
+      return delegate().getUserCollection(ulnx);
     }
 
     @Override
-    public GetUserInfoResponse.GetUserInfoResult 
-        getUserInfo(String string) {
-      throw new UnsupportedOperationException(); 
+    public GetUserInfoResponse.GetUserInfoResult getUserInfo(String string) {
+      return delegate().getUserInfo(string);
     }
 
     @Override
-    public GetCurrentUserInfoResponse.GetCurrentUserInfoResult 
+    public GetCurrentUserInfoResponse.GetCurrentUserInfoResult
         getCurrentUserInfo() {
-      throw new UnsupportedOperationException(); 
+      return delegate().getCurrentUserInfo();
     }
 
     @Override
-    public void addUserToGroup(String string, String string1, 
+    public void addUserToGroup(String string, String string1,
         String string2, String string3, String string4) {
-      throw new UnsupportedOperationException(); 
+      delegate().addUserToGroup(string, string1, string2, string3, string4);
     }
 
     @Override
     public void addUserCollectionToGroup(String string,
         AddUserCollectionToGroup.UsersInfoXml uix) {
-      throw new UnsupportedOperationException(); 
+      delegate().addUserCollectionToGroup(string, uix);
     }
 
     @Override
     public void addUserToRole(String string, String string1,
         String string2, String string3, String string4) {
-      throw new UnsupportedOperationException(); 
+      delegate().addUserToRole(string, string1, string2, string3, string4);
     }
 
     @Override
     public void addUserCollectionToRole(String string,
         AddUserCollectionToRole.UsersInfoXml uix) {
-      throw new UnsupportedOperationException(); 
+      delegate().addUserCollectionToRole(string, uix);
     }
 
     @Override
     public void updateUserInfo(String string, String string1,
         String string2, String string3) {
-      throw new UnsupportedOperationException(); 
+      delegate().updateUserInfo(string, string1, string2, string3);
     }
 
     @Override
     public void removeUserFromSite(String string) {
-      throw new UnsupportedOperationException(); 
+      delegate().removeUserFromSite(string);
     }
 
     @Override
     public void removeUserCollectionFromSite(
         RemoveUserCollectionFromSite.UserLoginNamesXml ulnx) {
-      throw new UnsupportedOperationException(); 
+      delegate().removeUserCollectionFromSite(ulnx);
     }
 
     @Override
     public void removeUserFromWeb(String string) {
-      throw new UnsupportedOperationException(); 
+      delegate().removeUserFromWeb(string);
     }
 
     @Override
     public void removeUserFromGroup(String string, String string1) {
-      throw new UnsupportedOperationException(); 
+      delegate().removeUserFromGroup(string, string1);
     }
 
     @Override
     public void removeUserCollectionFromGroup(String string,
         RemoveUserCollectionFromGroup.UserLoginNamesXml ulnx) {
-      throw new UnsupportedOperationException(); 
+      delegate().removeUserCollectionFromGroup(string, ulnx);
     }
 
     @Override
     public void removeUserFromRole(String string, String string1) {
-      throw new UnsupportedOperationException(); 
+      delegate().removeUserFromRole(string, string1);
     }
 
     @Override
     public void removeUserCollectionFromRole(String string,
         RemoveUserCollectionFromRole.UserLoginNamesXml ulnx) {
-      throw new UnsupportedOperationException(); 
+      delegate().removeUserCollectionFromRole(string, ulnx);
     }
 
     @Override
     public GetGroupCollectionFromSiteResponse.GetGroupCollectionFromSiteResult
         getGroupCollectionFromSite() {
-      throw new UnsupportedOperationException(); 
+      return delegate().getGroupCollectionFromSite();
     }
 
     @Override
     public GetGroupCollectionFromWebResponse.GetGroupCollectionFromWebResult
         getGroupCollectionFromWeb() {
-      throw new UnsupportedOperationException(); 
+      return delegate().getGroupCollectionFromWeb();
     }
 
     @Override
     public GetGroupCollectionFromRoleResponse.GetGroupCollectionFromRoleResult
         getGroupCollectionFromRole(String string) {
-      throw new UnsupportedOperationException(); 
+      return delegate().getGroupCollectionFromRole(string);
     }
 
     @Override
     public GetGroupCollectionFromUserResponse.GetGroupCollectionFromUserResult
         getGroupCollectionFromUser(String string) {
-      throw new UnsupportedOperationException(); 
+      return delegate().getGroupCollectionFromUser(string);
     }
 
     @Override
     public GetGroupCollectionResponse.GetGroupCollectionResult
         getGroupCollection(GroupsInputType git) {
-      throw new UnsupportedOperationException(); 
+      return delegate().getGroupCollection(git);
     }
 
     @Override
-    public GetGroupInfoResponse.GetGroupInfoResult
-        getGroupInfo(String string) {
-      throw new UnsupportedOperationException(); 
+    public GetGroupInfoResponse.GetGroupInfoResult getGroupInfo(String string) {
+      return delegate().getGroupInfo(string);
     }
 
     @Override
     public void addGroup(String string, String string1, PrincipalType pt,
         String string2, String string3) {
-      throw new UnsupportedOperationException(); 
+      delegate().addGroup(string, string1, pt, string2, string3);
     }
 
     @Override
     public void addGroupToRole(String string, String string1) {
-      throw new UnsupportedOperationException(); 
+      delegate().addGroupToRole(string, string1);
     }
 
     @Override
     public void updateGroupInfo(String string, String string1,
         String string2, PrincipalType pt, String string3) {
-      throw new UnsupportedOperationException(); 
+      delegate().updateGroupInfo(string, string1, string2, pt, string3);
     }
 
     @Override
     public void removeGroup(String string) {
-      throw new UnsupportedOperationException(); 
+      delegate().removeGroup(string);
     }
 
     @Override
     public void removeGroupFromRole(String string, String string1) {
-      throw new UnsupportedOperationException(); 
+      delegate().removeGroupFromRole(string, string1);
     }
 
     @Override
     public GetRoleCollectionFromWebResponse.GetRoleCollectionFromWebResult
         getRoleCollectionFromWeb() {
-      throw new UnsupportedOperationException(); 
+      return delegate().getRoleCollectionFromWeb();
     }
 
     @Override
     public GetRoleCollectionFromGroupResponse.GetRoleCollectionFromGroupResult
         getRoleCollectionFromGroup(String string) {
-      throw new UnsupportedOperationException(); 
+      return delegate().getRoleCollectionFromGroup(string);
     }
 
     @Override
     public GetRoleCollectionFromUserResponse.GetRoleCollectionFromUserResult
         getRoleCollectionFromUser(String string) {
-      throw new UnsupportedOperationException(); 
+      return delegate().getRoleCollectionFromUser(string);
     }
 
     @Override
-    public GetRoleCollectionResponse.GetRoleCollectionResult 
+    public GetRoleCollectionResponse.GetRoleCollectionResult
         getRoleCollection(RolesInputType rit) {
-      throw new UnsupportedOperationException(); 
+      return delegate().getRoleCollection(rit);
     }
 
     @Override
     public RoleOutputType getRoleInfo(String string) {
-      throw new UnsupportedOperationException(); 
+      return delegate().getRoleInfo(string);
     }
 
     @Override
     public void addRole(String string, String string1, int i) {
-      throw new UnsupportedOperationException(); 
+      delegate().addRole(string, string1, i);
     }
 
     @Override
     public void addRoleDef(String string, String string1, BigInteger bi) {
-      throw new UnsupportedOperationException(); 
+      delegate().addRoleDef(string, string1, bi);
     }
 
     @Override
     public void updateRoleInfo(String string, String string1,
         String string2, int i) {
-      throw new UnsupportedOperationException(); 
+      delegate().updateRoleInfo(string, string1, string2, i);
     }
 
     @Override
-    public void updateRoleDefInfo(String string, String string1, 
+    public void updateRoleDefInfo(String string, String string1,
         String string2, BigInteger bi) {
-      throw new UnsupportedOperationException(); 
+      delegate().updateRoleDefInfo(string, string1, string2, bi);
     }
 
     @Override
     public void removeRole(String string) {
-      throw new UnsupportedOperationException(); 
+      delegate().removeRole(string);
     }
 
     @Override
-    public GetUserLoginFromEmailResponse.GetUserLoginFromEmailResult 
+    public GetUserLoginFromEmailResponse.GetUserLoginFromEmailResult
         getUserLoginFromEmail(EmailsInputType eit) {
-      throw new UnsupportedOperationException(); 
+      return delegate().getUserLoginFromEmail(eit);
     }
 
     @Override
     public GetRolesAndPermissionsForCurrentUserResponse
-        .GetRolesAndPermissionsForCurrentUserResult 
+        .GetRolesAndPermissionsForCurrentUserResult
         getRolesAndPermissionsForCurrentUser() {
-      throw new UnsupportedOperationException(); 
+      return delegate().getRolesAndPermissionsForCurrentUser();
     }
 
     @Override
     public GetRolesAndPermissionsForSiteResponse
-        .GetRolesAndPermissionsForSiteResult 
-        getRolesAndPermissionsForSite() {
-      throw new UnsupportedOperationException(); 
-    }    
+        .GetRolesAndPermissionsForSiteResult getRolesAndPermissionsForSite() {
+      return delegate().getRolesAndPermissionsForSite();
+    }
   }
 
   /**
@@ -1774,25 +1741,32 @@ public class SharePointAdaptorTest {
     }
   }
 
-  private static class MockSiteDataFactory implements SiteDataFactory {
+  private static class MockSoapFactory implements SoapFactory {
     private final String expectedEndpoint;
     private final SiteDataSoap siteData;
-    private final MockSiteDataFactory chain;
+    private final UserGroupSoap userGroup;
+    private final MockSoapFactory chain;
 
-    private MockSiteDataFactory(String expectedEndpoint, SiteDataSoap siteData,
-        MockSiteDataFactory chain) {
+    private MockSoapFactory(String expectedEndpoint, SiteDataSoap siteData,
+        UserGroupSoap userGroup, MockSoapFactory chain) {
       this.expectedEndpoint = expectedEndpoint;
       this.siteData = siteData;
+      this.userGroup = userGroup;
       this.chain = chain;
     }
 
-    public static MockSiteDataFactory blank() {
-      return new MockSiteDataFactory(null, null, null);
+    public static MockSoapFactory blank() {
+      return new MockSoapFactory(null, null, null, null);
     }
 
-    public MockSiteDataFactory endpoint(String expectedEndpoint,
+    public MockSoapFactory endpoint(String expectedEndpoint,
         SiteDataSoap siteData) {
-      return new MockSiteDataFactory(expectedEndpoint, siteData, this);
+      return new MockSoapFactory(expectedEndpoint, siteData, null, this);
+    }
+
+    public MockSoapFactory endpoint(String expectedEndpoint,
+        UserGroupSoap userGroup) {
+      return new MockSoapFactory(expectedEndpoint, null, userGroup, this);
     }
 
     @Override
@@ -1800,10 +1774,24 @@ public class SharePointAdaptorTest {
       if (chain == null) {
         fail("Could not find endpoint " + endpoint);
       }
-      if (expectedEndpoint.equals(endpoint)) {
+      if (expectedEndpoint.equals(endpoint) && siteData != null) {
         return siteData;
       }
       return chain.newSiteData(endpoint);
+    }
+
+    @Override
+    public UserGroupSoap newUserGroup(String endpoint) {
+      if (chain == null) {
+        // UserGroupSoaps are commonly created but rarely used, so we go ahead
+        // and just provide an instance instead of forcing all users of the mock
+        // to populate trash instances.
+        return new UnsupportedUserGroupSoap(endpoint);
+      }
+      if (expectedEndpoint.equals(endpoint) && userGroup != null) {
+        return userGroup;
+      }
+      return chain.newUserGroup(endpoint);
     }
   }
 

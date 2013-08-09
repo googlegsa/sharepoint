@@ -33,7 +33,6 @@ import org.xml.sax.SAXException;
 
 import java.io.IOException;
 import java.io.StringReader;
-import java.net.URL;
 import java.util.logging.*;
 
 import javax.xml.XMLConstants;
@@ -48,11 +47,9 @@ import javax.xml.transform.dom.DOMSource;
 import javax.xml.transform.stream.StreamSource;
 import javax.xml.validation.Schema;
 import javax.xml.validation.SchemaFactory;
-import javax.xml.ws.EndpointReference;
 import javax.xml.ws.Holder;
 import javax.xml.ws.Service;
 import javax.xml.ws.WebServiceException;
-import javax.xml.ws.wsaddressing.W3CEndpointReferenceBuilder;
 
 class SiteDataClient {
   /** SharePoint's namespace. */
@@ -358,30 +355,10 @@ class SiteDataClient {
     public C getCursor();
   }
 
-  @VisibleForTesting
-  interface SiteDataFactory {
-    /**
-     * The {@code endpoint} string is a SharePoint URL, meaning that spaces are
-     * not encoded.
-     */
-    public SiteDataSoap newSiteData(String endpoint) throws IOException;
-  }
-
-  static class SiteDataFactoryImpl implements SiteDataFactory {
-    private final Service siteDataService;
-
-    public SiteDataFactoryImpl() {
-      URL url = SiteDataSoap.class.getResource("SiteData.wsdl");
-      QName qname = new QName(XMLNS, "SiteData");
-      this.siteDataService = Service.create(url, qname);
-    }
-
-    @Override
-    public SiteDataSoap newSiteData(String endpoint) throws IOException {
-      EndpointReference endpointRef = new W3CEndpointReferenceBuilder()
-          .address(SharePointAdaptor.spUrlToUri(endpoint).toString()).build();
-      return siteDataService.getPort(endpointRef, SiteDataSoap.class);
-    }
+  public static Service createSiteDataService() {
+    return Service.create(
+        SiteDataSoap.class.getResource("SiteData.wsdl"),
+        new QName(XMLNS, "SiteData"));
   }
 
   /**

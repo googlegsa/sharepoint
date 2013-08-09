@@ -218,9 +218,7 @@ public class SharePointAdaptor extends AbstractAdaptor
   /** Map from Content Database GUID to last known Change Token for that DB. */
   private final ConcurrentSkipListMap<String, String> contentDatabaseChangeId
       = new ConcurrentSkipListMap<String, String>();
-  /** Production factory for all SiteDataSoap communication objects. */
-  private final SiteDataClient.SiteDataFactory siteDataFactory;
-  private final UserGroupFactory userGroupFactory;
+  private final SoapFactory soapFactory;
   /** Client for initiating raw HTTP connections. */
   private final HttpClient httpClient;
   private final Callable<ExecutorService> executorFactory;
@@ -241,20 +239,17 @@ public class SharePointAdaptor extends AbstractAdaptor
   private final Object refreshMemberIdMappingLock = new Object();
 
   public SharePointAdaptor() {
-    this(new SiteDataClient.SiteDataFactoryImpl(), new UserGroupFactoryImpl(),
-        new HttpClientImpl(), new CachedThreadPoolFactory());
+    this(new SoapFactoryImpl(), new HttpClientImpl(),
+        new CachedThreadPoolFactory());
   }
 
   @VisibleForTesting
-  SharePointAdaptor(SiteDataClient.SiteDataFactory siteDataFactory,
-      UserGroupFactory userGroupFactory, HttpClient httpClient,
+  SharePointAdaptor(SoapFactory soapFactory, HttpClient httpClient,
       Callable<ExecutorService> executorFactory) {
-    if (siteDataFactory == null || httpClient == null
-        || userGroupFactory == null || executorFactory == null) {
+    if (soapFactory == null || httpClient == null || executorFactory == null) {
       throw new NullPointerException();
     }
-    this.siteDataFactory = siteDataFactory;
-    this.userGroupFactory = userGroupFactory;
+    this.soapFactory = soapFactory;
     this.httpClient = httpClient;
     this.executorFactory = executorFactory;
   }
@@ -489,11 +484,10 @@ public class SharePointAdaptor extends AbstractAdaptor
       }
       ntlmAuthenticator.addPermitForHost(new URL(web));
       String endpoint = web + "/_vti_bin/SiteData.asmx";
-      SiteDataSoap siteDataSoap = siteDataFactory.newSiteData(endpoint);
+      SiteDataSoap siteDataSoap = soapFactory.newSiteData(endpoint);
 
       String endpointUserGroup = site + "/_vti_bin/UserGroup.asmx";
-      UserGroupSoap userGroupSoap
-          = userGroupFactory.newUserGroup(endpointUserGroup);
+      UserGroupSoap userGroupSoap = soapFactory.newUserGroup(endpointUserGroup);
 
       siteAdaptor = new SiteAdaptor(site, web, siteDataSoap, userGroupSoap,
           new MemberIdMappingCallable(site),
@@ -1898,17 +1892,33 @@ public class SharePointAdaptor extends AbstractAdaptor
   }
 
   @VisibleForTesting
-  interface UserGroupFactory {
+  interface SoapFactory {
+    /**
+     * The {@code endpoint} string is a SharePoint URL, meaning that spaces are
+     * not encoded.
+     */
+    public SiteDataSoap newSiteData(String endpoint) throws IOException;
+
     public UserGroupSoap newUserGroup(String endpoint);
   }
 
-  static class UserGroupFactoryImpl implements UserGroupFactory {
+  @VisibleForTesting
+  static class SoapFactoryImpl implements SoapFactory {
+    private final Service siteDataService;
     private final Service userGroupService;
 
-    public UserGroupFactoryImpl() {
-      URL url = UserGroupSoap.class.getResource("UserGroup.wsdl");
-      QName qname = new QName(XMLNS_DIRECTORY, "UserGroup");
-      this.userGroupService = Service.create(url, qname);
+    public SoapFactoryImpl() {
+      this.siteDataService = SiteDataClient.createSiteDataService();
+      this.userGroupService = Service.create(
+          UserGroupSoap.class.getResource("UserGroup.wsdl"),
+          new QName(XMLNS_DIRECTORY, "UserGroup"));
+    }
+
+    @Override
+    public SiteDataSoap newSiteData(String endpoint) throws IOException {
+      EndpointReference endpointRef = new W3CEndpointReferenceBuilder()
+          .address(SharePointAdaptor.spUrlToUri(endpoint).toString()).build();
+      return siteDataService.getPort(endpointRef, SiteDataSoap.class);
     }
 
     @Override
