@@ -154,10 +154,23 @@ lib/plexi submodule or add the the command line argument
       <arg value="UserGroup.wsdl"/>
       <arg value="UserGroup.wsdl"/>
     </exec>
+    <exec executable="wsimport">
+      <arg value="-s"/>
+      <arg value="${generate.dir}"/>
+      <arg value="-d"/>
+      <arg value="${build-generate.dir}"/>
+      <arg value="-p"/>
+      <arg value="com.microsoft.schemas.sharepoint.soap.authentication"/>
+      <arg value="-wsdllocation"/>
+      <arg value="Authentication.wsdl"/>
+      <arg value="Authentication.wsdl"/>
+    </exec>
     <copy file="SiteData.wsdl"
       todir="${build-generate.dir}/com/microsoft/schemas/sharepoint/soap/"/>
     <copy file="UserGroup.wsdl"
       todir="${build-generate.dir}/com/microsoft/schemas/sharepoint/soap/directory/"/>
+    <copy file="Authentication.wsdl"
+      todir="${build-generate.dir}/com/microsoft/schemas/sharepoint/soap/authentication"/>
     <copy file="UserProfileService.wsdl"
       todir="${build-generate.dir}/com/microsoft/webservices/sharepointportalserver/userprofileservice/"/>
     <copy file="UserProfileChangeService.wsdl"

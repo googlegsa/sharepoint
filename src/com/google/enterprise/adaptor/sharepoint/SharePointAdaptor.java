@@ -36,6 +36,7 @@ import com.google.enterprise.adaptor.sharepoint.RareModificationCache.CachedWeb;
 import com.google.enterprise.adaptor.sharepoint.SiteDataClient.CursorPaginator;
 import com.google.enterprise.adaptor.sharepoint.SiteDataClient.Paginator;
 import com.google.enterprise.adaptor.sharepoint.SiteDataClient.XmlProcessingException;
+import com.microsoft.schemas.sharepoint.soap.authentication.AuthenticationSoap;
 
 import com.microsoft.schemas.sharepoint.soap.ContentDatabase;
 import com.microsoft.schemas.sharepoint.soap.ContentDatabases;
@@ -87,9 +88,11 @@ import java.util.logging.*;
 import java.util.regex.Pattern;
 
 import javax.xml.namespace.QName;
+import javax.xml.ws.BindingProvider;
 import javax.xml.ws.EndpointReference;
 import javax.xml.ws.Holder;
 import javax.xml.ws.Service;
+import javax.xml.ws.handler.MessageContext;
 import javax.xml.ws.wsaddressing.W3CEndpointReferenceBuilder;
 
 /**
@@ -101,6 +104,10 @@ public class SharePointAdaptor extends AbstractAdaptor
   private static final Charset CHARSET = Charset.forName("UTF-8");
   private static final String XMLNS_DIRECTORY
       = "http://schemas.microsoft.com/sharepoint/soap/directory/";
+  
+  /** SharePoint's namespace. */
+  private static final String XMLNS
+      = "http://schemas.microsoft.com/sharepoint/soap/";
 
   /**
    * The data element within a self-describing XML blob. See
@@ -225,6 +232,9 @@ public class SharePointAdaptor extends AbstractAdaptor
   private ExecutorService executor;
   private boolean xmlValidation;
   private long maxIndexableSize;
+  
+  private ScheduledThreadPoolExecutor scheduledExecutor 
+      = new ScheduledThreadPoolExecutor(1);
   /** Authenticator instance that authenticates with SP. */
   /**
    * Cached value of whether we are talking to a SP 2010 server or not. This
@@ -237,6 +247,8 @@ public class SharePointAdaptor extends AbstractAdaptor
    * held while waiting on I/O.
    */
   private final Object refreshMemberIdMappingLock = new Object();
+  
+  private FormsAuthenticationHandler authenticationHandler;
 
   public SharePointAdaptor() {
     this(new SoapFactoryImpl(), new HttpClientImpl(),
@@ -299,9 +311,15 @@ public class SharePointAdaptor extends AbstractAdaptor
     ntlmAuthenticator = new NtlmAuthenticator(username, password);
     // Unfortunately, this is a JVM-wide modification.
     Authenticator.setDefault(ntlmAuthenticator);
-
+    URL virtualServerUrl = new URL(virtualServer);
+    ntlmAuthenticator.addPermitForHost(virtualServerUrl);
+    String authenticationEndPoint 
+        =  virtualServer + "/_vti_bin/Authentication.asmx";
+    authenticationHandler = new FormsAuthenticationHandler(username,
+        password, scheduledExecutor,
+        soapFactory.newAuthentication(authenticationEndPoint));
+    authenticationHandler.start();
     executor = executorFactory.call();
-
     try {
       SiteDataClient virtualServerSiteDataClient =
           getSiteAdaptor(virtualServer, virtualServer).getSiteDataClient();
@@ -320,13 +338,18 @@ public class SharePointAdaptor extends AbstractAdaptor
   @Override
   public void destroy() {
     executor.shutdown();
+    scheduledExecutor.shutdown();
     try {
       executor.awaitTermination(10, TimeUnit.SECONDS);
+      scheduledExecutor.awaitTermination(10, TimeUnit.SECONDS);
     } catch (InterruptedException ex) {
       Thread.currentThread().interrupt();
     }
+    
     executor.shutdownNow();
+    scheduledExecutor.shutdownNow();
     executor = null;
+    scheduledExecutor = null;
     rareModCache = null;
     Authenticator.setDefault(null);
     ntlmAuthenticator = null;
@@ -485,10 +508,15 @@ public class SharePointAdaptor extends AbstractAdaptor
       ntlmAuthenticator.addPermitForHost(new URL(web));
       String endpoint = web + "/_vti_bin/SiteData.asmx";
       SiteDataSoap siteDataSoap = soapFactory.newSiteData(endpoint);
-
+      
       String endpointUserGroup = site + "/_vti_bin/UserGroup.asmx";
       UserGroupSoap userGroupSoap = soapFactory.newUserGroup(endpointUserGroup);
-
+      // JAX-WS RT 2.1.4 doesn't handle headers correctly and always assumes the
+      // list contains precisely one entry, so we work around it here.
+      if (authenticationHandler.isFormsAuthentication()) {
+        addFormsAuthenticationCookies((BindingProvider) siteDataSoap);
+        addFormsAuthenticationCookies((BindingProvider) userGroupSoap);        
+      }
       siteAdaptor = new SiteAdaptor(site, web, siteDataSoap, userGroupSoap,
           new MemberIdMappingCallable(site),
           new SiteUserIdMappingCallable(site));
@@ -496,6 +524,12 @@ public class SharePointAdaptor extends AbstractAdaptor
       siteAdaptor = siteAdaptors.get(web);
     }
     return siteAdaptor;
+  }
+  
+  private void addFormsAuthenticationCookies(BindingProvider port) {
+    port.getRequestContext().put(MessageContext.HTTP_REQUEST_HEADERS,
+        Collections.singletonMap("Cookie", 
+            authenticationHandler.getAuthenticationCookies()));
   }
 
   static URI spUrlToUri(String url) throws IOException {
@@ -693,7 +727,9 @@ public class SharePointAdaptor extends AbstractAdaptor
       List<GroupPrincipal> denyGroups = new ArrayList<GroupPrincipal>();
       for (PolicyUser policyUser : vs.getPolicies().getPolicyUser()) {
         // TODO(ejona): special case NT AUTHORITY\LOCAL SERVICE.
-        String loginName = policyUser.getLoginName();
+        String loginName = decodeClaim(policyUser.getLoginName(),
+            policyUser.getLoginName(), false);
+        log.log(Level.FINER, "Policy User Login Name = {0}", loginName);
         long grant = policyUser.getGrantMask().longValue();
         if ((necessaryPermissionMask & grant) == necessaryPermissionMask) {
           permitUsers.add(new UserPrincipal(loginName));
@@ -1179,7 +1215,8 @@ public class SharePointAdaptor extends AbstractAdaptor
       log.entering("SiteAdaptor", "getFileDocContent",
           new Object[] {request, response});
       URI displayUrl = docIdToUri(request.getDocId());
-      FileInfo fi = httpClient.issueGetRequest(displayUrl.toURL());
+      FileInfo fi = httpClient.issueGetRequest(displayUrl.toURL(),
+          authenticationHandler.getAuthenticationCookies());
       if (fi == null) {
         response.respondNotFound();
         return;
@@ -1646,7 +1683,7 @@ public class SharePointAdaptor extends AbstractAdaptor
         return loginName.substring(7);
       // AD Group
       } else if (loginName.startsWith("c:0+.w|")) {
-        return name;
+        return name.startsWith("c:0+.w|") ? name.substring(7) : name;
       } else if (loginName.equals("c:0(.s|true")) {
         return "Everyone";
       } else if (loginName.equals("c:0!.s|windows")) {
@@ -1853,12 +1890,14 @@ public class SharePointAdaptor extends AbstractAdaptor
      *
      * @return {@code null} if not found, {@code FileInfo} instance otherwise
      */
-    public FileInfo issueGetRequest(URL url) throws IOException;
+    public FileInfo issueGetRequest(URL url, List<String> authenticationCookies)
+        throws IOException;
   }
 
   static class HttpClientImpl implements HttpClient {
     @Override
-    public FileInfo issueGetRequest(URL url) throws IOException {
+    public FileInfo issueGetRequest(URL url, List<String> authenticationCookies)
+        throws IOException {
       // Handle Unicode. Java does not properly encode the GET.
       try {
         url = new URL(url.toURI().toASCIIString());
@@ -1866,6 +1905,10 @@ public class SharePointAdaptor extends AbstractAdaptor
         throw new IOException(ex);
       }
       HttpURLConnection conn = (HttpURLConnection) url.openConnection();
+     
+      for (String cookie : authenticationCookies) {
+        conn.addRequestProperty("Cookie", cookie);
+      }
       conn.setDoInput(true);
       conn.setDoOutput(false);
       if (conn.getResponseCode() == HttpURLConnection.HTTP_NOT_FOUND) {
@@ -1900,18 +1943,24 @@ public class SharePointAdaptor extends AbstractAdaptor
     public SiteDataSoap newSiteData(String endpoint) throws IOException;
 
     public UserGroupSoap newUserGroup(String endpoint);
+    
+    public AuthenticationSoap newAuthentication(String endpoint);
   }
 
   @VisibleForTesting
   static class SoapFactoryImpl implements SoapFactory {
     private final Service siteDataService;
     private final Service userGroupService;
+    private final Service authenticationService;
 
     public SoapFactoryImpl() {
       this.siteDataService = SiteDataClient.createSiteDataService();
       this.userGroupService = Service.create(
           UserGroupSoap.class.getResource("UserGroup.wsdl"),
           new QName(XMLNS_DIRECTORY, "UserGroup"));
+      this.authenticationService = Service.create(
+          AuthenticationSoap.class.getResource("Authentication.wsdl"),
+          new QName(XMLNS, "Authentication"));
     }
 
     @Override
@@ -1926,6 +1975,14 @@ public class SharePointAdaptor extends AbstractAdaptor
       EndpointReference endpointRef = new W3CEndpointReferenceBuilder()
           .address(endpoint).build();
       return userGroupService.getPort(endpointRef, UserGroupSoap.class);
+    }
+    
+    @Override
+    public AuthenticationSoap newAuthentication(String endpoint) {
+      EndpointReference endpointRef = new W3CEndpointReferenceBuilder()
+          .address(endpoint).build();
+      return 
+          authenticationService.getPort(endpointRef, AuthenticationSoap.class);
     }
   }
 

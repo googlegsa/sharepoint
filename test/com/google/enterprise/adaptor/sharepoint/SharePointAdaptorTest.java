@@ -31,6 +31,10 @@ import com.google.enterprise.adaptor.Metadata;
 import com.google.enterprise.adaptor.UserPrincipal;
 import com.google.enterprise.adaptor.sharepoint.SharePointAdaptor.SiteUserIdMappingCallable;
 import com.google.enterprise.adaptor.sharepoint.SharePointAdaptor.SoapFactory;
+import com.microsoft.schemas.sharepoint.soap.authentication.AuthenticationMode;
+import com.microsoft.schemas.sharepoint.soap.authentication.AuthenticationSoap;
+import com.microsoft.schemas.sharepoint.soap.authentication.LoginErrorCode;
+import com.microsoft.schemas.sharepoint.soap.authentication.LoginResult;
 
 import com.microsoft.schemas.sharepoint.soap.ObjectType;
 import com.microsoft.schemas.sharepoint.soap.SPContentDatabase;
@@ -91,6 +95,8 @@ import javax.xml.ws.WebServiceException;
  * Test cases for {@link SharePointAdaptor}.
  */
 public class SharePointAdaptorTest {
+  private static final String AUTH_ENDPOINT
+      = "http://localhost:1/_vti_bin/Authentication.asmx";
   private static final String VS_ENDPOINT
       = "http://localhost:1/_vti_bin/SiteData.asmx";
   private static final ContentExchange VS_CONTENT_EXCHANGE
@@ -181,6 +187,7 @@ public class SharePointAdaptorTest {
       };
   private final MockSoapFactory initableSoapFactory
       = MockSoapFactory.blank()
+      .endpoint(AUTH_ENDPOINT, new MockAuthenticationSoap())
       .endpoint(VS_ENDPOINT, MockSiteData.blank()
           .register(VS_CONTENT_EXCHANGE));
 
@@ -315,6 +322,7 @@ public class SharePointAdaptorTest {
   @Test
   public void testGetDocContentWrongServer() throws Exception {
     SoapFactory siteDataFactory = MockSoapFactory.blank()
+        .endpoint(AUTH_ENDPOINT, new MockAuthenticationSoap())
         .endpoint(VS_ENDPOINT, MockSiteData.blank()
             .register(VS_CONTENT_EXCHANGE)
             .register(new SiteAndWebExchange(
@@ -335,6 +343,7 @@ public class SharePointAdaptorTest {
   public void testGetDocContentWrongPage() throws Exception {
     final String wrongPage = "http://localhost:1/wrongPage";
     SoapFactory siteDataFactory = MockSoapFactory.blank()
+        .endpoint(AUTH_ENDPOINT, new MockAuthenticationSoap())
         .endpoint(VS_ENDPOINT, MockSiteData.blank()
             .register(VS_CONTENT_EXCHANGE)
             .register(new SiteAndWebExchange(
@@ -355,6 +364,7 @@ public class SharePointAdaptorTest {
   @Test
   public void testGetDocContentVirtualServer() throws Exception {
     SoapFactory siteDataFactory = MockSoapFactory.blank()
+        .endpoint(AUTH_ENDPOINT, new MockAuthenticationSoap())
         .endpoint(VS_ENDPOINT, MockSiteData.blank()
             .register(VS_CONTENT_EXCHANGE)
             .register(CD_CONTENT_EXCHANGE));
@@ -390,6 +400,7 @@ public class SharePointAdaptorTest {
   @Test
   public void testGetDocContentSiteCollection() throws Exception {
     SoapFactory siteDataFactory = MockSoapFactory.blank()
+        .endpoint(AUTH_ENDPOINT, new MockAuthenticationSoap())
         .endpoint(VS_ENDPOINT, MockSiteData.blank()
             .register(VS_CONTENT_EXCHANGE)
             .register(SITES_SITECOLLECTION_SAW_EXCHANGE))
@@ -443,6 +454,7 @@ public class SharePointAdaptorTest {
   @Test
   public void testGetDocContentSiteCollectionWithAdGroup() throws Exception {
     SoapFactory siteDataFactory = MockSoapFactory.blank()
+        .endpoint(AUTH_ENDPOINT, new MockAuthenticationSoap())
         .endpoint(VS_ENDPOINT, MockSiteData.blank()
             .register(VS_CONTENT_EXCHANGE)
             .register(SITES_SITECOLLECTION_SAW_EXCHANGE))
@@ -481,6 +493,7 @@ public class SharePointAdaptorTest {
         + "<permission memberid='13' mask='756052856929' />"
         + "<permission memberid='14' mask='756052856929' /></permissions>";
     SoapFactory siteDataFactory = MockSoapFactory.blank()
+        .endpoint(AUTH_ENDPOINT, new MockAuthenticationSoap())
         .endpoint(VS_ENDPOINT, MockSiteData.blank()
             .register(VS_CONTENT_EXCHANGE)
             .register(SITES_SITECOLLECTION_SAW_EXCHANGE))
@@ -516,6 +529,7 @@ public class SharePointAdaptorTest {
       throws Exception {
     ReferenceSiteData siteData = new ReferenceSiteData();
     SoapFactory siteDataFactory = MockSoapFactory.blank()
+        .endpoint(AUTH_ENDPOINT, new MockAuthenticationSoap())
         .endpoint(VS_ENDPOINT, MockSiteData.blank()
             .register(VS_CONTENT_EXCHANGE)
             .register(SITES_SITECOLLECTION_SAW_EXCHANGE))
@@ -682,7 +696,8 @@ public class SharePointAdaptorTest {
     adaptor = new SharePointAdaptor(initableSoapFactory,
         new HttpClient() {
       @Override
-      public FileInfo issueGetRequest(URL url) {
+      public FileInfo issueGetRequest(URL url,
+          List<String> authenticationCookies) {
         assertEquals(
           "http://localhost:1/sites/SiteCollection/Lists/Custom%20List/"
             + "Attachments/2/1046000.pdf",
@@ -1192,6 +1207,7 @@ public class SharePointAdaptorTest {
       }
     };
     SoapFactory siteDataFactory = MockSoapFactory.blank()
+        .endpoint(AUTH_ENDPOINT, new MockAuthenticationSoap())
         .endpoint(VS_ENDPOINT, countingSiteData);
     adaptor = new SharePointAdaptor(siteDataFactory,
         new UnsupportedHttpClient(), executorFactory);
@@ -1280,6 +1296,7 @@ public class SharePointAdaptorTest {
       }
     };
     SoapFactory siteDataFactory = MockSoapFactory.blank()
+        .endpoint(AUTH_ENDPOINT, new MockAuthenticationSoap())
         .endpoint(VS_ENDPOINT, countingSiteData);
     adaptor = new SharePointAdaptor(siteDataFactory,
         new UnsupportedHttpClient(), executorFactory);
@@ -1418,7 +1435,8 @@ public class SharePointAdaptorTest {
 
   private static class UnsupportedHttpClient implements HttpClient {
     @Override
-    public FileInfo issueGetRequest(URL url) {
+    public FileInfo issueGetRequest(URL url,
+        List<String> authenticationCookies) {
       throw new UnsupportedOperationException();
     }
   }
@@ -1723,6 +1741,57 @@ public class SharePointAdaptorTest {
       return delegate().getRolesAndPermissionsForSite();
     }
   }
+  
+  private static class MockAuthenticationSoap extends 
+      UnsupportedAuthenticationSoap {
+    @Override
+    public LoginResult login(String string, String string1) {
+      throw new UnsupportedOperationException();
+    }
+
+    @Override
+    public AuthenticationMode mode() {
+      return AuthenticationMode.WINDOWS;
+    }
+  }
+  
+  private static class UnsupportedAuthenticationSoap 
+      extends DelegatingAuthenticationSoap {
+    private final String endpoint;
+
+    public UnsupportedAuthenticationSoap() {
+      this(null);
+    }
+
+    public UnsupportedAuthenticationSoap(String endpoint) {
+      this.endpoint = endpoint;
+    }
+
+    @Override
+    protected AuthenticationSoap delegate() {
+      if (endpoint == null) {
+        throw new UnsupportedOperationException();
+      } else {
+        throw new UnsupportedOperationException("Endpoint: " + endpoint);
+      }
+    }
+  }
+
+
+  private abstract static class DelegatingAuthenticationSoap 
+      implements AuthenticationSoap {
+    protected abstract AuthenticationSoap delegate();
+
+    @Override
+    public LoginResult login(String username, String password) {
+      return delegate().login(username, password);
+    }
+
+    @Override
+    public AuthenticationMode mode() {
+      return delegate().mode();
+    }    
+  }
 
   /**
    * Throw UnsupportedOperationException for all calls.
@@ -1745,28 +1814,38 @@ public class SharePointAdaptorTest {
     private final String expectedEndpoint;
     private final SiteDataSoap siteData;
     private final UserGroupSoap userGroup;
+    private final AuthenticationSoap authentication;
     private final MockSoapFactory chain;
 
     private MockSoapFactory(String expectedEndpoint, SiteDataSoap siteData,
-        UserGroupSoap userGroup, MockSoapFactory chain) {
+        UserGroupSoap userGroup, AuthenticationSoap authentication,
+        MockSoapFactory chain) {
       this.expectedEndpoint = expectedEndpoint;
       this.siteData = siteData;
       this.userGroup = userGroup;
+      // Tests will always use windows authentication.
+      this.authentication = authentication;
       this.chain = chain;
     }
 
     public static MockSoapFactory blank() {
-      return new MockSoapFactory(null, null, null, null);
+      return new MockSoapFactory(null, null, null, null, null);
     }
 
     public MockSoapFactory endpoint(String expectedEndpoint,
         SiteDataSoap siteData) {
-      return new MockSoapFactory(expectedEndpoint, siteData, null, this);
+      return new MockSoapFactory(expectedEndpoint, siteData, null, null, this);
     }
 
     public MockSoapFactory endpoint(String expectedEndpoint,
         UserGroupSoap userGroup) {
-      return new MockSoapFactory(expectedEndpoint, null, userGroup, this);
+      return new MockSoapFactory(expectedEndpoint, null, userGroup, null, this);
+    }
+    
+    public MockSoapFactory endpoint(String expectedEndpoint,
+        AuthenticationSoap authentication) {
+      return new MockSoapFactory(
+          expectedEndpoint, null, null, authentication, this);
     }
 
     @Override
@@ -1778,6 +1857,17 @@ public class SharePointAdaptorTest {
         return siteData;
       }
       return chain.newSiteData(endpoint);
+    }
+    
+    @Override 
+    public AuthenticationSoap newAuthentication(String endpoint) {
+      if (chain == null) {
+        fail("Could not find endpoint " + endpoint);
+      }
+      if (expectedEndpoint.equals(endpoint) && authentication != null) {
+        return authentication;
+      }
+      return chain.newAuthentication(endpoint);
     }
 
     @Override

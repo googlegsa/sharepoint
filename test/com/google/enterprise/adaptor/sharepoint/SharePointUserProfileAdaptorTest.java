@@ -1,9 +1,8 @@
 package com.google.enterprise.adaptor.sharepoint;
 
-import com.google.enterprise.adaptor.Acl;
 import static org.junit.Assert.*;
 
-
+import com.google.enterprise.adaptor.Acl;
 import com.google.enterprise.adaptor.Config;
 import com.google.enterprise.adaptor.DocId;
 import com.google.enterprise.adaptor.GroupPrincipal;
@@ -11,6 +10,9 @@ import com.google.enterprise.adaptor.GroupPrincipal;
 import com.google.enterprise.adaptor.sharepoint.SharePointUserProfileAdaptor.UserProfileServiceClient;
 import com.google.enterprise.adaptor.sharepoint.SharePointUserProfileAdaptor.UserProfileServiceFactory;
 import com.google.enterprise.adaptor.sharepoint.SharePointUserProfileAdaptor.UserProfileServiceWS;
+import com.microsoft.schemas.sharepoint.soap.authentication.AuthenticationMode;
+import com.microsoft.schemas.sharepoint.soap.authentication.AuthenticationSoap;
+import com.microsoft.schemas.sharepoint.soap.authentication.LoginResult;
 
 import com.microsoft.webservices.sharepointportalserver.userprofilechangeservice.ArrayOfUserProfileChangeData;
 import com.microsoft.webservices.sharepointportalserver.userprofilechangeservice.UserProfileChangeData;
@@ -580,7 +582,7 @@ public class SharePointUserProfileAdaptorTest {
     }
     @Override
     public UserProfileServiceWS newUserProfileService(String endpoint,
-        String endpointChangeService) {
+        String endpointChangeService, List<String> cookies) {
       return proxy;
     }
 
@@ -594,5 +596,22 @@ public class SharePointUserProfileAdaptorTest {
     public void addChangeLogForUser(String userName) {
       proxy.addChangeLogForUser(userName);
     }
+
+    @Override
+    public AuthenticationSoap newAuthentication(String endpoint) {
+      return new MockAuthenticationSoap();
+    }
+  }
+  
+  private static class MockAuthenticationSoap implements AuthenticationSoap {
+    @Override
+    public LoginResult login(String string, String string1) {
+      throw new UnsupportedOperationException();
+    }
+
+    @Override
+    public AuthenticationMode mode() {
+      return AuthenticationMode.WINDOWS;
+    }    
   }
 }

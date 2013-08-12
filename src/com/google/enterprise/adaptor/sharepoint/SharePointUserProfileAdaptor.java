@@ -12,6 +12,7 @@ import com.google.enterprise.adaptor.GroupPrincipal;
 import com.google.enterprise.adaptor.PollingIncrementalAdaptor;
 import com.google.enterprise.adaptor.Request;
 import com.google.enterprise.adaptor.Response;
+import com.microsoft.schemas.sharepoint.soap.authentication.AuthenticationSoap;
 
 import com.microsoft.webservices.sharepointportalserver.userprofilechangeservice.ArrayOfUserProfileChangeData;
 import com.microsoft.webservices.sharepointportalserver.userprofilechangeservice.UserProfileChangeData;
@@ -53,6 +54,8 @@ import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import java.util.concurrent.ScheduledThreadPoolExecutor;
+import java.util.concurrent.TimeUnit;
 import java.util.logging.Level;
 import java.util.logging.Logger;
 
@@ -60,9 +63,11 @@ import javax.xml.namespace.QName;
 import javax.xml.parsers.DocumentBuilder;
 import javax.xml.parsers.DocumentBuilderFactory;
 import javax.xml.parsers.ParserConfigurationException;
+import javax.xml.ws.BindingProvider;
 import javax.xml.ws.EndpointReference;
 import javax.xml.ws.Service;
 import javax.xml.ws.WebServiceException;
+import javax.xml.ws.handler.MessageContext;
 import javax.xml.ws.wsaddressing.W3CEndpointReferenceBuilder;
 
 /**
@@ -75,6 +80,10 @@ public class SharePointUserProfileAdaptor extends AbstractAdaptor
   private static final Map<String, String> SP_GSA_PROPERTY_MAPPINGS;
 
   private static final Charset encoding = Charset.forName("UTF-8");
+  
+  /** SharePoint's namespace. */
+  private static final String AUTH_XMLNS
+      = "http://schemas.microsoft.com/sharepoint/soap/";
 
   private static final String XMLNS =
       "http://microsoft.com/webservices/SharePointPortalServer/UserProfileService";
@@ -120,6 +129,8 @@ public class SharePointUserProfileAdaptor extends AbstractAdaptor
   private String userProfileChangeToken;
   private boolean setAcl = true;
   private UserProfileServiceClient userProfileServiceClient;
+  private ScheduledThreadPoolExecutor scheduledExecutor 
+      = new ScheduledThreadPoolExecutor(1);
 
   public static void main(String[] args) {
     AbstractAdaptor.main(new SharePointUserProfileAdaptor(), args);
@@ -177,12 +188,19 @@ public class SharePointUserProfileAdaptor extends AbstractAdaptor
     ntlmAuthenticator = new NtlmAuthenticator(username, password);
     // Unfortunately, this is a JVM-wide modification.
     Authenticator.setDefault(ntlmAuthenticator);
+    String authenticationEndPoint 
+        =  virtualServer + "/_vti_bin/Authentication.asmx";
+    FormsAuthenticationHandler authenticationHandler 
+        = new FormsAuthenticationHandler(username, password, scheduledExecutor,
+        userProfileServiceFactory.newAuthentication(authenticationEndPoint));
+    authenticationHandler.start();
     log.log(Level.FINEST, "Initializing User profile Service Client for {0}",
         virtualServer + USER_PROFILE_SERVICE_ENDPOINT);
     userProfileServiceClient = new UserProfileServiceClient(
         userProfileServiceFactory.newUserProfileService(
             virtualServer + USER_PROFILE_SERVICE_ENDPOINT,
-            virtualServer + USER_PROFILE_CHANGE_SERVICE_ENDPOINT));
+            virtualServer + USER_PROFILE_CHANGE_SERVICE_ENDPOINT,
+            authenticationHandler.getAuthenticationCookies()));
     userProfileChangeToken =
         userProfileServiceClient.userProfileServiceWS.getCurrentChangeToken();
   }
@@ -190,6 +208,13 @@ public class SharePointUserProfileAdaptor extends AbstractAdaptor
   @Override
   public void destroy() {
     Authenticator.setDefault(null);
+    scheduledExecutor.shutdown();
+    try {     
+      scheduledExecutor.awaitTermination(10, TimeUnit.SECONDS);
+    } catch (InterruptedException ex) {
+      Thread.currentThread().interrupt();
+    }
+    scheduledExecutor.shutdownNow();
   }
 
   @Override
@@ -232,13 +257,16 @@ public class SharePointUserProfileAdaptor extends AbstractAdaptor
   @VisibleForTesting
   interface UserProfileServiceFactory {
     public UserProfileServiceWS newUserProfileService(String endpoint,
-        String endpointChangeService);
+        String endpointChangeService, List<String> cookies);
+    public AuthenticationSoap newAuthentication(String endpoint);
+    
   }
 
   private static class UserProfileServiceFactoryImpl
       implements UserProfileServiceFactory {
     private final Service userProfileServiceSoap;
     private final Service userProfileChangeServiceSoap;
+    private final Service authenticationService;
 
     public UserProfileServiceFactoryImpl() {
       URL urlUserProfileService =
@@ -246,27 +274,50 @@ public class SharePointUserProfileAdaptor extends AbstractAdaptor
       QName qname = new QName(XMLNS, "UserProfileService");
       this.userProfileServiceSoap = Service.create(
           urlUserProfileService, qname);
-
-
       URL urlUserProfileChangeService =
           UserProfileChangeServiceSoap.class.getResource(
               "UserProfileChangeService.wsdl");
       QName qnameChange = new QName(XMLNS_CHANGE, "UserProfileChangeService");
       this.userProfileChangeServiceSoap = Service.create(
           urlUserProfileChangeService, qnameChange);
+      this.authenticationService = Service.create(
+          AuthenticationSoap.class.getResource("Authentication.wsdl"),
+          new QName(AUTH_XMLNS, "Authentication"));
     }
 
     @Override
     public UserProfileServiceWS newUserProfileService(String endpoint,
-        String endpointChangeService) {
+        String endpointChangeService, List<String> cookies) {
       EndpointReference endpointRef = new W3CEndpointReferenceBuilder()
           .address(endpoint).build();
       EndpointReference endpointChangeRef = new W3CEndpointReferenceBuilder()
           .address(endpointChangeService).build();
+      // JAX-WS RT 2.1.4 doesn't handle headers correctly and always assumes the
+      // list contains precisely one entry, so we work around it here.
+      if (!cookies.isEmpty()) {
+        addFormsAuthenticationCookies(
+            (BindingProvider) userProfileServiceSoap, cookies);
+        addFormsAuthenticationCookies(
+            (BindingProvider) userProfileChangeServiceSoap, cookies);
+      }
       return new SharePointUserProfileServiceWS(userProfileServiceSoap.
           getPort(endpointRef, UserProfileServiceSoap.class),
           userProfileChangeServiceSoap.getPort(endpointChangeRef,
               UserProfileChangeServiceSoap.class));
+    }
+    
+    private void addFormsAuthenticationCookies(BindingProvider port, 
+        List<String> cookies) {
+      port.getRequestContext().put(MessageContext.HTTP_REQUEST_HEADERS,
+          Collections.singletonMap("Cookie", cookies));
+    }
+
+    @Override
+    public AuthenticationSoap newAuthentication(String endpoint) {
+      EndpointReference endpointRef = new W3CEndpointReferenceBuilder()
+          .address(endpoint).build();
+      return 
+          authenticationService.getPort(endpointRef, AuthenticationSoap.class);      
     }
   }
 
