@@ -1,5 +1,6 @@
 package com.google.enterprise.adaptor.sharepoint;
 
+import com.google.enterprise.adaptor.Acl;
 import static org.junit.Assert.*;
 
 
@@ -230,14 +231,13 @@ public class SharePointUserProfileAdaptorTest {
 
 
     //ACL Verification
-    assertNotNull(response.getAcl());
-    assertNotNull(response.getAcl().getPermitGroups());
-    assertEquals(1, response.getAcl().getPermitGroups().size());
-    assertTrue(response.getAcl().getPermitGroups().contains(
-        new GroupPrincipal("NT AUTHORITY\\Authenticated Users")));
-    assertTrue(response.getAcl().getPermitUsers().isEmpty());
-    assertTrue(response.getAcl().getDenyGroups().isEmpty());
-    assertTrue(response.getAcl().getDenyUsers().isEmpty());
+    List<GroupPrincipal> groups = new ArrayList<GroupPrincipal>();
+    groups.add(new GroupPrincipal("NT AUTHORITY\\Authenticated Users"));
+    assertEquals(new Acl.Builder()
+        .setEverythingCaseInsensitive()
+        .setInheritanceType(Acl.InheritanceType.LEAF_NODE)
+        .setPermitGroups(groups).build(),
+        response.getAcl());
   }
 
   @Test

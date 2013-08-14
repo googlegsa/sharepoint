@@ -454,7 +454,7 @@ public class SharePointUserProfileAdaptor extends AbstractAdaptor
         List<GroupPrincipal> permitGroups = new ArrayList<GroupPrincipal>();
         permitGroups.add(
             new GroupPrincipal("NT AUTHORITY\\Authenticated Users"));
-        response.setAcl(new Acl.Builder()
+        response.setAcl(new Acl.Builder().setEverythingCaseInsensitive()
             .setInheritanceType(Acl.InheritanceType.LEAF_NODE)
             .setPermitGroups(permitGroups).build());
       }
