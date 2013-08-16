@@ -33,6 +33,7 @@ import java.io.ByteArrayInputStream;
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;
 import java.net.URLDecoder;
+import java.nio.charset.Charset;
 import java.util.ArrayList;
 import java.util.Arrays;
 
@@ -51,6 +52,7 @@ public class SharePointUserProfileAdaptorTest {
 
   private Config config;
   private SharePointUserProfileAdaptor adaptor;
+  private final Charset charset = Charset.forName("UTF-8");
 
   @Before
   public void setup() {
@@ -143,6 +145,9 @@ public class SharePointUserProfileAdaptorTest {
     poulateProfileProperties(profile,
         SharePointUserProfileAdaptor.PROFILE_ACCOUNTNAME_PROPERTY,
         new String[] {"user1"});
+    poulateProfileProperties(profile,
+        SharePointUserProfileAdaptor.PROFILE_PREFERRED_NAME_PROPERTY,
+        new String[] {"First & Last"});
     String[] skills =
         new String[] {"Java", "SharePoint", "C++", "Design"};
     poulateProfileProperties(profile, "SPS-Skills", skills);
@@ -186,6 +191,11 @@ public class SharePointUserProfileAdaptorTest {
         new DocId(SharePointUserProfileAdaptor.SOCIAL_ID_PREFIX + "user1"));
     GetContentsResponse response = new GetContentsResponse(baos);
     adaptor.getDocContent(request, response);
+    
+    String responseString = new String(baos.toByteArray(), charset);
+    final String golden = "<html><head><title>First &amp; Last"
+        + "</title></head><body><h1>First &amp; Last</h1></body></html>";
+    assertEquals(golden, responseString);
 
     assertFalse(response.isNotFound());
     assertEquals("user1", response.getMetadata().getOneValue(

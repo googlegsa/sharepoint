@@ -45,6 +45,7 @@ import java.net.URL;
 import java.net.URLEncoder;
 import java.nio.charset.Charset;
 import java.rmi.RemoteException;
+import java.text.MessageFormat;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.HashMap;
@@ -90,7 +91,9 @@ public class SharePointUserProfileAdaptor extends AbstractAdaptor
 
   public static final String CONTACT_ELEMENT = "gsa:contact";
   public static final String CONTACTS_ROOT_ELEMENT = "gsa:Contacts";
-  public static final String GSA_NAMESPACE = "http://www.google.com/schemas/gsa";
+  public static final String GSA_NAMESPACE 
+      = "http://www.google.com/schemas/gsa";
+  public static final String PROFILE_PREFERRED_NAME_PROPERTY = "PreferredName";
 
   public static final String GSA_PROPNAME_COLLEAGUES =
       "google_social_user_colleagues";
@@ -102,7 +105,8 @@ public class SharePointUserProfileAdaptor extends AbstractAdaptor
     map.put("SPS-Skills", "google_social_user_skills");
     map.put("SPS-PastProjects", "google_social_user_pastprojects");
     map.put(PROFILE_ACCOUNTNAME_PROPERTY, "google_social_user_accountname");
-    map.put("PreferredName", "google_social_user_preferredname");
+    map.put(PROFILE_PREFERRED_NAME_PROPERTY,
+        "google_social_user_preferredname");
     SP_GSA_PROPERTY_MAPPINGS = Collections.unmodifiableMap(map);
   }
 
@@ -436,7 +440,6 @@ public class SharePointUserProfileAdaptor extends AbstractAdaptor
       }
 
       List<PropertyData> properties = userProfileProperties.getPropertyData();
-      StringBuilder sbDocContent = new StringBuilder();
       for (PropertyData prop : properties) {
         String propertyName = getGSAPropertyMapping(prop.getName());
         if (prop.getPrivacy() != Privacy.PUBLIC) {
@@ -447,7 +450,6 @@ public class SharePointUserProfileAdaptor extends AbstractAdaptor
         List<String> values = readUserProfilePropertyValues(prop);
         for (String v : values) {
           response.addMetadata(propertyName, v);
-          sbDocContent.append(propertyName + "=" + v + "\n");
         }
       }
       if (setAcl) {
@@ -466,12 +468,17 @@ public class SharePointUserProfileAdaptor extends AbstractAdaptor
         String colleaguesXml = serializeColleagues(colleagues);
         if (colleaguesXml != null) {
           response.addMetadata(GSA_PROPNAME_COLLEAGUES, colleaguesXml);
-          sbDocContent.append(
-              GSA_PROPNAME_COLLEAGUES + "=" + colleaguesXml + "\n");
         }
       }
+      String userProfileTitle = getUserProfilePropertySingleValue(
+          userProfileProperties, PROFILE_PREFERRED_NAME_PROPERTY);
+      if (userProfileTitle == null) {
+        userProfileTitle = userName;
+      }
       OutputStream os = response.getOutputStream();
-      os.write(sbDocContent.toString().getBytes(encoding));
+      os.write(MessageFormat.format("<html><head><title>{0}</title></head>"
+          + "<body><h1>{0}</h1></body></html>", 
+          escapeContent(userProfileTitle)).getBytes(encoding));
     }
 
     public String getModifiedDocIds(DocIdPusher pusher, String lastChangeToken)
@@ -550,6 +557,10 @@ public class SharePointUserProfileAdaptor extends AbstractAdaptor
       return SP_GSA_PROPERTY_MAPPINGS.containsKey(spPropertyName) ?
           SP_GSA_PROPERTY_MAPPINGS.get(spPropertyName) :
             normalizeSPPropertyNameForGSA(spPropertyName);
+    }
+    
+    private String escapeContent(String raw) {
+      return raw.replace("&", "&amp;").replace("<", "&lt;");
     }
 
     /**
