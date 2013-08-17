@@ -1077,6 +1077,7 @@ public class SharePointAdaptor extends AbstractAdaptor
       if (name.startsWith("ows_")) {
         name = name.substring("ows_".length());
       }
+      name = name.replace("_x0020_", " ");
       if (ALTERNATIVE_VALUE_PATTERN.matcher(value).find()) {
         // This is a lookup field. We need to take alternative values only.
         // Ignore the integer part. 314;#pi;#42;#the answer

@@ -856,7 +856,7 @@ public class SharePointAdaptorTest {
       meta.add("ContentType", "Item");
       meta.add("ContentTypeId", "0x0100442459C9B5E59C4F9CFDC789A220FC92");
       meta.add("Created", "2012-05-01T22:14:06Z");
-      meta.add("Created_x0020_Date", "2012-05-01T22:14:06Z");
+      meta.add("Created Date", "2012-05-01T22:14:06Z");
       meta.add("Editor", "System Account");
       meta.add("EncodedAbsUrl", "http://localhost:1/sites/SiteCollection/Lists/"
           + "Custom%20List/Test%20Folder/2_.000");
@@ -868,7 +868,7 @@ public class SharePointAdaptorTest {
           "sites/SiteCollection/Lists/Custom List/Test Folder/2_.000");
       meta.add("GUID", "{2C5BEF60-18FA-42CA-B472-7B5E1EC405A5}");
       meta.add("ID", "2");
-      meta.add("Last_x0020_Modified", "2012-05-01T22:14:06Z");
+      meta.add("Last Modified", "2012-05-01T22:14:06Z");
       meta.add("LinkFilename", "2_.000");
       meta.add("LinkFilenameNoMenu", "2_.000");
       meta.add("LinkTitle", "Inside Folder");
@@ -1142,7 +1142,7 @@ public class SharePointAdaptorTest {
       meta.add("ContentType", "Folder");
       meta.add("ContentTypeId", "0x01200077DD29735CE61148A73F540231F24430");
       meta.add("Created", "2012-05-01T22:13:47Z");
-      meta.add("Created_x0020_Date", "2012-05-01T22:13:47Z");
+      meta.add("Created Date", "2012-05-01T22:13:47Z");
       meta.add("Editor", "System Account");
       meta.add("EncodedAbsUrl", "http://localhost:1/sites/SiteCollection/Lists/"
           + "Custom%20List/Test%20Folder");
@@ -1152,7 +1152,7 @@ public class SharePointAdaptorTest {
       meta.add("FileRef", "sites/SiteCollection/Lists/Custom List/Test Folder");
       meta.add("GUID", "{C099F4ED-6E96-4A00-B94A-EE443061EE49}");
       meta.add("ID", "1");
-      meta.add("Last_x0020_Modified", "2012-05-02T21:13:17Z");
+      meta.add("Last Modified", "2012-05-02T21:13:17Z");
       meta.add("LinkFilename", "Test Folder");
       meta.add("LinkFilenameNoMenu", "Test Folder");
       meta.add("LinkTitle", "Test Folder");
