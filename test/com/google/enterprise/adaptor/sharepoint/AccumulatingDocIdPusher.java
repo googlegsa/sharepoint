@@ -17,6 +17,8 @@ package com.google.enterprise.adaptor.sharepoint;
 import com.google.enterprise.adaptor.Acl;
 import com.google.enterprise.adaptor.DocId;
 import com.google.enterprise.adaptor.ExceptionHandler;
+import com.google.enterprise.adaptor.GroupPrincipal;
+import com.google.enterprise.adaptor.Principal;
 
 import java.util.*;
 
@@ -24,6 +26,8 @@ class AccumulatingDocIdPusher extends UnsupportedDocIdPusher {
   private List<Record> records = new ArrayList<Record>();
   private List<Map<DocId, Acl>> namedResouces
       = new ArrayList<Map<DocId, Acl>>();
+  private Map<GroupPrincipal, Collection<Principal>> groups
+      = new TreeMap<GroupPrincipal, Collection<Principal>>();
 
   @Override
   public DocId pushDocIds(Iterable<DocId> docIds,
@@ -47,12 +51,28 @@ class AccumulatingDocIdPusher extends UnsupportedDocIdPusher {
     return null;
   }
 
+  @Override
+  public GroupPrincipal pushGroupDefinitions(
+      Map<GroupPrincipal, ? extends Collection<Principal>> defs,
+      boolean caseSensitive, ExceptionHandler handler)
+      throws InterruptedException {
+    for (GroupPrincipal key : defs.keySet()) {
+      groups.put(key, Collections.unmodifiableList(
+          new ArrayList<Principal>(defs.get(key))));
+    }
+    return null;
+  }
+
   public List<Record> getRecords() {
     return Collections.unmodifiableList(records);
   }
   
   public List<Map<DocId, Acl>> getNamedResources() {
     return namedResouces;
+  }
+
+  public Map<GroupPrincipal, Collection<Principal>> getGroups() {
+    return Collections.unmodifiableMap(groups);
   }
 
   public void reset() {

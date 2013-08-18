@@ -28,6 +28,7 @@ import com.google.enterprise.adaptor.DocIdPusher;
 import com.google.enterprise.adaptor.GroupPrincipal;
 import com.google.enterprise.adaptor.IOHelper;
 import com.google.enterprise.adaptor.Metadata;
+import com.google.enterprise.adaptor.Principal;
 import com.google.enterprise.adaptor.UserPrincipal;
 import com.google.enterprise.adaptor.sharepoint.SharePointAdaptor.SiteUserIdMappingCallable;
 import com.google.enterprise.adaptor.sharepoint.SharePointAdaptor.SoapFactory;
@@ -177,6 +178,34 @@ public class SharePointAdaptorTest {
           "{6F33949A-B3FF-4B0C-BA99-93CB518AC2C0}", "", "2", true, false,
           null,
           loadTestString("sites-SiteCollection-Lists-CustomList-2-a.xml"));
+  private static final String DEFAULT_NAMESPACE = "Default";
+  private static final String SITES_SITECOLLECTION_NAMESPACE
+      = "Default_http://localhost:1/sites/SiteCollection";
+  private static final UserPrincipal NT_AUTHORITY_LOCAL_SERVICE
+      = new UserPrincipal("NT AUTHORITY\\LOCAL SERVICE", DEFAULT_NAMESPACE);
+  private static final GroupPrincipal NT_AUTHORITY_AUTHENTICATED_USERS
+      = new GroupPrincipal("NT AUTHORITY\\authenticated users",
+          DEFAULT_NAMESPACE);
+  private static final UserPrincipal GDC_PSL_ADMINISTRATOR
+      = new UserPrincipal("GDC-PSL\\administrator", DEFAULT_NAMESPACE);
+  private static final UserPrincipal GDC_PSL_SPUSER1
+      = new UserPrincipal("GDC-PSL\\spuser1", DEFAULT_NAMESPACE);
+  private static final GroupPrincipal SITES_SITECOLLECTION_OWNERS
+      = new GroupPrincipal("chinese1 Owners",
+          SITES_SITECOLLECTION_NAMESPACE);
+  private static final GroupPrincipal SITES_SITECOLLECTION_VISITORS
+      = new GroupPrincipal("chinese1 Visitors",
+          SITES_SITECOLLECTION_NAMESPACE);
+  private static final GroupPrincipal SITES_SITECOLLECTION_MEMBERS
+      = new GroupPrincipal("chinese1 Members",
+          SITES_SITECOLLECTION_NAMESPACE);
+  private static final MemberIdMapping SITES_SITECOLLECTION_MEMBER_MAPPING
+      = new MemberIdMappingBuilder()
+      .put(1, GDC_PSL_ADMINISTRATOR)
+      .put(3, SITES_SITECOLLECTION_OWNERS)
+      .put(4, SITES_SITECOLLECTION_VISITORS)
+      .put(5, SITES_SITECOLLECTION_MEMBERS)
+      .build();
 
   private final Charset charset = Charset.forName("UTF-8");
   private Config config;
@@ -225,22 +254,6 @@ public class SharePointAdaptorTest {
     }
   }
 
-  public List<UserPrincipal> users(String... names) {
-    List<UserPrincipal> users = new ArrayList<UserPrincipal>();
-    for (String name : names) {
-      users.add(new UserPrincipal(name));
-    }
-    return users;
-  }
-
-  public List<GroupPrincipal> groups(String... names) {
-    List<GroupPrincipal> groups = new ArrayList<GroupPrincipal>();
-    for (String name : names) {
-      groups.add(new GroupPrincipal(name));
-    }
-    return groups;
-  }
-  
   public User createUserGroupUser(long id, String loginName, String sid, 
       String name, String email, boolean isDomainGroup, boolean isSiteAdmin) {
     User u = new User();
@@ -398,12 +411,11 @@ public class SharePointAdaptorTest {
         + "SiteCollection</a></li>"
         + "</ul></body></html>";
     assertEquals(golden, responseString);
-    String[] permit = new String[] {"GDC-PSL\\Administrator",
-        "GDC-PSL\\spuser1", "NT AUTHORITY\\LOCAL SERVICE"};
     assertEquals(new Acl.Builder()
         .setEverythingCaseInsensitive()
         .setInheritanceType(Acl.InheritanceType.PARENT_OVERRIDES)
-        .setPermitUsers(users(permit)).build(), response.getAcl());
+        .setPermitUsers(Arrays.asList(GDC_PSL_ADMINISTRATOR, GDC_PSL_SPUSER1,
+            NT_AUTHORITY_LOCAL_SERVICE)).build(), response.getAcl());
     assertNull(response.getDisplayUrl());
   }
   
@@ -446,15 +458,15 @@ public class SharePointAdaptorTest {
     ByteArrayOutputStream baos = new ByteArrayOutputStream();
     GetContentsResponse response = new GetContentsResponse(baos);
     adaptor.getDocContent(new GetContentsRequest(new DocId("")), response);       
-    String[] permitUsers = new String[] {"GDC-PSL\\Administrator",
-        "GDC-PSL\\spuser1", "NT AUTHORITY\\LOCAL SERVICE",
-        "GSA-CONNECTORS\\Administrator"};
-    String[] permitGroups = new String[] {"GSA-CONNECTORS\\domain users"};
     assertEquals(new Acl.Builder()
         .setEverythingCaseInsensitive()
         .setInheritanceType(Acl.InheritanceType.PARENT_OVERRIDES)
-        .setPermitUsers(users(permitUsers))
-        .setPermitGroups(groups(permitGroups)).build(),
+        .setPermitUsers(Arrays.asList(GDC_PSL_ADMINISTRATOR, GDC_PSL_SPUSER1,
+            NT_AUTHORITY_LOCAL_SERVICE, new UserPrincipal(
+                "GSA-CONNECTORS\\Administrator", DEFAULT_NAMESPACE)))
+        .setPermitGroups(Arrays.asList(new GroupPrincipal(
+            "GSA-CONNECTORS\\Domain Users", DEFAULT_NAMESPACE)))
+        .build(),
         response.getAcl());
     assertNull(response.getDisplayUrl());
   }
@@ -505,9 +517,11 @@ public class SharePointAdaptorTest {
         .setEverythingCaseInsensitive()
         .setInheritFrom(new DocId(""))
         .setInheritanceType(Acl.InheritanceType.PARENT_OVERRIDES)
-        .setPermitGroups(groups("chinese1 Members", "chinese1 Owners",
-            "chinese1 Visitors"))
-        .setPermitUsers(users("GDC-PSL\\spuser1")).build(),
+        .setPermitGroups(Arrays.asList(
+            SITES_SITECOLLECTION_MEMBERS,
+            SITES_SITECOLLECTION_OWNERS,
+            SITES_SITECOLLECTION_VISITORS))
+        .setPermitUsers(Arrays.asList(GDC_PSL_SPUSER1)).build(),
         response.getAcl());
     assertEquals(URI.create("http://localhost:1/sites/SiteCollection"),
         response.getDisplayUrl());
@@ -545,8 +559,9 @@ public class SharePointAdaptorTest {
         .setEverythingCaseInsensitive()
         .setInheritFrom(new DocId(""))
         .setInheritanceType(Acl.InheritanceType.PARENT_OVERRIDES)
-        .setPermitGroups(groups("chinese1 Members", "chinese1 Owners",
-            "chinese1 Visitors", "GDC-PSL\\group")).build(),
+        .setPermitGroups(Arrays.asList(SITES_SITECOLLECTION_MEMBERS,
+            SITES_SITECOLLECTION_OWNERS, SITES_SITECOLLECTION_VISITORS,
+            new GroupPrincipal("GDC-PSL\\group", DEFAULT_NAMESPACE))).build(),
         response.getAcl());
   }
 
@@ -583,12 +598,18 @@ public class SharePointAdaptorTest {
         .setEverythingCaseInsensitive()
         .setInheritFrom(new DocId(""))
         .setInheritanceType(Acl.InheritanceType.PARENT_OVERRIDES)
-        .setPermitUsers(users("GDC-PSL\\spuser1", "GSA-CONNECTORS\\User1",
-            "membershipprovider:user2007"))
-        .setPermitGroups(groups("chinese1 Members", "chinese1 Owners",
-            "chinese1 Visitors", "GSA-CONNECTORS\\domain users",
-            "Everyone", "NT AUTHORITY\\authenticated users",
-            "roleprovider:super")).build(),
+        .setPermitUsers(Arrays.asList(GDC_PSL_SPUSER1,
+            new UserPrincipal("GSA-CONNECTORS\\User1", DEFAULT_NAMESPACE),
+            new UserPrincipal("membershipprovider:user2007",
+              DEFAULT_NAMESPACE)))
+        .setPermitGroups(Arrays.asList(SITES_SITECOLLECTION_MEMBERS,
+            SITES_SITECOLLECTION_OWNERS, SITES_SITECOLLECTION_VISITORS,
+            new GroupPrincipal("GSA-CONNECTORS\\domain users",
+              DEFAULT_NAMESPACE),
+            new GroupPrincipal("Everyone", DEFAULT_NAMESPACE),
+            NT_AUTHORITY_AUTHENTICATED_USERS,
+            new GroupPrincipal("roleprovider:super", DEFAULT_NAMESPACE)))
+        .build(),
         response.getAcl());
   }
 
@@ -631,9 +652,9 @@ public class SharePointAdaptorTest {
         .setEverythingCaseInsensitive()
         .setInheritFrom(new DocId(""))
         .setInheritanceType(Acl.InheritanceType.PARENT_OVERRIDES)
-        .setPermitGroups(groups("chinese1 Members", "chinese1 Owners",
-            "chinese1 Visitors"))
-        .setPermitUsers(users("GDC-PSL\\spuser1")).build(),
+        .setPermitGroups(Arrays.asList(SITES_SITECOLLECTION_MEMBERS,
+            SITES_SITECOLLECTION_OWNERS, SITES_SITECOLLECTION_VISITORS))
+        .setPermitUsers(Arrays.asList(GDC_PSL_SPUSER1)).build(),
         response.getAcl());
 
     // Were we able to pick up the new user in the ACLs?
@@ -644,9 +665,11 @@ public class SharePointAdaptorTest {
         .setEverythingCaseInsensitive()
         .setInheritFrom(new DocId(""))
         .setInheritanceType(Acl.InheritanceType.PARENT_OVERRIDES)
-        .setPermitGroups(groups("chinese1 Members", "chinese1 Owners",
-            "chinese1 Visitors"))
-        .setPermitUsers(users("GDC-PSL\\spuser100")).build(),
+        .setPermitGroups(Arrays.asList(SITES_SITECOLLECTION_MEMBERS,
+            SITES_SITECOLLECTION_OWNERS, SITES_SITECOLLECTION_VISITORS))
+        .setPermitUsers(Arrays.asList(
+            new UserPrincipal("GDC-PSL\\spuser100", DEFAULT_NAMESPACE)))
+        .build(),
         response.getAcl());
   }
 
@@ -677,16 +700,6 @@ public class SharePointAdaptorTest {
         .register(SITES_SITECOLLECTION_LISTS_CUSTOMLIST_L_CONTENT_EXCHANGE)
         .register(SITES_SITECOLLECTION_LISTS_CUSTOMLIST_F_CONTENT_EXCHANGE)
         .register(SITES_SITECOLLECTION_S_CONTENT_EXCHANGE);
-    final MemberIdMapping memberIdMapping;
-    {
-      Map<Integer, String> users = new HashMap<Integer, String>();
-      Map<Integer, String> groups = new HashMap<Integer, String>();
-      users.put(1, "GDC-PSL\\administrator");
-      groups.put(3, "SiteCollection Owners");
-      groups.put(4, "SiteCollection Visitors");
-      groups.put(5, "SiteCollection Members");
-      memberIdMapping = new MemberIdMapping(users, groups);
-    }
 
     adaptor = new SharePointAdaptor(initableSoapFactory,
         new UnsupportedHttpClient(), executorFactory);
@@ -699,7 +712,7 @@ public class SharePointAdaptorTest {
     adaptor.new SiteAdaptor("http://localhost:1/sites/SiteCollection",
           "http://localhost:1/sites/SiteCollection", siteData,
           new UnsupportedUserGroupSoap(), new UnsupportedPeopleSoap(),
-          Callables.returning(memberIdMapping),
+          Callables.returning(SITES_SITECOLLECTION_MEMBER_MAPPING),
           new UnsupportedCallable<MemberIdMapping>())
         .getDocContent(request, response);
     String responseString = new String(baos.toByteArray(), charset);
@@ -717,8 +730,9 @@ public class SharePointAdaptorTest {
         .setEverythingCaseInsensitive()
         .setInheritFrom(new DocId(""))
         .setInheritanceType(Acl.InheritanceType.PARENT_OVERRIDES)
-        .setPermitGroups(groups("SiteCollection Members",
-            "SiteCollection Owners", "SiteCollection Visitors")).build(),
+        .setPermitGroups(Arrays.asList(SITES_SITECOLLECTION_MEMBERS,
+            SITES_SITECOLLECTION_OWNERS, SITES_SITECOLLECTION_VISITORS))
+        .build(),
         response.getAcl());
     assertEquals(URI.create("http://localhost:1/sites/SiteCollection/Lists/"
           + "Custom%20List/AllItems.aspx"), response.getDisplayUrl());
@@ -814,16 +828,6 @@ public class SharePointAdaptorTest {
         .register(SITES_SITECOLLECTION_LISTS_CUSTOMLIST_1_LI_CONTENT_EXCHANGE)
         .register(SITES_SITECOLLECTION_LISTS_CUSTOMLIST_2_LI_CONTENT_EXCHANGE)
         .register(SITES_SITECOLLECTION_LISTS_CUSTOMLIST_2_A_CONTENT_EXCHANGE);
-    final MemberIdMapping memberIdMapping;
-    {
-      Map<Integer, String> users = new HashMap<Integer, String>();
-      Map<Integer, String> groups = new HashMap<Integer, String>();
-      users.put(1, "GDC-PSL\\administrator");
-      groups.put(3, "SiteCollection Owners");
-      groups.put(4, "SiteCollection Visitors");
-      groups.put(5, "SiteCollection Members");
-      memberIdMapping = new MemberIdMapping(users, groups);
-    }
 
     adaptor = new SharePointAdaptor(initableSoapFactory,
         new UnsupportedHttpClient(), executorFactory);
@@ -836,7 +840,7 @@ public class SharePointAdaptorTest {
     adaptor.new SiteAdaptor("http://localhost:1/sites/SiteCollection",
           "http://localhost:1/sites/SiteCollection", siteData,
           new UnsupportedUserGroupSoap(), new UnsupportedPeopleSoap(),
-          Callables.returning(memberIdMapping),
+          Callables.returning(SITES_SITECOLLECTION_MEMBER_MAPPING),
           new UnsupportedCallable<MemberIdMapping>())
         .getDocContent(request, response);
     String responseString = new String(baos.toByteArray(), charset);
@@ -929,16 +933,6 @@ public class SharePointAdaptorTest {
             .replaceInContent(
                 "ows_ScopeId='2;#{2E29615C-59E7-493B-B08A-3642949CC069}'",
                 "ows_ScopeId='2;#{f9cb02b3-7f29-4cac-804f-ba6e14f1eb39}'"));
-    final MemberIdMapping memberIdMapping;
-    {
-      Map<Integer, String> users = new HashMap<Integer, String>();
-      Map<Integer, String> groups = new HashMap<Integer, String>();
-      users.put(1, "GDC-PSL\\administrator");
-      groups.put(3, "SiteCollection Owners");
-      groups.put(4, "SiteCollection Visitors");
-      groups.put(5, "SiteCollection Members");
-      memberIdMapping = new MemberIdMapping(users, groups);
-    }
 
     adaptor = new SharePointAdaptor(initableSoapFactory,
         new UnsupportedHttpClient(), executorFactory);
@@ -951,7 +945,7 @@ public class SharePointAdaptorTest {
     adaptor.new SiteAdaptor("http://localhost:1/sites/SiteCollection",
           "http://localhost:1/sites/SiteCollection", siteData,
           new UnsupportedUserGroupSoap(), new UnsupportedPeopleSoap(),
-          Callables.returning(memberIdMapping),
+          Callables.returning(SITES_SITECOLLECTION_MEMBER_MAPPING),
           new UnsupportedCallable<MemberIdMapping>())
         .getDocContent(request, response);
     assertNull(response.getAcl());
@@ -966,16 +960,6 @@ public class SharePointAdaptorTest {
             .replaceInContent("ReadSecurity=\"1\"", "ReadSecurity=\"2\""))
         .register(SITES_SITECOLLECTION_LISTS_CUSTOMLIST_2_LI_CONTENT_EXCHANGE
             .replaceInContent("ows_Attachments='1'", "ows_Attachments='0'"));
-    final MemberIdMapping memberIdMapping;
-    {
-      Map<Integer, String> users = new HashMap<Integer, String>();
-      Map<Integer, String> groups = new HashMap<Integer, String>();
-      users.put(1, "GDC-PSL\\administrator");
-      groups.put(3, "SiteCollection Owners");
-      groups.put(4, "SiteCollection Visitors");
-      groups.put(5, "SiteCollection Members");
-      memberIdMapping = new MemberIdMapping(users, groups);
-    }
 
     Users users = new Users();
     users.getUser().add(createUserGroupUser(1, "GDC-PSL\\administrator",
@@ -1012,7 +996,7 @@ public class SharePointAdaptorTest {
     adaptor.new SiteAdaptor("http://localhost:1/sites/SiteCollection",
           "http://localhost:1/sites/SiteCollection", siteData,
           mockUserGroupSoap, new UnsupportedPeopleSoap(),
-          Callables.returning(memberIdMapping),
+          Callables.returning(SITES_SITECOLLECTION_MEMBER_MAPPING),
           adaptor.new SiteUserIdMappingCallable(
               "http://localhost:1/sites/SiteCollection"))
         .getDocContent(request, response);
@@ -1027,9 +1011,9 @@ public class SharePointAdaptorTest {
         .setEverythingCaseInsensitive()
         .setInheritFrom(new DocId("http://localhost:1/sites/SiteCollection"
             + "/Lists/Custom List/Test Folder/2_.000_READ_SECURITY"))
-        .setPermitUsers(users("GDC-PSL\\administrator"))
-        .setPermitGroups(groups("SiteCollection Owners",
-            "SiteCollection Members", "SiteCollection Visitors"))
+        .setPermitUsers(Arrays.asList(GDC_PSL_ADMINISTRATOR))
+        .setPermitGroups(Arrays.asList(SITES_SITECOLLECTION_OWNERS,
+            SITES_SITECOLLECTION_MEMBERS, SITES_SITECOLLECTION_VISITORS))
         .setInheritanceType(Acl.InheritanceType.PARENT_OVERRIDES).build(),
         response.getAcl());
     assertEquals(Collections.singletonList(Collections.singletonMap(
@@ -1037,8 +1021,9 @@ public class SharePointAdaptorTest {
             + "Test Folder/2_.000_READ_SECURITY"),
         new Acl.Builder()
             .setEverythingCaseInsensitive()
-            .setPermitUsers(users("GDC-PSL\\administrator", "System.Account"))
-            .setPermitGroups(groups("SiteCollection Owners"))
+            .setPermitUsers(Arrays.asList(GDC_PSL_ADMINISTRATOR,
+                new UserPrincipal("System.Account", DEFAULT_NAMESPACE)))
+            .setPermitGroups(Arrays.asList(SITES_SITECOLLECTION_OWNERS))
             .setInheritanceType(Acl.InheritanceType.AND_BOTH_PERMIT)
             .setInheritFrom(new DocId(""))
             .build())),
@@ -1058,13 +1043,10 @@ public class SharePointAdaptorTest {
               "{6F33949A-B3FF-4B0C-BA99-93CB518AC2C0}", null, null, false,
               false, null,
               loadTestString("tapasnay-Lists-Announcements-l.xml")));
-    final MemberIdMapping memberIdMapping;
-    {
-      Map<Integer, String> users = new HashMap<Integer, String>();
-      Map<Integer, String> groups = new HashMap<Integer, String>();
-      users.put(1, "SOMEHOST\\administrator");
-      memberIdMapping = new MemberIdMapping(users, groups);
-    }
+    final MemberIdMapping memberIdMapping
+        = new MemberIdMappingBuilder()
+        .put(1, new UserPrincipal("SOMEHOST\\administrator", DEFAULT_NAMESPACE))
+        .build();
 
     adaptor = new SharePointAdaptor(initableSoapFactory,
         new UnsupportedHttpClient(), executorFactory);
@@ -1098,16 +1080,6 @@ public class SharePointAdaptorTest {
         .register(SITES_SITECOLLECTION_LISTS_CUSTOMLIST_L_CONTENT_EXCHANGE)
         .register(SITES_SITECOLLECTION_LISTS_CUSTOMLIST_1_LI_CONTENT_EXCHANGE)
         .register(SITES_SITECOLLECTION_LISTS_CUSTOMLIST_1_F_CONTENT_EXCHANGE);
-    final MemberIdMapping memberIdMapping;
-    {
-      Map<Integer, String> users = new HashMap<Integer, String>();
-      Map<Integer, String> groups = new HashMap<Integer, String>();
-      users.put(1, "GDC-PSL\\administrator");
-      groups.put(3, "SiteCollection Owners");
-      groups.put(4, "SiteCollection Visitors");
-      groups.put(5, "SiteCollection Members");
-      memberIdMapping = new MemberIdMapping(users, groups);
-    }
 
     adaptor = new SharePointAdaptor(initableSoapFactory,
         new UnsupportedHttpClient(), executorFactory);
@@ -1120,8 +1092,8 @@ public class SharePointAdaptorTest {
     adaptor.new SiteAdaptor("http://localhost:1/sites/SiteCollection",
           "http://localhost:1/sites/SiteCollection",
           siteData, new UnsupportedUserGroupSoap(), new UnsupportedPeopleSoap(),
-        Callables.returning(memberIdMapping),
-        new UnsupportedCallable<MemberIdMapping>())
+          Callables.returning(SITES_SITECOLLECTION_MEMBER_MAPPING),
+          new UnsupportedCallable<MemberIdMapping>())
         .getDocContent(request, response);
     String responseString = new String(baos.toByteArray(), charset);
     final String golden
@@ -1184,9 +1156,9 @@ public class SharePointAdaptorTest {
         .setEverythingCaseInsensitive()
         .setInheritFrom(new DocId(""))
         .setInheritanceType(Acl.InheritanceType.PARENT_OVERRIDES)
-        .setPermitGroups(groups("SiteCollection Members",
-            "SiteCollection Owners", "SiteCollection Visitors"))
-        .setPermitUsers(users("GDC-PSL\\administrator")).build(),
+        .setPermitGroups(Arrays.asList(SITES_SITECOLLECTION_MEMBERS,
+            SITES_SITECOLLECTION_OWNERS, SITES_SITECOLLECTION_VISITORS))
+        .setPermitUsers(Arrays.asList(GDC_PSL_ADMINISTRATOR)).build(),
         response.getAcl());
     assertEquals(URI.create("http://localhost:1/sites/SiteCollection/Lists/"
           + "Custom%20List/AllItems.aspx?RootFolder=/sites/SiteCollection/"
@@ -2282,6 +2254,20 @@ public class SharePointAdaptorTest {
       this.getSiteAndWebResult = getSiteAndWebResult;
       this.strSite = strSite;
       this.strWeb = strWeb;
+    }
+  }
+
+  private static class MemberIdMappingBuilder {
+    private final Map<Integer, Principal> map
+        = new HashMap<Integer, Principal>();
+
+    public MemberIdMapping build() {
+      return new MemberIdMapping(map);
+    }
+
+    public MemberIdMappingBuilder put(Integer i, Principal p) {
+      map.put(i, p);
+      return this;
     }
   }
 }

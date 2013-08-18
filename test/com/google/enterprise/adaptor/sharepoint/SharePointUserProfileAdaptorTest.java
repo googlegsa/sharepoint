@@ -184,6 +184,7 @@ public class SharePointUserProfileAdaptorTest {
 
     serviceFactory.addUserProfileToCollection(1, 2, "user1", profile, colleaguesData);
     adaptor = new SharePointUserProfileAdaptor(serviceFactory);
+    config.overrideKey("adaptor.namespace", "ns1");
 
     AccumulatingDocIdPusher pusher = new AccumulatingDocIdPusher();
     adaptor.init(new MockAdaptorContext(config, pusher));
@@ -244,7 +245,7 @@ public class SharePointUserProfileAdaptorTest {
 
     //ACL Verification
     List<GroupPrincipal> groups = new ArrayList<GroupPrincipal>();
-    groups.add(new GroupPrincipal("NT AUTHORITY\\Authenticated Users"));
+    groups.add(new GroupPrincipal("NT AUTHORITY\\Authenticated Users", "ns1"));
     assertEquals(new Acl.Builder()
         .setEverythingCaseInsensitive()
         .setInheritanceType(Acl.InheritanceType.LEAF_NODE)

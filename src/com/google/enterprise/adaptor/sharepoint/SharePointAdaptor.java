@@ -27,6 +27,7 @@ import com.google.enterprise.adaptor.DocIdPusher;
 import com.google.enterprise.adaptor.GroupPrincipal;
 import com.google.enterprise.adaptor.IOHelper;
 import com.google.enterprise.adaptor.PollingIncrementalAdaptor;
+import com.google.enterprise.adaptor.Principal;
 import com.google.enterprise.adaptor.Request;
 import com.google.enterprise.adaptor.Response;
 import com.google.enterprise.adaptor.UserPrincipal;
@@ -42,7 +43,6 @@ import com.microsoft.schemas.sharepoint.soap.ContentDatabases;
 import com.microsoft.schemas.sharepoint.soap.Files;
 import com.microsoft.schemas.sharepoint.soap.FolderData;
 import com.microsoft.schemas.sharepoint.soap.Folders;
-import com.microsoft.schemas.sharepoint.soap.GroupDescription;
 import com.microsoft.schemas.sharepoint.soap.GroupMembership;
 import com.microsoft.schemas.sharepoint.soap.Item;
 import com.microsoft.schemas.sharepoint.soap.ItemData;
@@ -240,6 +240,7 @@ public class SharePointAdaptor extends AbstractAdaptor
   
   private ScheduledThreadPoolExecutor scheduledExecutor 
       = new ScheduledThreadPoolExecutor(1);
+  private String defaultNamespace;
   /** Authenticator instance that authenticates with SP. */
   /**
    * Cached value of whether we are talking to a SP 2010 server or not. This
@@ -294,6 +295,7 @@ public class SharePointAdaptor extends AbstractAdaptor
     // 2 MB. We need to know how much of the generated HTML the GSA will index,
     // because the GSA won't see links outside of that content.
     config.addKey("sharepoint.maxIndexableSize", "2097152");
+    config.addKey("adaptor.namespace", "Default");
   }
 
   @Override
@@ -308,10 +310,12 @@ public class SharePointAdaptor extends AbstractAdaptor
         config.getValue("sharepoint.xmlValidation"));
     maxIndexableSize = Integer.parseInt(
         config.getValue("sharepoint.maxIndexableSize"));
+    defaultNamespace = config.getValue("adaptor.namespace");
 
     log.log(Level.CONFIG, "VirtualServer: {0}", virtualServer);
     log.log(Level.CONFIG, "Username: {0}", username);
     log.log(Level.CONFIG, "Password: {0}", password);
+    log.log(Level.CONFIG, "Default Namespace: {0}", defaultNamespace);
 
     ntlmAuthenticator = new NtlmAuthenticator(username, password);
     // Unfortunately, this is a JVM-wide modification.
@@ -733,19 +737,23 @@ public class SharePointAdaptor extends AbstractAdaptor
       VirtualServer vs = siteDataClient.getContentVirtualServer();
 
       final long necessaryPermissionMask = LIST_ITEM_MASK;
+      List<Principal> permits = new ArrayList<Principal>();
+      List<Principal> denies = new ArrayList<Principal>();
+
       // A PolicyUser is either a user or group, but we aren't provided with
-      // which. Thus, we treat PolicyUsers as both a user and a group in ACLs
-      // and understand that only one of the two entries will have an effect.
-      List<UserPrincipal> permitUsers = new ArrayList<UserPrincipal>();
-      List<GroupPrincipal> permitGroups = new ArrayList<GroupPrincipal>();
-      List<UserPrincipal> denyUsers = new ArrayList<UserPrincipal>();
-      List<GroupPrincipal> denyGroups = new ArrayList<GroupPrincipal>();
-      List<String> policyUsers = new ArrayList<String>();
-      for (PolicyUser policyUser : vs.getPolicies().getPolicyUser()) {
-        policyUsers.add(policyUser.getLoginName());
+      // which. We make a web service call to determine which. When using claims
+      // is enabled, we actually do know the type, but we need additional
+      // information to produce a clear ACL. As such, we blindly get more info
+      // for all the PolicyUsers at once in a single batch.
+      Map<String, PrincipalInfo> resolvedPolicyUsers;
+      {
+        List<String> policyUsers = new ArrayList<String>();
+        for (PolicyUser policyUser : vs.getPolicies().getPolicyUser()) {
+          policyUsers.add(policyUser.getLoginName());
+        }
+        resolvedPolicyUsers = resolvePrincipals(policyUsers);
       }
-      Map<String, PrincipalInfo> resolvedPolicyUsers 
-          = resolvePrincipals(policyUsers);
+
       for (PolicyUser policyUser : vs.getPolicies().getPolicyUser()) {
         String loginName = policyUser.getLoginName();
         PrincipalInfo p = resolvedPolicyUsers.get(loginName);
@@ -755,36 +763,42 @@ public class SharePointAdaptor extends AbstractAdaptor
           continue;
         }
         // TODO(ejona): special case NT AUTHORITY\LOCAL SERVICE.
+        if (p.getPrincipalType() != SPPrincipalType.SECURITY_GROUP
+            && p.getPrincipalType() != SPPrincipalType.USER) {
+          log.log(Level.WARNING, "Principal {0} is an unexpected type: {1}",
+              new Object[] {p.getAccountName(), p.getPrincipalType()});
+          continue;
+        }
+        boolean isGroup
+            = p.getPrincipalType() == SPPrincipalType.SECURITY_GROUP;
         String accountName = decodeClaim(p.getAccountName(), p.getDisplayName(),
-            p.getPrincipalType() == SPPrincipalType.SECURITY_GROUP);
+            isGroup);
         if (accountName == null) {
           log.log(Level.WARNING, 
               "Unable to decode claim. Skipping policy user {0}", loginName);
+          continue;
         }
         log.log(Level.FINER, "Policy User accountName = {0}", accountName);
+        Principal principal;
+        if (isGroup) {
+          principal = new GroupPrincipal(accountName, defaultNamespace);
+        } else {
+          principal = new UserPrincipal(accountName, defaultNamespace);
+        }
         long grant = policyUser.getGrantMask().longValue();
         if ((necessaryPermissionMask & grant) == necessaryPermissionMask) {
-          if (p.getPrincipalType() == SPPrincipalType.USER) {
-             permitUsers.add(new UserPrincipal(accountName));
-          } else {
-             permitGroups.add(new GroupPrincipal(accountName));
-          }
+          permits.add(principal);
         }
         long deny = policyUser.getDenyMask().longValue();
         // If at least one necessary bit is masked, then deny user.
         if ((necessaryPermissionMask & deny) != 0) {
-          if (p.getPrincipalType() == SPPrincipalType.USER) {
-             denyUsers.add(new UserPrincipal(accountName));
-          } else {
-             denyGroups.add(new GroupPrincipal(accountName));
-          }          
+          denies.add(principal);
         }
       }
       response.setAcl(new Acl.Builder()
           .setEverythingCaseInsensitive()
           .setInheritanceType(Acl.InheritanceType.PARENT_OVERRIDES)
-          .setPermitUsers(permitUsers).setPermitGroups(permitGroups)
-          .setDenyUsers(denyUsers).setDenyGroups(denyGroups).build());
+          .setPermits(permits).setDenies(denies).build());
 
       HtmlResponseWriter writer = createHtmlResponseWriter(response);
       writer.start(request.getDocId(), ObjectType.VIRTUAL_SERVER,
@@ -1114,8 +1128,7 @@ public class SharePointAdaptor extends AbstractAdaptor
 
     private Acl.Builder generateAcl(List<Permission> permissions,
         final long necessaryPermissionMask) throws IOException {
-      List<UserPrincipal> permitUsers = new LinkedList<UserPrincipal>();
-      List<GroupPrincipal> permitGroups = new LinkedList<GroupPrincipal>();
+      List<Principal> permits = new LinkedList<Principal>();
       MemberIdMapping mapping = getMemberIdMapping();
       MemberIdMapping newMapping = null;
       for (Permission permission : permissions) {
@@ -1126,25 +1139,21 @@ public class SharePointAdaptor extends AbstractAdaptor
           continue;
         }
         Integer id = permission.getMemberid();
-        String userName = mapping.getUserName(id);
-        String groupName = mapping.getGroupName(id);
-        if (userName == null && groupName == null) {
+        Principal principal = mapping.getPrincipal(id);
+        if (principal == null) {
           if (newMapping == null) {
             newMapping = refreshMemberIdMapping(mapping);
           }
-          userName = newMapping.getUserName(id);
-          groupName = newMapping.getGroupName(id);
+          principal = newMapping.getPrincipal(id);
         }
-        if (userName != null) {
-          permitUsers.add(new UserPrincipal(userName));
-        } else if (groupName != null) {
-          permitGroups.add(new GroupPrincipal(groupName));
-        } else {
+        if (principal == null) {
           log.log(Level.WARNING, "Could not resolve member id {0}", id);
+          continue;
         }
+        permits.add(principal);
       }
       return new Acl.Builder().setEverythingCaseInsensitive()
-          .setPermitUsers(permitUsers).setPermitGroups(permitGroups);
+          .setPermits(permits);
     }
 
     private void addPermitUserToAcl(int userId, Acl.Builder aclToUpdate)
@@ -1152,16 +1161,24 @@ public class SharePointAdaptor extends AbstractAdaptor
       if (userId == -1) {
         return;
       }
-      String userName = getUserName(userId);
-      if (userName == null) {
+      Principal principal = getMemberIdMapping().getPrincipal(userId);
+      // MemberIdMapping will have information about users with explicit
+      // permissions on SharePoint or users which are direct members of
+      // SharePoint groups. MemberIdMapping might not have information
+      // about all valid SharePoint Users. To get all valid SharePoint users
+      // under SiteCollection, use SiteUserMapping.
+      if (principal == null) {
+        principal = getSiteUserMapping().getPrincipal(userId);
+      }
+      if (principal == null) {
         log.log(Level.WARNING, "Could not resolve user id {0}", userId);
         return;
       }
 
-      List<UserPrincipal> permitUsers
-          = new LinkedList<UserPrincipal>(aclToUpdate.build().getPermitUsers());
-      permitUsers.add(new UserPrincipal(userName));
-      aclToUpdate.setPermitUsers(permitUsers);
+      List<Principal> permits
+          = new LinkedList<Principal>(aclToUpdate.build().getPermits());
+      permits.add(principal);
+      aclToUpdate.setPermits(permits);
     }
 
     private boolean isPermitted(long permission,
@@ -1198,19 +1215,6 @@ public class SharePointAdaptor extends AbstractAdaptor
       // Anonymous access is denied if deny read policy is specified for any
       // user or group.
       return vs.policyContainsDeny;
-    }
-
-    private String getUserName(int userId) throws IOException {
-      String userName = getMemberIdMapping().getUserName(userId);
-      // MemberIdMapping will have information about users with explicit
-      // permissions on SharePoint or users which are direct members of
-      // SharePoint groups. MemberIdMapping might not have information
-      // about all valid SharePoint Users. To get all valid SharePoint users
-      // under SiteCollection, use SiteUserMapping.
-      if (userName == null) {
-        userName = getSiteUserMapping().getUserName(userId);
-      }
-      return userName;
     }
 
     private void getAspxDocContent(Request request, Response response)
@@ -1764,31 +1768,39 @@ public class SharePointAdaptor extends AbstractAdaptor
     private MemberIdMapping retrieveMemberIdMapping() throws IOException {
       log.entering("SiteAdaptor", "retrieveMemberIdMapping");
       Site site = siteDataClient.getContentSite();
-      Map<Integer, String> groupMap = new HashMap<Integer, String>();
+      Map<Integer, Principal> map = new HashMap<Integer, Principal>();
       for (GroupMembership.Group group : site.getGroups().getGroup()) {
-        GroupDescription gd = group.getGroup();
-        groupMap.put(gd.getID(), gd.getName().intern());
+        map.put(group.getGroup().getID(), new GroupPrincipal(
+            group.getGroup().getName(),
+            defaultNamespace + "_" + site.getMetadata().getURL()));
       }
-      Map<Integer, String> userMap = new HashMap<Integer, String>();
       for (UserDescription user : site.getWeb().getUsers().getUser()) {
-        boolean isDomainGroup = (user.getIsDomainGroup() == TrueFalseType.TRUE);
-        String userName
-            = decodeClaim(user.getLoginName(), user.getName(), isDomainGroup);
-        if (userName == null) {
+        Principal principal = userDescriptionToPrincipal(user);
+        if (principal == null) {
           log.log(Level.WARNING,
               "Unable to determine login name. Skipping user with ID {0}",
               user.getID());
           continue;
         }
-        if (isDomainGroup) {
-          groupMap.put(user.getID(), userName.intern());
-        } else {
-          userMap.put(user.getID(), userName.intern());
-        }
+        map.put(user.getID(), principal);
       }
-      MemberIdMapping mapping = new MemberIdMapping(userMap, groupMap);
+      MemberIdMapping mapping = new MemberIdMapping(map);
       log.exiting("SiteAdaptor", "retrieveMemberIdMapping", mapping);
       return mapping;
+    }
+
+    private Principal userDescriptionToPrincipal(UserDescription user) {
+      boolean isDomainGroup = (user.getIsDomainGroup() == TrueFalseType.TRUE);
+      String userName
+          = decodeClaim(user.getLoginName(), user.getName(), isDomainGroup);
+      if (userName == null) {
+        return null;
+      }
+      if (isDomainGroup) {
+        return new GroupPrincipal(userName, defaultNamespace);
+      } else {
+        return new UserPrincipal(userName, defaultNamespace);
+      }
     }
 
     private MemberIdMapping retrieveSiteUserMapping()
@@ -1796,18 +1808,17 @@ public class SharePointAdaptor extends AbstractAdaptor
       log.entering("SiteAdaptor", "retrieveSiteUserMapping");
       GetUserCollectionFromSiteResponse.GetUserCollectionFromSiteResult result
           = userGroup.getUserCollectionFromSite();
-      Map<Integer, String> userMap = new HashMap<Integer, String>();
-      Map<Integer, String> groupMap = new HashMap<Integer, String>();
+      Map<Integer, Principal> map = new HashMap<Integer, Principal>();
       MemberIdMapping mapping;
       if (result == null) {
-        mapping = new MemberIdMapping(userMap, groupMap);
+        mapping = new MemberIdMapping(map);
         log.exiting("SiteAdaptor", "retrieveSiteUserMapping", mapping);
         return mapping;
       }
       GetUserCollectionFromSiteResult.GetUserCollectionFromSite siteUsers
            = result.getGetUserCollectionFromSite();
       if (siteUsers.getUsers() == null) {
-        mapping = new MemberIdMapping(userMap, groupMap);
+        mapping = new MemberIdMapping(map);
         log.exiting("SiteAdaptor", "retrieveSiteUserMapping", mapping);
         return mapping;
       }
@@ -1823,9 +1834,10 @@ public class SharePointAdaptor extends AbstractAdaptor
               user.getID());
           continue;
         }
-        userMap.put((int) user.getID(), userName.intern());
+        map.put((int) user.getID(),
+            new UserPrincipal(userName, defaultNamespace));
       }
-      mapping = new MemberIdMapping(userMap, groupMap);
+      mapping = new MemberIdMapping(map);
       log.exiting("SiteAdaptor", "retrieveSiteUserMapping", mapping);
       return mapping;
     }

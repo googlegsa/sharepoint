@@ -128,6 +128,7 @@ public class SharePointUserProfileAdaptor extends AbstractAdaptor
 
   private String userProfileChangeToken;
   private boolean setAcl = true;
+  private String namespace;
   private UserProfileServiceClient userProfileServiceClient;
   private ScheduledThreadPoolExecutor scheduledExecutor 
       = new ScheduledThreadPoolExecutor(1);
@@ -166,6 +167,7 @@ public class SharePointUserProfileAdaptor extends AbstractAdaptor
     config.addKey("sharepoint.username", null);
     config.addKey("sharepoint.password", null);
     config.addKey("profile.setacl", "true");
+    config.addKey("adaptor.namespace", "Default");
   }
 
   @Override
@@ -180,10 +182,12 @@ public class SharePointUserProfileAdaptor extends AbstractAdaptor
     String password = context.getSensitiveValueDecoder().decodeValue(
         config.getValue("sharepoint.password"));
     setAcl = Boolean.parseBoolean(config.getValue("profile.setacl"));
+    namespace = config.getValue("adaptor.namespace");
 
     log.log(Level.CONFIG, "virtualServer: {0}", virtualServer);
     log.log(Level.CONFIG, "Username: {0}", username);
     log.log(Level.CONFIG, "setAcl: {0}", setAcl);
+    log.log(Level.CONFIG, "Namespace: {0}", namespace);
 
     ntlmAuthenticator = new NtlmAuthenticator(username, password);
     // Unfortunately, this is a JVM-wide modification.
@@ -506,7 +510,7 @@ public class SharePointUserProfileAdaptor extends AbstractAdaptor
       if (setAcl) {
         List<GroupPrincipal> permitGroups = new ArrayList<GroupPrincipal>();
         permitGroups.add(
-            new GroupPrincipal("NT AUTHORITY\\Authenticated Users"));
+            new GroupPrincipal("NT AUTHORITY\\Authenticated Users", namespace));
         response.setAcl(new Acl.Builder().setEverythingCaseInsensitive()
             .setInheritanceType(Acl.InheritanceType.LEAF_NODE)
             .setPermitGroups(permitGroups).build());

@@ -14,33 +14,38 @@
 
 package com.google.enterprise.adaptor.sharepoint;
 
+import com.google.common.collect.Interner;
+import com.google.common.collect.Interners;
+import com.google.enterprise.adaptor.Principal;
+
 import java.util.*;
 
 /**
  * Immutable lookup from identifier to name for users and groups.
  */
 class MemberIdMapping {
-  private final Map<Integer, String> users;
-  private final Map<Integer, String> groups;
+  private static final Interner<Principal> interner
+      = Interners.newWeakInterner();
 
-  public MemberIdMapping(Map<Integer, String> users,
-      Map<Integer, String> groups) {
-    this.users
-        = Collections.unmodifiableMap(new HashMap<Integer, String>(users));
-    this.groups
-        = Collections.unmodifiableMap(new HashMap<Integer, String>(groups));
+  private final Map<Integer, Principal> principals;
+
+  public MemberIdMapping(Map<Integer, ? extends Principal> principals) {
+    Map<Integer, Principal> tmp = new HashMap<Integer, Principal>(principals);
+    // Most of the purpose for this class is to allow future memory
+    // optimizations without having to tweak all the calling code. Thus, it
+    // makes sense for this class to do intern()ing.
+    for (Map.Entry<Integer, Principal> me : tmp.entrySet()) {
+      me.setValue(interner.intern(me.getValue()));
+    }
+    this.principals = Collections.unmodifiableMap(principals);
   }
 
-  public String getUserName(Integer id) {
-    return users.get(id);
-  }
-
-  public String getGroupName(Integer id) {
-    return groups.get(id);
+  public Principal getPrincipal(Integer id) {
+    return principals.get(id);
   }
 
   @Override
   public String toString() {
-    return "MemberIdMapping(users=" + users + ",groups=" + groups + ")";
+    return "MemberIdMapping(" + principals + ")";
   }
 }
