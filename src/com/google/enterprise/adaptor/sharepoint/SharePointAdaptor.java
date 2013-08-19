@@ -72,6 +72,11 @@ import com.microsoft.schemas.sharepoint.soap.directory.GetUserCollectionFromSite
 import com.microsoft.schemas.sharepoint.soap.directory.GetUserCollectionFromSiteResponse.GetUserCollectionFromSiteResult;
 import com.microsoft.schemas.sharepoint.soap.directory.User;
 import com.microsoft.schemas.sharepoint.soap.directory.UserGroupSoap;
+import com.microsoft.schemas.sharepoint.soap.people.ArrayOfPrincipalInfo;
+import com.microsoft.schemas.sharepoint.soap.people.ArrayOfString;
+import com.microsoft.schemas.sharepoint.soap.people.PeopleSoap;
+import com.microsoft.schemas.sharepoint.soap.people.PrincipalInfo;
+import com.microsoft.schemas.sharepoint.soap.people.SPPrincipalType;
 
 import org.w3c.dom.Attr;
 import org.w3c.dom.Element;
@@ -511,14 +516,17 @@ public class SharePointAdaptor extends AbstractAdaptor
       
       String endpointUserGroup = site + "/_vti_bin/UserGroup.asmx";
       UserGroupSoap userGroupSoap = soapFactory.newUserGroup(endpointUserGroup);
+      String endpointPeople= site + "/_vti_bin/People.asmx";
+      PeopleSoap peopleSoap = soapFactory.newPeople(endpointPeople);
       // JAX-WS RT 2.1.4 doesn't handle headers correctly and always assumes the
       // list contains precisely one entry, so we work around it here.
       if (authenticationHandler.isFormsAuthentication()) {
         addFormsAuthenticationCookies((BindingProvider) siteDataSoap);
-        addFormsAuthenticationCookies((BindingProvider) userGroupSoap);        
+        addFormsAuthenticationCookies((BindingProvider) userGroupSoap);
+        addFormsAuthenticationCookies((BindingProvider) peopleSoap);
       }
       siteAdaptor = new SiteAdaptor(site, web, siteDataSoap, userGroupSoap,
-          new MemberIdMappingCallable(site),
+          peopleSoap, new MemberIdMappingCallable(site),
           new SiteUserIdMappingCallable(site));
       siteAdaptors.putIfAbsent(web, siteAdaptor);
       siteAdaptor = siteAdaptors.get(web);
@@ -527,6 +535,11 @@ public class SharePointAdaptor extends AbstractAdaptor
   }
   
   private void addFormsAuthenticationCookies(BindingProvider port) {
+    if (authenticationHandler.getAuthenticationCookies().isEmpty()) {
+      // JAX-WS RT 2.1.4 doesn't handle headers correctly and always assumes the
+      // list contains precisely one entry, so we work around it here.
+      return;
+    }
     port.getRequestContext().put(MessageContext.HTTP_REQUEST_HEADERS,
         Collections.singletonMap("Cookie", 
             authenticationHandler.getAuthenticationCookies()));
@@ -565,6 +578,7 @@ public class SharePointAdaptor extends AbstractAdaptor
   class SiteAdaptor {
     private final SiteDataClient siteDataClient;
     private final UserGroupSoap userGroup;
+    private final PeopleSoap people;
     private final String siteUrl;
     private final String webUrl;
     /**
@@ -576,7 +590,7 @@ public class SharePointAdaptor extends AbstractAdaptor
     private final Callable<MemberIdMapping> siteUserIdMappingCallable;
 
     public SiteAdaptor(String site, String web, SiteDataSoap siteDataSoap,
-        UserGroupSoap userGroupSoap,
+        UserGroupSoap userGroupSoap, PeopleSoap people,
         Callable<MemberIdMapping> memberIdMappingCallable,
         Callable<MemberIdMapping> siteUserIdMappingCallable) {
       log.entering("SiteAdaptor", "SiteAdaptor",
@@ -593,6 +607,7 @@ public class SharePointAdaptor extends AbstractAdaptor
       this.siteUrl = site;
       this.webUrl = web;
       this.userGroup = userGroupSoap;
+      this.people = people;
       this.siteDataClient = new SiteDataClient(siteDataSoap, xmlValidation);
       this.memberIdMappingCallable = memberIdMappingCallable;
       this.siteUserIdMappingCallable = siteUserIdMappingCallable;
@@ -725,26 +740,44 @@ public class SharePointAdaptor extends AbstractAdaptor
       List<GroupPrincipal> permitGroups = new ArrayList<GroupPrincipal>();
       List<UserPrincipal> denyUsers = new ArrayList<UserPrincipal>();
       List<GroupPrincipal> denyGroups = new ArrayList<GroupPrincipal>();
+      List<String> policyUsers = new ArrayList<String>();
       for (PolicyUser policyUser : vs.getPolicies().getPolicyUser()) {
-        // TODO(ejona): special case NT AUTHORITY\LOCAL SERVICE.
-        String loginName = decodeClaim(policyUser.getLoginName(),
-            policyUser.getLoginName(), false);
-        if (loginName == null) {
+        policyUsers.add(policyUser.getLoginName());
+      }
+      Map<String, PrincipalInfo> resolvedPolicyUsers 
+          = resolvePrincipals(policyUsers);
+      for (PolicyUser policyUser : vs.getPolicies().getPolicyUser()) {
+        String loginName = policyUser.getLoginName();
+        PrincipalInfo p = resolvedPolicyUsers.get(loginName);
+        if (p == null || !p.isIsResolved()) {
           log.log(Level.WARNING, 
-              "Unable to decode claim. Skipping policy user {0}",
-              policyUser.getLoginName());
+              "Unable to resolve Policy User = {0}", loginName);
+          continue;
         }
-        log.log(Level.FINER, "Policy User Login Name = {0}", loginName);
+        // TODO(ejona): special case NT AUTHORITY\LOCAL SERVICE.
+        String accountName = decodeClaim(p.getAccountName(), p.getDisplayName(),
+            p.getPrincipalType() == SPPrincipalType.SECURITY_GROUP);
+        if (accountName == null) {
+          log.log(Level.WARNING, 
+              "Unable to decode claim. Skipping policy user {0}", loginName);
+        }
+        log.log(Level.FINER, "Policy User accountName = {0}", accountName);
         long grant = policyUser.getGrantMask().longValue();
         if ((necessaryPermissionMask & grant) == necessaryPermissionMask) {
-          permitUsers.add(new UserPrincipal(loginName));
-          permitGroups.add(new GroupPrincipal(loginName));
+          if (p.getPrincipalType() == SPPrincipalType.USER) {
+             permitUsers.add(new UserPrincipal(accountName));
+          } else {
+             permitGroups.add(new GroupPrincipal(accountName));
+          }
         }
         long deny = policyUser.getDenyMask().longValue();
         // If at least one necessary bit is masked, then deny user.
         if ((necessaryPermissionMask & deny) != 0) {
-          denyUsers.add(new UserPrincipal(loginName));
-          denyGroups.add(new GroupPrincipal(loginName));
+          if (p.getPrincipalType() == SPPrincipalType.USER) {
+             denyUsers.add(new UserPrincipal(accountName));
+          } else {
+             denyGroups.add(new GroupPrincipal(accountName));
+          }          
         }
       }
       response.setAcl(new Acl.Builder()
@@ -1681,14 +1714,14 @@ public class SharePointAdaptor extends AbstractAdaptor
         , boolean isDomainGroup) {
       if (!loginName.startsWith(IDENTITY_CLAIMS_PREFIX)
           && !loginName.startsWith(OTHER_CLAIMS_PREFIX)) {
-        return isDomainGroup ? name : loginName;
+        return loginName;
       }
       // AD User
       if (loginName.startsWith("i:0#.w|")) {
         return loginName.substring(7);
       // AD Group
       } else if (loginName.startsWith("c:0+.w|")) {
-        return name.startsWith("c:0+.w|") ? name.substring(7) : name;
+        return name;
       } else if (loginName.equals("c:0(.s|true")) {
         return "Everyone";
       } else if (loginName.equals("c:0!.s|windows")) {
@@ -1702,6 +1735,29 @@ public class SharePointAdaptor extends AbstractAdaptor
       }
       log.log(Level.WARNING, "Unsupported claims value {0}", loginName);
       return null;
+    }
+
+    private Map<String,PrincipalInfo> resolvePrincipals(
+        List<String> principalsToResolve) {
+      Map<String, PrincipalInfo> resolved
+          = new HashMap<String, PrincipalInfo>();
+      if (principalsToResolve.isEmpty()) {
+        return resolved;
+      }
+      ArrayOfString aos = new ArrayOfString();
+      aos.getString().addAll(principalsToResolve);
+      ArrayOfPrincipalInfo resolvePrincipals = people.resolvePrincipals(
+          aos, SPPrincipalType.ALL, false);
+      List<PrincipalInfo> principals = resolvePrincipals.getPrincipalInfo();
+      // using loginname from input list principalsToResolve as a key
+      // instead of returned PrincipalInfo.getAccountName() as with claims
+      // authentication PrincipalInfo.getAccountName() is always encoded.
+      // e.g. if login name from Policy is NT Authority\Local Service
+      // returned account name is i:0#.w|NT Authority\Local Service
+      for (int i = 0; i < principalsToResolve.size(); i++) {
+         resolved.put(principalsToResolve.get(i), principals.get(i));
+      }
+      return resolved;
     }
 
     private MemberIdMapping retrieveMemberIdMapping() throws IOException {
@@ -1956,6 +2012,8 @@ public class SharePointAdaptor extends AbstractAdaptor
     public UserGroupSoap newUserGroup(String endpoint);
     
     public AuthenticationSoap newAuthentication(String endpoint);
+    
+    public PeopleSoap newPeople(String endpoint);
   }
 
   @VisibleForTesting
@@ -1963,6 +2021,7 @@ public class SharePointAdaptor extends AbstractAdaptor
     private final Service siteDataService;
     private final Service userGroupService;
     private final Service authenticationService;
+    private final Service peopleService;
 
     public SoapFactoryImpl() {
       this.siteDataService = SiteDataClient.createSiteDataService();
@@ -1972,6 +2031,9 @@ public class SharePointAdaptor extends AbstractAdaptor
       this.authenticationService = Service.create(
           AuthenticationSoap.class.getResource("Authentication.wsdl"),
           new QName(XMLNS, "Authentication"));
+      this.peopleService = Service.create(
+          PeopleSoap.class.getResource("People.wsdl"),
+          new QName(XMLNS, "People"));
     }
 
     @Override
@@ -1994,6 +2056,13 @@ public class SharePointAdaptor extends AbstractAdaptor
           .address(endpoint).build();
       return 
           authenticationService.getPort(endpointRef, AuthenticationSoap.class);
+    }
+
+    @Override
+    public PeopleSoap newPeople(String endpoint) {
+      EndpointReference endpointRef = new W3CEndpointReferenceBuilder()
+          .address(endpoint).build();
+      return peopleService.getPort(endpointRef, PeopleSoap.class);      
     }
   }
 

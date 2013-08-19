@@ -31,11 +31,10 @@ import com.google.enterprise.adaptor.Metadata;
 import com.google.enterprise.adaptor.UserPrincipal;
 import com.google.enterprise.adaptor.sharepoint.SharePointAdaptor.SiteUserIdMappingCallable;
 import com.google.enterprise.adaptor.sharepoint.SharePointAdaptor.SoapFactory;
+
 import com.microsoft.schemas.sharepoint.soap.authentication.AuthenticationMode;
 import com.microsoft.schemas.sharepoint.soap.authentication.AuthenticationSoap;
-import com.microsoft.schemas.sharepoint.soap.authentication.LoginErrorCode;
 import com.microsoft.schemas.sharepoint.soap.authentication.LoginResult;
-
 import com.microsoft.schemas.sharepoint.soap.ObjectType;
 import com.microsoft.schemas.sharepoint.soap.SPContentDatabase;
 import com.microsoft.schemas.sharepoint.soap.SiteDataSoap;
@@ -75,6 +74,11 @@ import com.microsoft.schemas.sharepoint.soap.directory.TrueFalseType;
 import com.microsoft.schemas.sharepoint.soap.directory.User;
 import com.microsoft.schemas.sharepoint.soap.directory.UserGroupSoap;
 import com.microsoft.schemas.sharepoint.soap.directory.Users;
+import com.microsoft.schemas.sharepoint.soap.people.ArrayOfPrincipalInfo;
+import com.microsoft.schemas.sharepoint.soap.people.ArrayOfString;
+import com.microsoft.schemas.sharepoint.soap.people.PeopleSoap;
+import com.microsoft.schemas.sharepoint.soap.people.PrincipalInfo;
+import com.microsoft.schemas.sharepoint.soap.people.SPPrincipalType;
 
 import org.junit.*;
 import org.junit.rules.ExpectedException;
@@ -363,11 +367,18 @@ public class SharePointAdaptorTest {
 
   @Test
   public void testGetDocContentVirtualServer() throws Exception {
+    MockPeopleSoap mockPeople = new MockPeopleSoap();    
+    mockPeople.addToResult("NT AUTHORITY\\LOCAL SERVICE", 
+        "NT AUTHORITY\\LOCAL SERVICE", SPPrincipalType.USER);
+    mockPeople.addToResult("GDC-PSL\\spuser1", "spuser1", SPPrincipalType.USER);
+    mockPeople.addToResult("GDC-PSL\\Administrator", "dministrator", 
+        SPPrincipalType.USER);
     SoapFactory siteDataFactory = MockSoapFactory.blank()
         .endpoint(AUTH_ENDPOINT, new MockAuthenticationSoap())
         .endpoint(VS_ENDPOINT, MockSiteData.blank()
             .register(VS_CONTENT_EXCHANGE)
-            .register(CD_CONTENT_EXCHANGE));
+            .register(CD_CONTENT_EXCHANGE))
+        .endpoint("http://localhost:1/_vti_bin/People.asmx", mockPeople);
 
     adaptor = new SharePointAdaptor(siteDataFactory,
         new UnsupportedHttpClient(), executorFactory);
@@ -392,7 +403,58 @@ public class SharePointAdaptorTest {
     assertEquals(new Acl.Builder()
         .setEverythingCaseInsensitive()
         .setInheritanceType(Acl.InheritanceType.PARENT_OVERRIDES)
-        .setPermitUsers(users(permit)).setPermitGroups(groups(permit)).build(),
+        .setPermitUsers(users(permit)).build(), response.getAcl());
+    assertNull(response.getDisplayUrl());
+  }
+  
+  @Test
+  public void testPolicyAclsWithClaims() throws Exception {
+    String claimsPolicyUsers = "<PolicyUser "
+        + "LoginName=\"i:0#.w|GSA-CONNECTORS\\Administrator\" "
+        + "BinaryIdentifier=\"i:0).w|s-1-5-21-3993744865-352142399"
+        + "7-1479072767-500\" Sid=\"\" BinaryIdentifierType=\"UserKey\" "
+        + "GrantMask=\"9223372036854775807\" DenyMask=\"0\" />"
+        + "<PolicyUser "
+        + "LoginName=\"c:0+.w|s-1-5-21-3993744865-3521423997-1479072767-513\" "
+        + "BinaryIdentifier=\"c:0+.w|s-1-5-21-3993744865-3521423997"
+        + "-1479072767-513\" Sid=\"\" BinaryIdentifierType=\"UserKey\" "
+        + "GrantMask=\"4611686224789442657\" "
+        + "DenyMask=\"0\" /></Policies>";
+    MockPeopleSoap mockPeople = new MockPeopleSoap();
+    mockPeople.addToResult("i:0#.w|GSA-CONNECTORS\\Administrator",
+        "Administrator", SPPrincipalType.USER);
+    mockPeople.addToResult(
+        "c:0+.w|s-1-5-21-3993744865-3521423997-1479072767-513",
+        "GSA-CONNECTORS\\domain users", SPPrincipalType.SECURITY_GROUP);
+    mockPeople.addToResult("NT AUTHORITY\\LOCAL SERVICE", 
+        "NT AUTHORITY\\LOCAL SERVICE", SPPrincipalType.USER);
+    mockPeople.addToResult("GDC-PSL\\spuser1", "spuser1", SPPrincipalType.USER);
+    mockPeople.addToResult("GDC-PSL\\Administrator", "dministrator", 
+        SPPrincipalType.USER);
+    
+    SoapFactory siteDataFactory = MockSoapFactory.blank()
+        .endpoint(AUTH_ENDPOINT, new MockAuthenticationSoap())
+        .endpoint(VS_ENDPOINT, MockSiteData.blank()
+            .register(VS_CONTENT_EXCHANGE
+              .replaceInContent("</Policies>", claimsPolicyUsers))
+            .register(CD_CONTENT_EXCHANGE))
+        .endpoint("http://localhost:1/_vti_bin/People.asmx", mockPeople);
+
+    adaptor = new SharePointAdaptor(siteDataFactory,
+        new UnsupportedHttpClient(), executorFactory);
+    adaptor.init(new MockAdaptorContext(config, pusher));
+    ByteArrayOutputStream baos = new ByteArrayOutputStream();
+    GetContentsResponse response = new GetContentsResponse(baos);
+    adaptor.getDocContent(new GetContentsRequest(new DocId("")), response);       
+    String[] permitUsers = new String[] {"GDC-PSL\\Administrator",
+        "GDC-PSL\\spuser1", "NT AUTHORITY\\LOCAL SERVICE",
+        "GSA-CONNECTORS\\Administrator"};
+    String[] permitGroups= new String[] {"GSA-CONNECTORS\\domain users"};
+    assertEquals(new Acl.Builder()
+        .setEverythingCaseInsensitive()
+        .setInheritanceType(Acl.InheritanceType.PARENT_OVERRIDES)
+        .setPermitUsers(users(permitUsers))
+        .setPermitGroups(groups(permitGroups)).build(),
         response.getAcl());
     assertNull(response.getDisplayUrl());
   }
@@ -461,11 +523,13 @@ public class SharePointAdaptorTest {
         .endpoint(SITES_SITECOLLECTION_ENDPOINT, MockSiteData.blank()
             .register(SITES_SITECOLLECTION_URLSEG_EXCHANGE)
             .register(SITES_SITECOLLECTION_S_CONTENT_EXCHANGE
-              .replaceInContent("Name=\"spuser1\"", "Name=\"GDC-PSL\\group\"")
+              .replaceInContent("LoginName=\"GDC-PSL\\spuser1\"",
+                "LoginName=\"GDC-PSL\\group\"")
               .replaceInContent("IsDomainGroup=\"False\"",
                 "IsDomainGroup=\"True\""))
             .register(SITES_SITECOLLECTION_SC_CONTENT_EXCHANGE
-              .replaceInContent("Name=\"spuser1\"", "Name=\"GDC-PSL\\group\"")
+              .replaceInContent("LoginName=\"GDC-PSL\\spuser1\"",
+                "LoginName=\"GDC-PSL\\group\"")
               .replaceInContent("IsDomainGroup=\"False\"",
                 "IsDomainGroup=\"True\"")));
 
@@ -634,7 +698,8 @@ public class SharePointAdaptorTest {
     GetContentsResponse response = new GetContentsResponse(baos);
     adaptor.new SiteAdaptor("http://localhost:1/sites/SiteCollection",
           "http://localhost:1/sites/SiteCollection", siteData,
-          new UnsupportedUserGroupSoap(), Callables.returning(memberIdMapping),
+          new UnsupportedUserGroupSoap(), new UnsupportedPeopleSoap(),
+          Callables.returning(memberIdMapping),
           new UnsupportedCallable<MemberIdMapping>())
         .getDocContent(request, response);
     String responseString = new String(baos.toByteArray(), charset);
@@ -677,7 +742,7 @@ public class SharePointAdaptorTest {
     GetContentsResponse response = new GetContentsResponse(baos);
     adaptor.new SiteAdaptor("http://localhost:1/sites/SiteCollection",
           "http://localhost:1/sites/SiteCollection", siteData,
-          new UnsupportedUserGroupSoap(),
+          new UnsupportedUserGroupSoap(), new UnsupportedPeopleSoap(),
           new UnsupportedCallable<MemberIdMapping>(),
           new UnsupportedCallable<MemberIdMapping>())
         .getDocContent(request, response);
@@ -720,7 +785,7 @@ public class SharePointAdaptorTest {
     GetContentsResponse response = new GetContentsResponse(baos);
     adaptor.new SiteAdaptor("http://localhost:1/sites/SiteCollection",
           "http://localhost:1/sites/SiteCollection", siteData,
-          new UnsupportedUserGroupSoap(),
+          new UnsupportedUserGroupSoap(), new UnsupportedPeopleSoap(),
           new UnsupportedCallable<MemberIdMapping>(),
           new UnsupportedCallable<MemberIdMapping>())
         .getDocContent(request, response);
@@ -770,7 +835,8 @@ public class SharePointAdaptorTest {
     GetContentsResponse response = new GetContentsResponse(baos);
     adaptor.new SiteAdaptor("http://localhost:1/sites/SiteCollection",
           "http://localhost:1/sites/SiteCollection", siteData,
-          new UnsupportedUserGroupSoap(), Callables.returning(memberIdMapping),
+          new UnsupportedUserGroupSoap(), new UnsupportedPeopleSoap(),
+          Callables.returning(memberIdMapping),
           new UnsupportedCallable<MemberIdMapping>())
         .getDocContent(request, response);
     String responseString = new String(baos.toByteArray(), charset);
@@ -884,7 +950,8 @@ public class SharePointAdaptorTest {
     GetContentsResponse response = new GetContentsResponse(baos);
     adaptor.new SiteAdaptor("http://localhost:1/sites/SiteCollection",
           "http://localhost:1/sites/SiteCollection", siteData,
-          new UnsupportedUserGroupSoap(), Callables.returning(memberIdMapping),
+          new UnsupportedUserGroupSoap(), new UnsupportedPeopleSoap(),
+          Callables.returning(memberIdMapping),
           new UnsupportedCallable<MemberIdMapping>())
         .getDocContent(request, response);
     assertNull(response.getAcl());
@@ -944,7 +1011,8 @@ public class SharePointAdaptorTest {
     GetContentsResponse response = new GetContentsResponse(baos);
     adaptor.new SiteAdaptor("http://localhost:1/sites/SiteCollection",
           "http://localhost:1/sites/SiteCollection", siteData,
-          mockUserGroupSoap, Callables.returning(memberIdMapping),
+          mockUserGroupSoap, new UnsupportedPeopleSoap(),
+          Callables.returning(memberIdMapping),
           adaptor.new SiteUserIdMappingCallable(
               "http://localhost:1/sites/SiteCollection"))
         .getDocContent(request, response);
@@ -1008,7 +1076,7 @@ public class SharePointAdaptorTest {
     GetContentsResponse response = new GetContentsResponse(baos);
     adaptor.new SiteAdaptor("http://localhost:1/sites/SiteCollection",
         "http://localhost:1/sites/SiteCollection",
-        siteData, new UnsupportedUserGroupSoap(),
+        siteData, new UnsupportedUserGroupSoap(), new UnsupportedPeopleSoap(),
         Callables.returning(memberIdMapping),
         new UnsupportedCallable<MemberIdMapping>())
         .getDocContent(request, response);
@@ -1051,7 +1119,7 @@ public class SharePointAdaptorTest {
     GetContentsResponse response = new GetContentsResponse(baos);
     adaptor.new SiteAdaptor("http://localhost:1/sites/SiteCollection",
           "http://localhost:1/sites/SiteCollection",
-          siteData, new UnsupportedUserGroupSoap(),
+          siteData, new UnsupportedUserGroupSoap(), new UnsupportedPeopleSoap(),
         Callables.returning(memberIdMapping),
         new UnsupportedCallable<MemberIdMapping>())
         .getDocContent(request, response);
@@ -1328,7 +1396,7 @@ public class SharePointAdaptorTest {
     adaptor.new SiteAdaptor(
         "http://localhost:1/sites/SiteCollection",
         "http://localhost:1/sites/SiteCollection", new UnsupportedSiteData(),
-        new UnsupportedUserGroupSoap(),
+        new UnsupportedUserGroupSoap(), new UnsupportedPeopleSoap(),
         new UnsupportedCallable<MemberIdMapping>(),
         new UnsupportedCallable<MemberIdMapping>())
         .getModifiedDocIds(result, pusher);
@@ -1442,6 +1510,71 @@ public class SharePointAdaptorTest {
     public FileInfo issueGetRequest(URL url,
         List<String> authenticationCookies) {
       throw new UnsupportedOperationException();
+    }
+  }
+  
+  private abstract static class DelegatingPeopleSoap implements PeopleSoap {
+    protected abstract PeopleSoap delegate();
+
+    @Override
+    public boolean isClaimsMode() {
+      return delegate().isClaimsMode();
+    } 
+
+    @Override
+    public ArrayOfPrincipalInfo resolvePrincipals(
+        ArrayOfString aos, SPPrincipalType sppt, boolean bln) {
+      return delegate().resolvePrincipals(aos, sppt, bln);
+    }
+
+    @Override
+    public ArrayOfPrincipalInfo searchPrincipals(
+        String string, int i, SPPrincipalType sppt) {
+      return delegate().searchPrincipals(string, i, sppt);
+    }
+  }
+  
+  private static class UnsupportedPeopleSoap extends DelegatingPeopleSoap {
+    private final String endpoint;
+
+    public UnsupportedPeopleSoap() {
+      this(null);
+    }
+
+    public UnsupportedPeopleSoap(String endpoint) {
+      this.endpoint = endpoint;
+    }
+
+    @Override
+    protected PeopleSoap delegate() {
+      if (endpoint == null) {
+        throw new UnsupportedOperationException();
+      } else {
+        throw new UnsupportedOperationException("Endpoint: " + endpoint);
+      }
+    }
+  }
+  
+  private static class MockPeopleSoap extends UnsupportedPeopleSoap {
+    private final ArrayOfPrincipalInfo result;
+    public MockPeopleSoap() {
+      this.result = new ArrayOfPrincipalInfo();
+    }
+    
+    @Override
+    public ArrayOfPrincipalInfo resolvePrincipals(
+        ArrayOfString aos, SPPrincipalType sppt, boolean bln) {      
+      return result;     
+    }
+    
+    public void addToResult(String accountName, String dispalyName, 
+        SPPrincipalType type) {
+      PrincipalInfo p = new PrincipalInfo();
+      p.setAccountName(accountName);
+      p.setDisplayName(dispalyName);
+      p.setIsResolved(true);
+      p.setPrincipalType(type);
+      result.getPrincipalInfo().add(p);      
     }
   }
 
@@ -1819,37 +1952,47 @@ public class SharePointAdaptorTest {
     private final SiteDataSoap siteData;
     private final UserGroupSoap userGroup;
     private final AuthenticationSoap authentication;
+    private final PeopleSoap people;
     private final MockSoapFactory chain;
 
     private MockSoapFactory(String expectedEndpoint, SiteDataSoap siteData,
-        UserGroupSoap userGroup, AuthenticationSoap authentication,
-        MockSoapFactory chain) {
+        UserGroupSoap userGroup, PeopleSoap people,
+        AuthenticationSoap authentication,  MockSoapFactory chain) {
       this.expectedEndpoint = expectedEndpoint;
       this.siteData = siteData;
       this.userGroup = userGroup;
+      this.people = people;
       // Tests will always use windows authentication.
       this.authentication = authentication;
       this.chain = chain;
     }
 
     public static MockSoapFactory blank() {
-      return new MockSoapFactory(null, null, null, null, null);
+      return new MockSoapFactory(null, null, null, null, null, null);
     }
 
     public MockSoapFactory endpoint(String expectedEndpoint,
         SiteDataSoap siteData) {
-      return new MockSoapFactory(expectedEndpoint, siteData, null, null, this);
+      return new MockSoapFactory(
+          expectedEndpoint, siteData, null, null, null, this);
     }
 
     public MockSoapFactory endpoint(String expectedEndpoint,
         UserGroupSoap userGroup) {
-      return new MockSoapFactory(expectedEndpoint, null, userGroup, null, this);
+      return new MockSoapFactory(
+          expectedEndpoint, null, userGroup, null, null, this);
+    }
+    
+    public MockSoapFactory endpoint(String expectedEndpoint,
+        PeopleSoap people) {
+      return new MockSoapFactory(
+          expectedEndpoint, null, null, people, null, this);
     }
     
     public MockSoapFactory endpoint(String expectedEndpoint,
         AuthenticationSoap authentication) {
       return new MockSoapFactory(
-          expectedEndpoint, null, null, authentication, this);
+          expectedEndpoint, null, null, null, authentication, this);
     }
 
     @Override
@@ -1886,6 +2029,17 @@ public class SharePointAdaptorTest {
         return userGroup;
       }
       return chain.newUserGroup(endpoint);
+    }
+
+    @Override
+    public PeopleSoap newPeople(String endpoint) {
+      if (chain == null) {
+        return new UnsupportedPeopleSoap(endpoint);
+      }
+      if (expectedEndpoint.equals(endpoint) && people != null) {
+        return people;
+      }
+      return chain.newPeople(endpoint);
     }
   }
 

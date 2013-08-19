@@ -19,7 +19,6 @@ import com.microsoft.schemas.sharepoint.soap.authentication.AuthenticationMode;
 import com.microsoft.schemas.sharepoint.soap.authentication.AuthenticationSoap;
 import com.microsoft.schemas.sharepoint.soap.authentication.LoginErrorCode;
 import com.microsoft.schemas.sharepoint.soap.authentication.LoginResult;
-
 import java.io.IOException;
 import java.util.Collections;
 import java.util.List;
