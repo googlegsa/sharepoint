@@ -491,7 +491,9 @@ public class SharePointAdaptorTest {
     String permissions = "<permission memberid='11' mask='756052856929' />"
         + "<permission memberid='12' mask='756052856929' />"
         + "<permission memberid='13' mask='756052856929' />"
-        + "<permission memberid='14' mask='756052856929' /></permissions>";
+        + "<permission memberid='14' mask='756052856929' />"
+        + "<permission memberid='15' mask='756052856929' />"        
+        + "<permission memberid='19' mask='756052856929' /></permissions>";
     SoapFactory siteDataFactory = MockSoapFactory.blank()
         .endpoint(AUTH_ENDPOINT, new MockAuthenticationSoap())
         .endpoint(VS_ENDPOINT, MockSiteData.blank()
@@ -517,10 +519,12 @@ public class SharePointAdaptorTest {
         .setEverythingCaseInsensitive()
         .setInheritFrom(new DocId(""))
         .setInheritanceType(Acl.InheritanceType.PARENT_OVERRIDES)
-        .setPermitUsers(users("GDC-PSL\\spuser1", "GSA-CONNECTORS\\User1"))
+        .setPermitUsers(users("GDC-PSL\\spuser1", "GSA-CONNECTORS\\User1",
+            "membershipprovider:user2007"))
         .setPermitGroups(groups("chinese1 Members", "chinese1 Owners",
             "chinese1 Visitors", "GSA-CONNECTORS\\domain users",
-            "Everyone", "NT AUTHORITY\\authenticated users")).build(),
+            "Everyone", "NT AUTHORITY\\authenticated users",
+            "roleprovider:super")).build(),
         response.getAcl());
   }
 

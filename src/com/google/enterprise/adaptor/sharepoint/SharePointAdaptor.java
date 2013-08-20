@@ -729,6 +729,11 @@ public class SharePointAdaptor extends AbstractAdaptor
         // TODO(ejona): special case NT AUTHORITY\LOCAL SERVICE.
         String loginName = decodeClaim(policyUser.getLoginName(),
             policyUser.getLoginName(), false);
+        if (loginName == null) {
+          log.log(Level.WARNING, 
+              "Unable to decode claim. Skipping policy user {0}",
+              policyUser.getLoginName());
+        }
         log.log(Level.FINER, "Policy User Login Name = {0}", loginName);
         long grant = policyUser.getGrantMask().longValue();
         if ((necessaryPermissionMask & grant) == necessaryPermissionMask) {
@@ -1688,6 +1693,12 @@ public class SharePointAdaptor extends AbstractAdaptor
         return "Everyone";
       } else if (loginName.equals("c:0!.s|windows")) {
         return "NT AUTHORITY\\authenticated users";
+      // Forms authentication role  
+      } else if (loginName.startsWith("c:0-.f|")) {
+        return loginName.substring(7).replace("|", ":");
+      // Forms authentication user  
+      } else if (loginName.startsWith("i:0#.f|")) {
+        return loginName.substring(7).replace("|", ":");
       }
       log.log(Level.WARNING, "Unsupported claims value {0}", loginName);
       return null;
