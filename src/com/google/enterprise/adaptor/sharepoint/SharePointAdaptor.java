@@ -400,9 +400,45 @@ public class SharePointAdaptor extends AbstractAdaptor
   }
 
   @Override
-  public void getDocIds(DocIdPusher pusher) throws InterruptedException {
+  public void getDocIds(DocIdPusher pusher) throws InterruptedException,
+      IOException {
     log.entering("SharePointAdaptor", "getDocIds", pusher);
     pusher.pushDocIds(Arrays.asList(virtualServerDocId));
+
+    SiteAdaptor vsAdaptor = getSiteAdaptor(virtualServer, virtualServer);
+    SiteDataClient vsClient = vsAdaptor.getSiteDataClient();
+    VirtualServer vs = vsClient.getContentVirtualServer();
+    Map<GroupPrincipal, Collection<Principal>> defs
+        = new HashMap<GroupPrincipal, Collection<Principal>>();
+    for (ContentDatabases.ContentDatabase cdcd
+        : vs.getContentDatabases().getContentDatabase()) {
+      ContentDatabase cd;
+      try {
+        cd = vsClient.getContentContentDatabase(cdcd.getID(), true);
+      } catch (IOException ex) {
+        log.log(Level.WARNING, "Failed to get local groups for database {0}",
+            cdcd.getID());
+        continue;
+      }
+      if (cd.getSites() == null) {
+        continue;
+      }
+      for (Sites.Site siteListing : cd.getSites().getSite()) {
+        String siteString
+            = vsAdaptor.encodeDocId(siteListing.getURL()).getUniqueId();
+        SiteAdaptor siteAdaptor = getSiteAdaptor(siteString, siteString);
+        Site site;
+        try {
+          site = siteAdaptor.getSiteDataClient().getContentSite();
+        } catch (IOException ex) {
+          log.log(Level.WARNING, "Failed to get local groups for site {0}",
+              siteString);
+          continue;
+        }
+        defs.putAll(siteAdaptor.computeMembersForGroups(site.getGroups()));
+      }
+    }
+    pusher.pushGroupDefinitions(defs, false);
     log.exiting("SharePointAdaptor", "getDocIds");
   }
 
@@ -487,6 +523,8 @@ public class SharePointAdaptor extends AbstractAdaptor
           = client.getChangesContentDatabase(contentDatabase, changeId,
               isSp2007);
       Set<DocId> docIds = new HashSet<DocId>();
+      Map<GroupPrincipal, Collection<Principal>> groupDefs
+          = new HashMap<GroupPrincipal, Collection<Principal>>();
       try {
         while (true) {
           try {
@@ -494,7 +532,8 @@ public class SharePointAdaptor extends AbstractAdaptor
             if (changes == null) {
               break;
             }
-            siteAdaptor.getModifiedDocIdsContentDatabase(changes, docIds);
+            siteAdaptor.getModifiedDocIdsContentDatabase(
+                changes, docIds, groupDefs);
           } catch (XmlProcessingException ex) {
             log.log(Level.WARNING, "Error parsing changes from content "
                 + "database: " + contentDatabase, ex);
@@ -519,6 +558,7 @@ public class SharePointAdaptor extends AbstractAdaptor
         records.add(builder.setDocId(docId).build());
       }
       pusher.pushRecords(records);
+      pusher.pushGroupDefinitions(groupDefs, false);
     }
     log.exiting("SharePointAdaptor", "getModifiedDocIds", pusher);
   }
@@ -1628,7 +1668,9 @@ public class SharePointAdaptor extends AbstractAdaptor
 
     @VisibleForTesting
     void getModifiedDocIdsContentDatabase(SPContentDatabase changes,
-        Collection<DocId> docIds) throws IOException {
+        Collection<DocId> docIds,
+        Map<GroupPrincipal, Collection<Principal>> groupDefs)
+        throws IOException {
       log.entering("SiteAdaptor", "getModifiedDocIdsContentDatabase",
           new Object[] {changes, docIds});
       if (!"Unchanged".equals(changes.getChange())) {
@@ -1638,17 +1680,22 @@ public class SharePointAdaptor extends AbstractAdaptor
         String siteString
             = encodeDocId(site.getSite().getMetadata().getURL()).getUniqueId();
         SiteAdaptor siteAdaptor = getSiteAdaptor(siteString, siteString);
-        siteAdaptor.getModifiedDocIdsSite(site, docIds);
+        siteAdaptor.getModifiedDocIdsSite(site, docIds, groupDefs);
       }
       log.exiting("SiteAdaptor", "getModifiedDocIdsContentDatabase");
     }
 
-    private void getModifiedDocIdsSite(SPSite changes, Collection<DocId> docIds)
+    private void getModifiedDocIdsSite(SPSite changes, Collection<DocId> docIds,
+        Map<GroupPrincipal, Collection<Principal>> groupDefs)
         throws IOException {
       log.entering("SiteAdaptor", "getModifiedDocIdsSite",
           new Object[] {changes, docIds});
       if (isModified(changes.getChange())) {
         docIds.add(new DocId(siteUrl));
+        if (changes.getSite().getGroups() != null) {
+          groupDefs.putAll(computeMembersForGroups(
+              changes.getSite().getGroups()));
+        }
       }
       for (SPWeb web : changes.getSPWeb()) {
         String webString
@@ -1815,6 +1862,33 @@ public class SharePointAdaptor extends AbstractAdaptor
       MemberIdMapping mapping = new MemberIdMapping(map);
       log.exiting("SiteAdaptor", "retrieveMemberIdMapping", mapping);
       return mapping;
+    }
+
+    private Map<GroupPrincipal, Collection<Principal>> computeMembersForGroups(
+        GroupMembership groups) {
+      Map<GroupPrincipal, Collection<Principal>> defs
+          = new HashMap<GroupPrincipal, Collection<Principal>>();
+      for (GroupMembership.Group group : groups.getGroup()) {
+        GroupPrincipal groupPrincipal = new GroupPrincipal(
+            group.getGroup().getName(), defaultNamespace + "_" + siteUrl);
+        Collection<Principal> members = new LinkedList<Principal>();
+        // We always provide membership details, even for empty groups.
+        defs.put(groupPrincipal, members);
+        if (group.getUsers() == null) {
+          continue;
+        }
+        for (UserDescription user : group.getUsers().getUser()) {
+          Principal principal = userDescriptionToPrincipal(user);
+          if (principal == null) {
+            log.log(Level.WARNING,
+                "Unable to determine login name. Skipping user with ID {0}",
+                user.getID());
+            continue;
+          }
+          members.add(principal);
+        }
+      }
+      return defs;
     }
 
     private Principal userDescriptionToPrincipal(UserDescription user) {

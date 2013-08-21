@@ -1167,15 +1167,40 @@ public class SharePointAdaptorTest {
 
   @Test
   public void testGetDocIds() throws Exception {
-    adaptor = new SharePointAdaptor(initableSoapFactory,
+    final Map<GroupPrincipal, Collection<Principal>> goldenGroups;
+    {
+      Map<GroupPrincipal, Collection<Principal>> tmp
+          = new TreeMap<GroupPrincipal, Collection<Principal>>();
+      tmp.put(SITES_SITECOLLECTION_OWNERS, Arrays.<Principal>asList(
+          GDC_PSL_ADMINISTRATOR));
+      tmp.put(SITES_SITECOLLECTION_MEMBERS, Arrays.asList(
+            new UserPrincipal("GDC-PSL\\spuser2", DEFAULT_NAMESPACE),
+            new GroupPrincipal("BUILTIN\\users", DEFAULT_NAMESPACE),
+            new UserPrincipal("GDC-PSL\\spuser4", DEFAULT_NAMESPACE)));
+      tmp.put(SITES_SITECOLLECTION_VISITORS, Arrays.<Principal>asList());
+      goldenGroups = Collections.unmodifiableMap(tmp);
+    }
+
+    adaptor = new SharePointAdaptor(MockSoapFactory.blank()
+        .endpoint(AUTH_ENDPOINT, new MockAuthenticationSoap())
+        .endpoint(VS_ENDPOINT, MockSiteData.blank()
+          .register(VS_CONTENT_EXCHANGE)
+          .register(CD_CONTENT_EXCHANGE
+            .replaceInContent("<Site URL=\"http://localhost:1\"\n"
+              + " ID=\"{bb3bb2dd-6ea7-471b-a361-6fb67988755c}\" />", ""))
+          .register(SITES_SITECOLLECTION_SAW_EXCHANGE))
+        .endpoint(SITES_SITECOLLECTION_ENDPOINT, MockSiteData.blank()
+          .register(SITES_SITECOLLECTION_SC_CONTENT_EXCHANGE)),
         new UnsupportedHttpClient(), executorFactory);
     AccumulatingDocIdPusher pusher = new AccumulatingDocIdPusher();
     adaptor.init(new MockAdaptorContext(config, pusher));
     assertEquals(0, pusher.getRecords().size());
+    assertEquals(0, pusher.getGroups().size());
     adaptor.getDocIds(pusher);
-    assertEquals(1, pusher.getRecords().size());
-    assertEquals(new DocIdPusher.Record.Builder(new DocId("")).build(),
-        pusher.getRecords().get(0));
+    assertEquals(
+        Arrays.asList(new DocIdPusher.Record.Builder(new DocId("")).build()),
+        pusher.getRecords());
+    assertEquals(goldenGroups, pusher.getGroups());
   }
 
   @Test
@@ -1364,16 +1389,19 @@ public class SharePointAdaptorTest {
     adaptor.init(new MockAdaptorContext(config, pusher));
     SPContentDatabase result = parseChanges(getChangesContentDatabase);
     List<DocId> docIds = new ArrayList<DocId>();
+    Map<GroupPrincipal, Collection<Principal>> groupDefs
+        = new HashMap<GroupPrincipal, Collection<Principal>>();
     adaptor.new SiteAdaptor(
         "http://localhost:1/sites/SiteCollection",
         "http://localhost:1/sites/SiteCollection", new UnsupportedSiteData(),
         new UnsupportedUserGroupSoap(), new UnsupportedPeopleSoap(),
         new UnsupportedCallable<MemberIdMapping>(),
         new UnsupportedCallable<MemberIdMapping>())
-        .getModifiedDocIdsContentDatabase(result, docIds);
+        .getModifiedDocIdsContentDatabase(result, docIds, groupDefs);
     assertEquals(Arrays.asList(
           new DocId("http://localhost:1/Lists/Announcements/2_.000")),
         docIds);
+    assertEquals(Collections.emptyMap(), groupDefs);
   }
 
   @Test
@@ -2207,9 +2235,12 @@ public class SharePointAdaptorTest {
     }
 
     public ContentExchange replaceInContent(String match, String replacement) {
+      String result = getContentResult.replace(match, replacement);
+      if (getContentResult.equals(result)) {
+        fail("Replacement had not effect");
+      }
       return new ContentExchange(objectType, objectId, folderUrl, itemId,
-          retrieveChildItems, securityOnly, lastItemIdOnPage,
-          getContentResult.replace(match, replacement));
+          retrieveChildItems, securityOnly, lastItemIdOnPage, result);
     }
   }
 
