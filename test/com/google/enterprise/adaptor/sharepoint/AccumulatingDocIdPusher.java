@@ -16,25 +16,18 @@ package com.google.enterprise.adaptor.sharepoint;
 
 import com.google.enterprise.adaptor.Acl;
 import com.google.enterprise.adaptor.DocId;
-import com.google.enterprise.adaptor.DocIdPusher;
-import com.google.enterprise.adaptor.PushErrorHandler;
+import com.google.enterprise.adaptor.ExceptionHandler;
 
 import java.util.*;
 
-class AccumulatingDocIdPusher implements DocIdPusher {
+class AccumulatingDocIdPusher extends UnsupportedDocIdPusher {
   private List<Record> records = new ArrayList<Record>();
   private List<Map<DocId, Acl>> namedResouces
       = new ArrayList<Map<DocId, Acl>>();
 
   @Override
-  public DocId pushDocIds(Iterable<DocId> docIds)
-      throws InterruptedException {
-    return pushDocIds(docIds, null);
-  }
-
-  @Override
   public DocId pushDocIds(Iterable<DocId> docIds,
-                          PushErrorHandler handler)
+                          ExceptionHandler handler)
       throws InterruptedException {
     List<Record> records = new ArrayList<Record>();
     for (DocId docId : docIds) {
@@ -45,14 +38,8 @@ class AccumulatingDocIdPusher implements DocIdPusher {
   }
 
   @Override
-  public Record pushRecords(Iterable<Record> records)
-      throws InterruptedException {
-    return pushRecords(records, null);
-  }
-
-  @Override
   public Record pushRecords(Iterable<Record> records,
-                            PushErrorHandler handler)
+                            ExceptionHandler handler)
       throws InterruptedException {
     for (Record record : records) {
       this.records.add(record);
@@ -81,7 +68,7 @@ class AccumulatingDocIdPusher implements DocIdPusher {
 
   @Override
   public DocId pushNamedResources(Map<DocId, Acl> resources,
-                                  PushErrorHandler hanlder)
+                                  ExceptionHandler hanlder)
       throws InterruptedException {
     namedResouces.add(Collections.unmodifiableMap(
         new TreeMap<DocId, Acl>(resources)));

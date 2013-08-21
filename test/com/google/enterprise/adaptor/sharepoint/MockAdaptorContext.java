@@ -19,7 +19,7 @@ import com.google.enterprise.adaptor.Config;
 import com.google.enterprise.adaptor.DocId;
 import com.google.enterprise.adaptor.DocIdEncoder;
 import com.google.enterprise.adaptor.DocIdPusher;
-import com.google.enterprise.adaptor.GetDocIdsErrorHandler;
+import com.google.enterprise.adaptor.ExceptionHandler;
 import com.google.enterprise.adaptor.SensitiveValueDecoder;
 import com.google.enterprise.adaptor.Session;
 import com.google.enterprise.adaptor.StatusSource;
@@ -91,7 +91,7 @@ class MockAdaptorContext implements AdaptorContext {
   }
 
   @Override
-  public GetDocIdsErrorHandler getGetDocIdsFullErrorHandler() {
+  public ExceptionHandler getGetDocIdsFullErrorHandler() {
     throw new UnsupportedOperationException();
   }
 
@@ -106,7 +106,7 @@ class MockAdaptorContext implements AdaptorContext {
   }
 
   @Override
-  public void setGetDocIdsFullErrorHandler(GetDocIdsErrorHandler handler) {
+  public void setGetDocIdsFullErrorHandler(ExceptionHandler handler) {
     throw new UnsupportedOperationException();
   }
 
@@ -121,12 +121,12 @@ class MockAdaptorContext implements AdaptorContext {
   }
 
   @Override
-  public GetDocIdsErrorHandler getGetDocIdsIncrementalErrorHandler() {
+  public ExceptionHandler getGetDocIdsIncrementalErrorHandler() {
     throw new UnsupportedOperationException();
   }
 
   @Override
-  public void setGetDocIdsIncrementalErrorHandler(GetDocIdsErrorHandler h) {
+  public void setGetDocIdsIncrementalErrorHandler(ExceptionHandler h) {
     throw new UnsupportedOperationException();
   }
 }

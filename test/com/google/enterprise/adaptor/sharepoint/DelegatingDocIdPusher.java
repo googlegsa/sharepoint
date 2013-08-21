@@ -17,7 +17,9 @@ package com.google.enterprise.adaptor.sharepoint;
 import com.google.enterprise.adaptor.Acl;
 import com.google.enterprise.adaptor.DocId;
 import com.google.enterprise.adaptor.DocIdPusher;
-import com.google.enterprise.adaptor.PushErrorHandler;
+import com.google.enterprise.adaptor.ExceptionHandler;
+import com.google.enterprise.adaptor.GroupPrincipal;
+import com.google.enterprise.adaptor.Principal;
 
 import java.util.*;
 
@@ -28,12 +30,12 @@ abstract class DelegatingDocIdPusher implements DocIdPusher {
   @Override
   public DocId pushDocIds(Iterable<DocId> docIds)
       throws InterruptedException {
-    return delegate().pushDocIds(docIds, null);
+    return pushDocIds(docIds, null);
   }
 
   @Override
   public DocId pushDocIds(Iterable<DocId> docIds,
-                          PushErrorHandler handler)
+                          ExceptionHandler handler)
       throws InterruptedException {
     return delegate().pushDocIds(docIds, handler);
   }
@@ -41,12 +43,12 @@ abstract class DelegatingDocIdPusher implements DocIdPusher {
   @Override
   public Record pushRecords(Iterable<Record> records)
       throws InterruptedException {
-    return delegate().pushRecords(records, null);
+    return pushRecords(records, null);
   }
 
   @Override
   public Record pushRecords(Iterable<Record> records,
-                            PushErrorHandler handler)
+                            ExceptionHandler handler)
       throws InterruptedException {
     return delegate().pushRecords(records, handler);
   }
@@ -54,13 +56,28 @@ abstract class DelegatingDocIdPusher implements DocIdPusher {
   @Override
   public DocId pushNamedResources(Map<DocId, Acl> resources)
       throws InterruptedException {
-    return delegate().pushNamedResources(resources, null);
+    return pushNamedResources(resources, null);
   }
 
   @Override
   public DocId pushNamedResources(Map<DocId, Acl> resources,
-                                  PushErrorHandler handler)
+                                  ExceptionHandler handler)
       throws InterruptedException {
     return delegate().pushNamedResources(resources, handler);
+  }
+
+  @Override
+  public GroupPrincipal pushGroupDefinitions(
+      Map<GroupPrincipal, ? extends Collection<Principal>> defs,
+      boolean caseSensitive) throws InterruptedException {
+    return pushGroupDefinitions(defs, caseSensitive, null);
+  }
+
+  @Override
+  public GroupPrincipal pushGroupDefinitions(
+      Map<GroupPrincipal, ? extends Collection<Principal>> defs,
+      boolean caseSensitive, ExceptionHandler handler)
+      throws InterruptedException {
+    return delegate().pushGroupDefinitions(defs, caseSensitive, handler);
   }
 }
