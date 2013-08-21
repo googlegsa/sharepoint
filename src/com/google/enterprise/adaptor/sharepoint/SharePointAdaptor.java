@@ -36,7 +36,6 @@ import com.google.enterprise.adaptor.sharepoint.RareModificationCache.CachedWeb;
 import com.google.enterprise.adaptor.sharepoint.SiteDataClient.CursorPaginator;
 import com.google.enterprise.adaptor.sharepoint.SiteDataClient.Paginator;
 import com.google.enterprise.adaptor.sharepoint.SiteDataClient.XmlProcessingException;
-import com.microsoft.schemas.sharepoint.soap.authentication.AuthenticationSoap;
 
 import com.microsoft.schemas.sharepoint.soap.ContentDatabase;
 import com.microsoft.schemas.sharepoint.soap.ContentDatabases;
@@ -68,6 +67,7 @@ import com.microsoft.schemas.sharepoint.soap.VirtualServer;
 import com.microsoft.schemas.sharepoint.soap.Web;
 import com.microsoft.schemas.sharepoint.soap.Webs;
 import com.microsoft.schemas.sharepoint.soap.Xml;
+import com.microsoft.schemas.sharepoint.soap.authentication.AuthenticationSoap;
 import com.microsoft.schemas.sharepoint.soap.directory.GetUserCollectionFromSiteResponse;
 import com.microsoft.schemas.sharepoint.soap.directory.GetUserCollectionFromSiteResponse.GetUserCollectionFromSiteResult;
 import com.microsoft.schemas.sharepoint.soap.directory.User;
@@ -516,7 +516,7 @@ public class SharePointAdaptor extends AbstractAdaptor
       
       String endpointUserGroup = site + "/_vti_bin/UserGroup.asmx";
       UserGroupSoap userGroupSoap = soapFactory.newUserGroup(endpointUserGroup);
-      String endpointPeople= site + "/_vti_bin/People.asmx";
+      String endpointPeople = site + "/_vti_bin/People.asmx";
       PeopleSoap peopleSoap = soapFactory.newPeople(endpointPeople);
       // JAX-WS RT 2.1.4 doesn't handle headers correctly and always assumes the
       // list contains precisely one entry, so we work around it here.
@@ -1738,7 +1738,7 @@ public class SharePointAdaptor extends AbstractAdaptor
       return null;
     }
 
-    private Map<String,PrincipalInfo> resolvePrincipals(
+    private Map<String, PrincipalInfo> resolvePrincipals(
         List<String> principalsToResolve) {
       Map<String, PrincipalInfo> resolved
           = new HashMap<String, PrincipalInfo>();

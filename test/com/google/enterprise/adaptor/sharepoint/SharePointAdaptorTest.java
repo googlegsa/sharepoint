@@ -32,12 +32,12 @@ import com.google.enterprise.adaptor.UserPrincipal;
 import com.google.enterprise.adaptor.sharepoint.SharePointAdaptor.SiteUserIdMappingCallable;
 import com.google.enterprise.adaptor.sharepoint.SharePointAdaptor.SoapFactory;
 
-import com.microsoft.schemas.sharepoint.soap.authentication.AuthenticationMode;
-import com.microsoft.schemas.sharepoint.soap.authentication.AuthenticationSoap;
-import com.microsoft.schemas.sharepoint.soap.authentication.LoginResult;
 import com.microsoft.schemas.sharepoint.soap.ObjectType;
 import com.microsoft.schemas.sharepoint.soap.SPContentDatabase;
 import com.microsoft.schemas.sharepoint.soap.SiteDataSoap;
+import com.microsoft.schemas.sharepoint.soap.authentication.AuthenticationMode;
+import com.microsoft.schemas.sharepoint.soap.authentication.AuthenticationSoap;
+import com.microsoft.schemas.sharepoint.soap.authentication.LoginResult;
 import com.microsoft.schemas.sharepoint.soap.directory.AddUserCollectionToGroup;
 import com.microsoft.schemas.sharepoint.soap.directory.AddUserCollectionToRole;
 import com.microsoft.schemas.sharepoint.soap.directory.EmailsInputType;
@@ -449,7 +449,7 @@ public class SharePointAdaptorTest {
     String[] permitUsers = new String[] {"GDC-PSL\\Administrator",
         "GDC-PSL\\spuser1", "NT AUTHORITY\\LOCAL SERVICE",
         "GSA-CONNECTORS\\Administrator"};
-    String[] permitGroups= new String[] {"GSA-CONNECTORS\\domain users"};
+    String[] permitGroups = new String[] {"GSA-CONNECTORS\\domain users"};
     assertEquals(new Acl.Builder()
         .setEverythingCaseInsensitive()
         .setInheritanceType(Acl.InheritanceType.PARENT_OVERRIDES)
