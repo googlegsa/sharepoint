@@ -397,9 +397,18 @@ public class SharePointAdaptor extends AbstractAdaptor
 
   @Override
   public void getModifiedDocIds(DocIdPusher pusher)
-      throws InterruptedException, IOException {
+      throws InterruptedException {
     log.entering("SharePointAdaptor", "getModifiedDocIds", pusher);
-    SiteAdaptor siteAdaptor = getSiteAdaptor(virtualServer, virtualServer);
+    SiteAdaptor siteAdaptor;
+    try {
+      siteAdaptor = getSiteAdaptor(virtualServer, virtualServer);
+    } catch (IOException ex) {
+      // The call should never fail, and it is the only IOException-throwing
+      // call that we can't recover from. Handling it this way allows us to
+      // remove IOException from the signature and ensure that we handle the
+      // exception gracefully throughout this method.
+      throw new RuntimeException(ex);
+    }
     SiteDataClient client = siteAdaptor.getSiteDataClient();
     VirtualServer vs = null;
     try {
@@ -474,6 +483,7 @@ public class SharePointAdaptor extends AbstractAdaptor
       CursorPaginator<SPContentDatabase, String> changesPaginator
           = client.getChangesContentDatabase(contentDatabase, changeId,
               isSp2010);
+      Set<DocId> docIds = new HashSet<DocId>();
       try {
         while (true) {
           try {
@@ -481,7 +491,7 @@ public class SharePointAdaptor extends AbstractAdaptor
             if (changes == null) {
               break;
             }
-            siteAdaptor.getModifiedDocIds(changes, pusher);
+            siteAdaptor.getModifiedDocIdsContentDatabase(changes, docIds);
           } catch (XmlProcessingException ex) {
             log.log(Level.WARNING, "Error parsing changes from content "
                 + "database: " + contentDatabase, ex);
@@ -496,8 +506,16 @@ public class SharePointAdaptor extends AbstractAdaptor
         log.log(Level.WARNING, "Error getting changes from content database: "
             + contentDatabase, ex);
         // Continue processing. Hope that next time works better.
-        continue;
       }
+      List<DocIdPusher.Record> records
+          = new ArrayList<DocIdPusher.Record>(docIds.size());
+      DocIdPusher.Record.Builder builder
+          = new DocIdPusher.Record.Builder(new DocId("to-be-replaced-name"))
+          .setCrawlImmediately(true);
+      for (DocId docId : docIds) {
+        records.add(builder.setDocId(docId).build());
+      }
+      pusher.pushRecords(records);
     }
     log.exiting("SharePointAdaptor", "getModifiedDocIds", pusher);
   }
@@ -1591,54 +1609,43 @@ public class SharePointAdaptor extends AbstractAdaptor
     }
 
     @VisibleForTesting
-    void getModifiedDocIds(SPContentDatabase changes, DocIdPusher pusher)
-        throws IOException, InterruptedException {
-      log.entering("SiteAdaptor", "getModifiedDocIds",
-          new Object[] {changes, pusher});
-      List<DocId> docIds = new ArrayList<DocId>();
-      getModifiedDocIdsContentDatabase(changes, docIds);
-      List<DocIdPusher.Record> records
-        = new ArrayList<DocIdPusher.Record>(docIds.size());
-      DocIdPusher.Record.Builder builder
-          = new DocIdPusher.Record.Builder(new DocId("fake"))
-          .setCrawlImmediately(true);
-      for (DocId docId : docIds) {
-        records.add(builder.setDocId(docId).build());
-      }
-      pusher.pushRecords(records);
-      log.exiting("SiteAdaptor", "getModifiedDocIds");
-    }
-
-    private void getModifiedDocIdsContentDatabase(SPContentDatabase changes,
-        List<DocId> docIds) {
+    void getModifiedDocIdsContentDatabase(SPContentDatabase changes,
+        Collection<DocId> docIds) throws IOException {
       log.entering("SiteAdaptor", "getModifiedDocIdsContentDatabase",
           new Object[] {changes, docIds});
       if (!"Unchanged".equals(changes.getChange())) {
         docIds.add(virtualServerDocId);
       }
       for (SPSite site : changes.getSPSite()) {
-        getModifiedDocIdsSite(site, docIds);
+        String siteString
+            = encodeDocId(site.getSite().getMetadata().getURL()).getUniqueId();
+        SiteAdaptor siteAdaptor = getSiteAdaptor(siteString, siteString);
+        siteAdaptor.getModifiedDocIdsSite(site, docIds);
       }
       log.exiting("SiteAdaptor", "getModifiedDocIdsContentDatabase");
     }
 
-    private void getModifiedDocIdsSite(SPSite changes, List<DocId> docIds) {
+    private void getModifiedDocIdsSite(SPSite changes, Collection<DocId> docIds)
+        throws IOException {
       log.entering("SiteAdaptor", "getModifiedDocIdsSite",
           new Object[] {changes, docIds});
       if (isModified(changes.getChange())) {
-        docIds.add(new DocId(changes.getSite().getMetadata().getURL()));
+        docIds.add(new DocId(siteUrl));
       }
       for (SPWeb web : changes.getSPWeb()) {
-        getModifiedDocIdsWeb(web, docIds);
+        String webString
+            = encodeDocId(web.getWeb().getMetadata().getURL()).getUniqueId();
+        SiteAdaptor webAdaptor = getSiteAdaptor(siteUrl, webString);
+        webAdaptor.getModifiedDocIdsWeb(web, docIds);
       }
       log.exiting("SiteAdaptor", "getModifiedDocIdsSite");
     }
 
-    private void getModifiedDocIdsWeb(SPWeb changes, List<DocId> docIds) {
+    private void getModifiedDocIdsWeb(SPWeb changes, Collection<DocId> docIds) {
       log.entering("SiteAdaptor", "getModifiedDocIdsWeb",
           new Object[] {changes, docIds});
       if (isModified(changes.getChange())) {
-        docIds.add(new DocId(changes.getWeb().getMetadata().getURL()));
+        docIds.add(new DocId(webUrl));
       }
       for (Object choice : changes.getSPFolderOrSPListOrSPFile()) {
         if (choice instanceof SPFolder) {
@@ -1654,7 +1661,8 @@ public class SharePointAdaptor extends AbstractAdaptor
       log.exiting("SiteAdaptor", "getModifiedDocIdsWeb");
     }
 
-    private void getModifiedDocIdsFolder(SPFolder changes, List<DocId> docIds) {
+    private void getModifiedDocIdsFolder(SPFolder changes,
+        Collection<DocId> docIds) {
       log.entering("SiteAdaptor", "getModifiedDocIdsFolder",
           new Object[] {changes, docIds});
       if (isModified(changes.getChange())) {
@@ -1663,7 +1671,8 @@ public class SharePointAdaptor extends AbstractAdaptor
       log.exiting("SiteAdaptor", "getModifiedDocIdsFolder");
     }
 
-    private void getModifiedDocIdsList(SPList changes, List<DocId> docIds) {
+    private void getModifiedDocIdsList(SPList changes,
+        Collection<DocId> docIds) {
       log.entering("SiteAdaptor", "getModifiedDocIdsList",
           new Object[] {changes, docIds});
       if (isModified(changes.getChange())) {
@@ -1680,7 +1689,7 @@ public class SharePointAdaptor extends AbstractAdaptor
     }
 
     private void getModifiedDocIdsListItem(SPListItem changes,
-        List<DocId> docIds) {
+        Collection<DocId> docIds) {
       log.entering("SiteAdaptor", "getModifiedDocIdsListItem",
           new Object[] {changes, docIds});
       if (isModified(changes.getChange())) {
@@ -1702,7 +1711,8 @@ public class SharePointAdaptor extends AbstractAdaptor
       log.exiting("SiteAdaptor", "getModifiedDocIdsListItem");
     }
 
-    private void getModifiedDocIdsFile(SPFile changes, List<DocId> docIds) {
+    private void getModifiedDocIdsFile(SPFile changes,
+        Collection<DocId> docIds) {
       log.entering("SiteAdaptor", "getModifiedDocIdsFile",
           new Object[] {changes, docIds});
       if (isModified(changes.getChange())) {

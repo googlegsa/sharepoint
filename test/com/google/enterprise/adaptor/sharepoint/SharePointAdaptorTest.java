@@ -1362,20 +1362,19 @@ public class SharePointAdaptorTest {
         = loadTestString("testModifiedGetDocIdsClient.changes-cd.xml");
     adaptor = new SharePointAdaptor(initableSoapFactory,
         new UnsupportedHttpClient(), executorFactory);
-    AccumulatingDocIdPusher pusher = new AccumulatingDocIdPusher();
     adaptor.init(new MockAdaptorContext(config, pusher));
     SPContentDatabase result = parseChanges(getChangesContentDatabase);
+    List<DocId> docIds = new ArrayList<DocId>();
     adaptor.new SiteAdaptor(
         "http://localhost:1/sites/SiteCollection",
         "http://localhost:1/sites/SiteCollection", new UnsupportedSiteData(),
         new UnsupportedUserGroupSoap(), new UnsupportedPeopleSoap(),
         new UnsupportedCallable<MemberIdMapping>(),
         new UnsupportedCallable<MemberIdMapping>())
-        .getModifiedDocIds(result, pusher);
-    assertEquals(1, pusher.getRecords().size());
-    assertEquals(new DocIdPusher.Record.Builder(new DocId(
-          "http://localhost:1/Lists/Announcements/2_.000"))
-        .setCrawlImmediately(true).build(), pusher.getRecords().get(0));
+        .getModifiedDocIdsContentDatabase(result, docIds);
+    assertEquals(Arrays.asList(
+          new DocId("http://localhost:1/Lists/Announcements/2_.000")),
+        docIds);
   }
 
   @Test
