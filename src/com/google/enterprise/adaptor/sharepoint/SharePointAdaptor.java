@@ -1830,6 +1830,7 @@ public class SharePointAdaptor extends AbstractAdaptor
         HtmlResponseWriter writer
             = createHtmlResponseWriter(response, metadataLength);
         writer.start(request.getDocId(), ObjectType.FOLDER, null);
+        processAttachments(listId, itemId, row, writer);
         processFolder(listId, folder.substring(root.length()), writer);
         writer.finish();
         log.exiting("SiteAdaptor", "getListItemDocContent");
@@ -1858,20 +1859,25 @@ public class SharePointAdaptor extends AbstractAdaptor
         HtmlResponseWriter writer
             = createHtmlResponseWriter(response, metadataLength);
         writer.start(request.getDocId(), ObjectType.LIST_ITEM, title);
-        String strAttachments = row.getAttribute(OWS_ATTACHMENTS_ATTRIBUTE);
-        int attachments = (strAttachments == null || "".equals(strAttachments))
-            ? 0 : Integer.parseInt(strAttachments);
-        if (attachments > 0) {
-          writer.startSection(ObjectType.LIST_ITEM_ATTACHMENTS);
-          Item item
-              = siteDataClient.getContentListItemAttachments(listId, itemId);
-          for (Item.Attachment attachment : item.getAttachment()) {
-            writer.addLink(encodeDocId(attachment.getURL()), null);
-          }
-        }
+        processAttachments(listId, itemId, row, writer);
         writer.finish();
       }
       log.exiting("SiteAdaptor", "getListItemDocContent");
+    }
+
+    private void processAttachments(String listId, String itemId, Element row,
+        HtmlResponseWriter writer) throws IOException {
+      String strAttachments = row.getAttribute(OWS_ATTACHMENTS_ATTRIBUTE);
+      int attachments = (strAttachments == null || "".equals(strAttachments))
+          ? 0 : Integer.parseInt(strAttachments);
+      if (attachments > 0) {
+        writer.startSection(ObjectType.LIST_ITEM_ATTACHMENTS);
+        Item item
+            = siteDataClient.getContentListItemAttachments(listId, itemId);
+        for (Item.Attachment attachment : item.getAttachment()) {
+          writer.addLink(encodeDocId(attachment.getURL()), null);
+        }
+      }
     }
 
     private boolean getAttachmentDocContent(Request request, Response response)
