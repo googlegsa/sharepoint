@@ -251,7 +251,7 @@ class SiteDataClient {
    */
   public CursorPaginator<SPContentDatabase, String>
       getChangesContentDatabase(final String contentDatabaseGuid,
-          String startChangeId, final boolean isSp2010) {
+          String startChangeId, final boolean isSp2007) {
     log.entering("SiteDataClient", "getChangesContentDatabase",
         new Object[] {contentDatabaseGuid, startChangeId});
     final Holder<String> lastChangeId = new Holder<String>(startChangeId);
@@ -267,12 +267,12 @@ class SiteDataClient {
         }
         lastLastChangeId.value = lastChangeId.value;
         Holder<String> result = new Holder<String>();
-        // In non-SP2010, the timeout is a number of seconds. In SP2010, the
-        // timeout is n * 60, where n is the number of items you want
-        // returned. However, in SP2010, asking for more than 10 items seems
-        // to lose results. If timeout is less than 60 in SP 2010, then it
-        // causes an infinite loop.
-        int timeout = isSp2010 ? 10 * 60 : 15;
+        // In SP 2007, the timeout is a number of seconds. In SP2010 and above,
+        // the timeout is n * 60, where n is the number of items you want
+        // returned. However, asking for more than 10 items seems
+        // to lose results. If timeout is less than 60 in SP 2010 / 2013,
+        // then it causes an infinite loop.
+        int timeout = isSp2007 ? 15 : 10 * 60;
         siteData.getChanges(ObjectType.CONTENT_DATABASE, contentDatabaseGuid,
             lastChangeId, currentChangeId, timeout, result, moreChanges);
         // XmlProcessingExceptions fine after this point.

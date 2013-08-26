@@ -243,10 +243,10 @@ public class SharePointAdaptor extends AbstractAdaptor
   private String defaultNamespace;
   /** Authenticator instance that authenticates with SP. */
   /**
-   * Cached value of whether we are talking to a SP 2010 server or not. This
+   * Cached value of whether we are talking to a SP 2007 server or not. This
    * value is used in case of error in certain situations.
    */
-  private boolean isSp2010;
+  private boolean isSp2007;
   private NtlmAuthenticator ntlmAuthenticator;
   /**
    * Lock for refreshing MemberIdMapping. We use a unique lock because it is
@@ -336,7 +336,13 @@ public class SharePointAdaptor extends AbstractAdaptor
           = new RareModificationCache(virtualServerSiteDataClient, executor);
 
       // Test out configuration.
-      virtualServerSiteDataClient.getContentVirtualServer();
+      VirtualServer vs = virtualServerSiteDataClient.getContentVirtualServer();
+      String version = vs.getMetadata().getVersion();
+      log.log(Level.INFO, "SharePoint Version : {0}", version);
+      // Version is missing for SP 2007 (but its version is 12).
+      // Version for SP2010 is 14. Version for SP2013 is 15.
+      isSp2007 = (version == null);
+      log.log(Level.FINE, "isSP2007 : {0}", isSp2007);
     } catch (Exception e) {
       // Don't leak the executor.
       destroy();
@@ -420,17 +426,9 @@ public class SharePointAdaptor extends AbstractAdaptor
     Set<String> discoveredContentDatabases;
     if (vs == null) {
       // Retrieving list of databases failed, but we can continue without it.
-      // We don't set isSp2010 here, because we don't know what version of
-      // server we are talking to. However, if isSp2010 is still its default,
-      // then contentDatabaseChangeId is also its default and is empty. When
-      // contentDatabaseChangeId is empty, we won't end up using isSp2010.
       discoveredContentDatabases
         = new HashSet<String>(contentDatabaseChangeId.keySet());
     } else {
-      String version = vs.getMetadata().getVersion();
-      // Version is missing for SP 2007 (but its version is 12). SP 2010 is 14.
-      isSp2010 = version != null && version.startsWith("14.");
-
       discoveredContentDatabases = new HashSet<String>();
       if (vs.getContentDatabases() != null) {
         for (ContentDatabases.ContentDatabase cd
@@ -482,7 +480,7 @@ public class SharePointAdaptor extends AbstractAdaptor
       }
       CursorPaginator<SPContentDatabase, String> changesPaginator
           = client.getChangesContentDatabase(contentDatabase, changeId,
-              isSp2010);
+              isSp2007);
       Set<DocId> docIds = new HashSet<DocId>();
       try {
         while (true) {
