@@ -981,13 +981,7 @@ public class SharePointAdaptorTest {
               mockUserGroupSoap)
           .endpoint(SITES_SITECOLLECTION_ENDPOINT, new UnsupportedSiteData()),
         new UnsupportedHttpClient(), executorFactory);
-    final AccumulatingDocIdPusher docIdPusher = new AccumulatingDocIdPusher();
-    adaptor.init(new MockAdaptorContext(config, pusher) {
-      @Override
-      public DocIdPusher getDocIdPusher() {
-        return docIdPusher;
-      }
-    });
+    adaptor.init(new MockAdaptorContext(config, pusher));
     ByteArrayOutputStream baos = new ByteArrayOutputStream();
     GetContentsRequest request = new GetContentsRequest(
         new DocId("http://localhost:1/sites/SiteCollection/Lists/Custom List/"
@@ -1010,15 +1004,14 @@ public class SharePointAdaptorTest {
     assertEquals(new Acl.Builder()
         .setEverythingCaseInsensitive()
         .setInheritFrom(new DocId("http://localhost:1/sites/SiteCollection"
-            + "/Lists/Custom List/Test Folder/2_.000_READ_SECURITY"))
+            + "/Lists/Custom List/Test Folder/2_.000"), "readSecurity")
         .setPermitUsers(Arrays.asList(GDC_PSL_ADMINISTRATOR))
         .setPermitGroups(Arrays.asList(SITES_SITECOLLECTION_OWNERS,
             SITES_SITECOLLECTION_MEMBERS, SITES_SITECOLLECTION_VISITORS))
         .setInheritanceType(Acl.InheritanceType.PARENT_OVERRIDES).build(),
         response.getAcl());
-    assertEquals(Collections.singletonList(Collections.singletonMap(
-        new DocId("http://localhost:1/sites/SiteCollection/Lists/Custom List/"
-            + "Test Folder/2_.000_READ_SECURITY"),
+    assertEquals(Collections.singletonMap(
+        "readSecurity",
         new Acl.Builder()
             .setEverythingCaseInsensitive()
             .setPermitUsers(Arrays.asList(GDC_PSL_ADMINISTRATOR,
@@ -1026,8 +1019,8 @@ public class SharePointAdaptorTest {
             .setPermitGroups(Arrays.asList(SITES_SITECOLLECTION_OWNERS))
             .setInheritanceType(Acl.InheritanceType.AND_BOTH_PERMIT)
             .setInheritFrom(new DocId(""))
-            .build())),
-        docIdPusher.getNamedResources());
+            .build()),
+        response.getNamedResources());
   }
 
   public void testGetDocContentListItemScopeSameAsParent() throws Exception {

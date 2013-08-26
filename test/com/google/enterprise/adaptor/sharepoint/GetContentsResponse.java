@@ -38,6 +38,7 @@ class GetContentsResponse implements Response {
   private boolean lock;
   private boolean crawlOnce;
   private URI displayUrl;
+  private Map<String, Acl> namedResources = new HashMap<String, Acl>();
 
   public GetContentsResponse(OutputStream os) {
     this.os = os;
@@ -119,6 +120,11 @@ class GetContentsResponse implements Response {
     this.displayUrl = displayUrl;
   }
 
+  @Override
+  public void putNamedResource(String fragment, Acl acl) {
+    namedResources.put(fragment, acl);
+  }
+
   public String getContentType() {
     return contentType;
   }
@@ -166,5 +172,9 @@ class GetContentsResponse implements Response {
 
   public URI getDisplayUrl() {
     return displayUrl;
+  }
+
+  public Map<String, Acl> getNamedResources() {
+    return namedResources;
   }
 }

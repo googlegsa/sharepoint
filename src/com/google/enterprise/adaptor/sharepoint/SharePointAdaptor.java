@@ -1407,8 +1407,7 @@ public class SharePointAdaptor extends AbstractAdaptor
               + request.getDocId());
         }
       } else {
-        DocId namedResource
-            = new DocId(request.getDocId().getUniqueId() + "_READ_SECURITY");
+        final String fragmentName = "readSecurity";
         List<Permission> permission = null;
         Scopes scopes = getFirstChildOfType(xml, Scopes.class);
         for (Scopes.Scope scope : scopes.getScope()) {
@@ -1422,7 +1421,7 @@ public class SharePointAdaptor extends AbstractAdaptor
               = i.getMetadata().getScope().getPermissions().getPermission();
         }
         acl = generateAcl(permission, LIST_ITEM_MASK)
-            .setInheritFrom(namedResource);
+            .setInheritFrom(request.getDocId(), fragmentName);
         int authorId = -1;
         String authorValue = row.getAttribute(OWS_AUTHOR_ATTRIBUTE);
         if (authorValue != null) {
@@ -1436,18 +1435,7 @@ public class SharePointAdaptor extends AbstractAdaptor
             .setInheritFrom(virtualServerDocId)
             .setInheritanceType(Acl.InheritanceType.AND_BOTH_PERMIT);
         addPermitUserToAcl(authorId, aclNamedResource);
-        final Map<DocId, Acl> map = new TreeMap<DocId, Acl>();
-        map.put(namedResource, aclNamedResource.build());
-        executor.execute(new Runnable() {
-          @Override
-          public void run() {
-            try {
-              context.getDocIdPusher().pushNamedResources(map);
-            } catch (InterruptedException ie) {
-              log.log(Level.WARNING, "Error pushing named resource", ie);
-            }
-          }
-        });
+        response.putNamedResource(fragmentName, aclNamedResource.build());
       }
       response.setAcl(acl
           .setInheritanceType(Acl.InheritanceType.PARENT_OVERRIDES)
