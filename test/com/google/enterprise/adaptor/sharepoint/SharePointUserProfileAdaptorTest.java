@@ -34,6 +34,7 @@ import org.w3c.dom.DOMImplementation;
 import java.io.ByteArrayInputStream;
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;
+import java.net.URI;
 import java.net.URLDecoder;
 import java.nio.charset.Charset;
 import java.util.ArrayList;
@@ -146,7 +147,7 @@ public class SharePointUserProfileAdaptorTest {
     ArrayOfPropertyData profile = new ArrayOfPropertyData();
     poulateProfileProperties(profile,
         SharePointUserProfileAdaptor.PROFILE_ACCOUNTNAME_PROPERTY,
-        new String[] {"user1"});
+        new String[] {"domain\\user1"});
     poulateProfileProperties(profile,
         SharePointUserProfileAdaptor.PROFILE_PREFERRED_NAME_PROPERTY,
         new String[] {"First & Last"});
@@ -182,7 +183,8 @@ public class SharePointUserProfileAdaptorTest {
     cPrivate.setName("Private Colleague");
     colleaguesData.getContactData().add(cPrivate);
 
-    serviceFactory.addUserProfileToCollection(1, 2, "user1", profile, colleaguesData);
+    serviceFactory.addUserProfileToCollection(1, 2, "domain\\user1",
+        profile, colleaguesData);
     adaptor = new SharePointUserProfileAdaptor(serviceFactory);
     config.overrideKey("adaptor.namespace", "ns1");
 
@@ -191,7 +193,8 @@ public class SharePointUserProfileAdaptorTest {
 
     ByteArrayOutputStream baos = new ByteArrayOutputStream();
     GetContentsRequest request = new GetContentsRequest(
-        new DocId(SharePointUserProfileAdaptor.SOCIAL_ID_PREFIX + "user1"));
+        new DocId(SharePointUserProfileAdaptor.SOCIAL_ID_PREFIX 
+          + "domain\\user1"));
     GetContentsResponse response = new GetContentsResponse(baos);
     adaptor.getDocContent(request, response);
     
@@ -201,7 +204,7 @@ public class SharePointUserProfileAdaptorTest {
     assertEquals(golden, responseString);
 
     assertFalse(response.isNotFound());
-    assertEquals("user1", response.getMetadata().getOneValue(
+    assertEquals("domain\\user1", response.getMetadata().getOneValue(
         "google_social_user_accountname"));
     assertEquals("Value1", response.getMetadata().getOneValue(
         "SP Single Value Property"));
@@ -240,6 +243,9 @@ public class SharePointUserProfileAdaptorTest {
     String isInWorkGroup
         = pubContact.getAttributes().getNamedItem("gsa:isinworkinggroup").getNodeValue();
     assertEquals("true", URLDecoder.decode(isInWorkGroup, "UTF-8"));
+    
+    assertEquals(URI.create("http://sharepoint.example.com/person.aspx?"
+        + "accountname=domain%5Cuser1"), response.getDisplayUrl());
 
 
 

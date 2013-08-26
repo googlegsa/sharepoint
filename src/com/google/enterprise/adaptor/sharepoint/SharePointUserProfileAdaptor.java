@@ -42,6 +42,7 @@ import java.io.StringWriter;
 import java.io.UnsupportedEncodingException;
 import java.net.Authenticator;
 import java.net.PasswordAuthentication;
+import java.net.URI;
 import java.net.URL;
 import java.net.URLEncoder;
 import java.nio.charset.Charset;
@@ -123,6 +124,7 @@ public class SharePointUserProfileAdaptor extends AbstractAdaptor
       Logger.getLogger(SharePointUserProfileAdaptor.class.getName());
 
   private String virtualServer;
+  private String mySiteHost;
   private NtlmAuthenticator ntlmAuthenticator;
   private final UserProfileServiceFactory userProfileServiceFactory;
 
@@ -168,6 +170,7 @@ public class SharePointUserProfileAdaptor extends AbstractAdaptor
     config.addKey("sharepoint.password", null);
     config.addKey("profile.setacl", "true");
     config.addKey("adaptor.namespace", "Default");
+    config.addKey("profile.mysitehost", "");
   }
 
   @Override
@@ -188,6 +191,18 @@ public class SharePointUserProfileAdaptor extends AbstractAdaptor
     log.log(Level.CONFIG, "Username: {0}", username);
     log.log(Level.CONFIG, "setAcl: {0}", setAcl);
     log.log(Level.CONFIG, "Namespace: {0}", namespace);
+    
+    mySiteHost = config.getValue("profile.mysitehost");
+    log.log(Level.CONFIG, "mySiteHost: {0}", mySiteHost);
+    if (mySiteHost.isEmpty()) {
+      log.log(Level.WARNING, "My site host is not specified."
+          + " Using virtual server url as My site host.");
+      mySiteHost = virtualServer;
+    }
+    
+    if (mySiteHost.endsWith("/")) {
+      mySiteHost = mySiteHost.substring(0, mySiteHost.length() - 1);
+    }
 
     ntlmAuthenticator = new NtlmAuthenticator(username, password);
     // Unfortunately, this is a JVM-wide modification.
@@ -296,18 +311,22 @@ public class SharePointUserProfileAdaptor extends AbstractAdaptor
           .address(endpoint).build();
       EndpointReference endpointChangeRef = new W3CEndpointReferenceBuilder()
           .address(endpointChangeService).build();
+      UserProfileServiceSoap inUserProfileServiceSoap 
+          = userProfileServiceSoap.getPort(
+              endpointRef, UserProfileServiceSoap.class);       
+      UserProfileChangeServiceSoap inUserProfileChangeServiceSoap 
+          = userProfileChangeServiceSoap.getPort(
+              endpointChangeRef, UserProfileChangeServiceSoap.class);
       // JAX-WS RT 2.1.4 doesn't handle headers correctly and always assumes the
       // list contains precisely one entry, so we work around it here.
       if (!cookies.isEmpty()) {
         addFormsAuthenticationCookies(
-            (BindingProvider) userProfileServiceSoap, cookies);
+            (BindingProvider) inUserProfileServiceSoap, cookies);
         addFormsAuthenticationCookies(
-            (BindingProvider) userProfileChangeServiceSoap, cookies);
+            (BindingProvider) inUserProfileChangeServiceSoap, cookies);
       }
-      return new SharePointUserProfileServiceWS(userProfileServiceSoap.
-          getPort(endpointRef, UserProfileServiceSoap.class),
-          userProfileChangeServiceSoap.getPort(endpointChangeRef,
-              UserProfileChangeServiceSoap.class));
+      return new SharePointUserProfileServiceWS(inUserProfileServiceSoap,
+          inUserProfileChangeServiceSoap);
     }
     
     private void addFormsAuthenticationCookies(BindingProvider port, 
@@ -525,6 +544,11 @@ public class SharePointUserProfileAdaptor extends AbstractAdaptor
           response.addMetadata(GSA_PROPNAME_COLLEAGUES, colleaguesXml);
         }
       }
+
+      String displayUrl = mySiteHost + "/person.aspx?accountname=" 
+          + URLEncoder.encode(userName, "UTF-8");
+      response.setDisplayUrl(URI.create(displayUrl));
+      
       String userProfileTitle = getUserProfilePropertySingleValue(
           userProfileProperties, PROFILE_PREFERRED_NAME_PROPERTY);
       if (userProfileTitle == null) {
