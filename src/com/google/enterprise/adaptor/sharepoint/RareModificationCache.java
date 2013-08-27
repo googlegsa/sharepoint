@@ -171,6 +171,7 @@ class RareModificationCache {
     public final TrueFalseType allowAnonymousAccess;
     public final TrueFalseType anonymousViewListItems;
     public final long anonymousPermMask;
+    public final String webTitle;
 
     public CachedWeb(Web w) {
       this.noIndex = w.getMetadata().getNoIndex();
@@ -178,6 +179,7 @@ class RareModificationCache {
       this.anonymousViewListItems = w.getMetadata().getAnonymousViewListItems();
       this.anonymousPermMask
           = w.getMetadata().getAnonymousPermMask().longValue();
+      this.webTitle = w.getMetadata().getTitle();
     }
   }
 

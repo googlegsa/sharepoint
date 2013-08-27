@@ -194,6 +194,11 @@ public class SharePointAdaptor extends AbstractAdaptor
   private static final String IDENTITY_CLAIMS_PREFIX = "i:0";
 
   private static final String OTHER_CLAIMS_PREFIX = "c:0";
+  
+  private static final String METADATA_OBJECT_TYPE = "google:objecttype";
+  private static final String METADATA_PARENT_WEB_TITLE 
+      = "sharepoint:parentwebtitle";
+  private static final String METADATA_LIST_GUID = "sharepoint:listguid";
 
   private static final Logger log
       = Logger.getLogger(SharePointAdaptor.class.getName());
@@ -815,6 +820,9 @@ public class SharePointAdaptor extends AbstractAdaptor
           .setEverythingCaseInsensitive()
           .setInheritanceType(Acl.InheritanceType.PARENT_OVERRIDES)
           .setPermits(permits).setDenies(denies).build());
+      
+      response.addMetadata(METADATA_OBJECT_TYPE,
+          ObjectType.VIRTUAL_SERVER.value());
 
       HtmlResponseWriter writer = createHtmlResponseWriter(response);
       writer.start(request.getDocId(), ObjectType.VIRTUAL_SERVER,
@@ -921,6 +929,10 @@ public class SharePointAdaptor extends AbstractAdaptor
             .setInheritanceType(Acl.InheritanceType.PARENT_OVERRIDES)
             .build());
       }
+      
+      response.addMetadata(METADATA_OBJECT_TYPE, ObjectType.SITE.value());
+      response.addMetadata(METADATA_PARENT_WEB_TITLE,
+          w.getMetadata().getTitle());      
 
       response.setDisplayUrl(spUrlToUri(w.getMetadata().getURL()));
       HtmlResponseWriter writer = createHtmlResponseWriter(response);
@@ -1013,6 +1025,12 @@ public class SharePointAdaptor extends AbstractAdaptor
             .setInheritanceType(Acl.InheritanceType.PARENT_OVERRIDES)
             .build());
       }
+      
+      response.addMetadata(METADATA_OBJECT_TYPE,
+          ObjectType.LIST.value());
+      response.addMetadata(METADATA_PARENT_WEB_TITLE,
+          w.getMetadata().getTitle());
+      response.addMetadata(METADATA_LIST_GUID, l.getMetadata().getID());
 
       response.setDisplayUrl(sharePointUrlToUri(
           l.getMetadata().getDefaultViewUrl()));
@@ -1258,6 +1276,8 @@ public class SharePointAdaptor extends AbstractAdaptor
             .setInheritFrom(new DocId(parentId))
             .build());
       }
+      response.addMetadata(METADATA_OBJECT_TYPE, "Aspx");      
+      response.addMetadata(METADATA_PARENT_WEB_TITLE, w.webTitle);
       getFileDocContent(request, response);
       log.exiting("SiteAdaptor", "getAspxDocContent");
     }
@@ -1451,7 +1471,10 @@ public class SharePointAdaptor extends AbstractAdaptor
         metadataLength
             += addMetadata(response, attribute.getName(), attribute.getValue());
       }
-
+      metadataLength += addMetadata(response,
+          METADATA_PARENT_WEB_TITLE, w.webTitle);
+      metadataLength += addMetadata(response, METADATA_LIST_GUID, listId); 
+      
       if (isFolder) {
         String root = encodeDocId(l.rootFolder).getUniqueId();
         root += "/";
@@ -1475,6 +1498,8 @@ public class SharePointAdaptor extends AbstractAdaptor
         } catch (URISyntaxException ex) {
           throw new IOException(ex);
         }
+        metadataLength += addMetadata(
+            response, METADATA_OBJECT_TYPE, ObjectType.FOLDER.value());
         HtmlResponseWriter writer
             = createHtmlResponseWriter(response, metadataLength);
         writer.start(request.getDocId(), ObjectType.FOLDER, null);
@@ -1488,6 +1513,8 @@ public class SharePointAdaptor extends AbstractAdaptor
           && contentTypeId.startsWith(CONTENTTYPEID_DOCUMENT_PREFIX)) {
         // This is a file (or "Document" in SharePoint-speak), so display its
         // contents.
+        metadataLength += addMetadata(
+            response, METADATA_OBJECT_TYPE, "Document");
         getFileDocContent(request, response);
       } else {
         // Some list item.
@@ -1499,6 +1526,8 @@ public class SharePointAdaptor extends AbstractAdaptor
         } catch (URISyntaxException ex) {
           throw new IOException(ex);
         }
+        metadataLength += addMetadata(
+            response, METADATA_OBJECT_TYPE, ObjectType.LIST_ITEM.value());
         HtmlResponseWriter writer
             = createHtmlResponseWriter(response, metadataLength);
         writer.start(request.getDocId(), ObjectType.LIST_ITEM, title);
@@ -1588,6 +1617,9 @@ public class SharePointAdaptor extends AbstractAdaptor
             .setInheritFrom(encodeDocId(listItemUrl))
             .build());
       }
+      response.addMetadata(METADATA_OBJECT_TYPE, "Attachment");
+      response.addMetadata(METADATA_PARENT_WEB_TITLE, w.webTitle);
+      response.addMetadata(METADATA_LIST_GUID, listId);
       // If the attachment doesn't exist, then this responds Not Found.
       getFileDocContent(request, response);
       log.exiting("SiteAdaptor", "getAttachmentDocContent", true);

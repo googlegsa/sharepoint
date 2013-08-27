@@ -896,6 +896,9 @@ public class SharePointAdaptorTest {
       meta.add("_UIVersion", "512");
       meta.add("_UIVersionString", "1.0");
       meta.add("owshiddenversion", "4");
+      meta.add("sharepoint:parentwebtitle", "chinese1");
+      meta.add("sharepoint:listguid", "{6F33949A-B3FF-4B0C-BA99-93CB518AC2C0}");
+      meta.add("google:objecttype", "ListItem");
       goldenMetadata = meta.unmodifiableView();
     }
     assertEquals(golden, responseString);
@@ -1141,6 +1144,9 @@ public class SharePointAdaptorTest {
       meta.add("_UIVersion", "512");
       meta.add("_UIVersionString", "1.0");
       meta.add("owshiddenversion", "1");
+      meta.add("sharepoint:parentwebtitle", "chinese1");
+      meta.add("sharepoint:listguid", "{6F33949A-B3FF-4B0C-BA99-93CB518AC2C0}");
+      meta.add("google:objecttype", "Folder");
       goldenMetadata = meta.unmodifiableView();
     }
     assertEquals(golden, responseString);
