@@ -1216,6 +1216,8 @@ public class SharePointAdaptorTest {
       goldenGroups = Collections.unmodifiableMap(tmp);
     }
 
+    // Force a full batch of 2 and a final batch of 1.
+    config.overrideKey("feed.maxUrls", "2");
     adaptor = new SharePointAdaptor(MockSoapFactory.blank()
         .endpoint(AUTH_ENDPOINT, new MockAuthenticationSoap())
         .endpoint(VS_ENDPOINT, MockSiteData.blank()

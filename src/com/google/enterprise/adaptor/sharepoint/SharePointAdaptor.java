@@ -251,6 +251,7 @@ public class SharePointAdaptor extends AbstractAdaptor
   private final Callable<ExecutorService> executorFactory;
   private ExecutorService executor;
   private boolean xmlValidation;
+  private int feedMaxUrls;
   private long maxIndexableSize;
   
   private ScheduledThreadPoolExecutor scheduledExecutor 
@@ -346,6 +347,7 @@ public class SharePointAdaptor extends AbstractAdaptor
         config.getValue("sharepoint.password"));
     xmlValidation = Boolean.parseBoolean(
         config.getValue("sharepoint.xmlValidation"));
+    feedMaxUrls = Integer.parseInt(config.getValue("feed.maxUrls"));
     maxIndexableSize = Integer.parseInt(
         config.getValue("sharepoint.maxIndexableSize"));
     defaultNamespace = config.getValue("adaptor.namespace");
@@ -501,7 +503,16 @@ public class SharePointAdaptor extends AbstractAdaptor
               siteString);
           continue;
         }
-        defs.putAll(siteAdaptor.computeMembersForGroups(site.getGroups()));
+        Map<GroupPrincipal, Collection<Principal>> siteDefs
+            = siteAdaptor.computeMembersForGroups(site.getGroups());
+        for (Map.Entry<GroupPrincipal, Collection<Principal>> me
+            : siteDefs.entrySet()) {
+          defs.put(me.getKey(), me.getValue());
+          if (defs.size() >= feedMaxUrls) {
+            pusher.pushGroupDefinitions(defs, false);
+            defs.clear();
+          }
+        }
       }
     }
     pusher.pushGroupDefinitions(defs, false);
