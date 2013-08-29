@@ -99,7 +99,7 @@ lib/plexi submodule or add the the command line argument
     unless="plexi.uptodate">
     <echo message="Detected Plexi changes. Re-packaging Plexi..."/>
     <ant antfile="${adaptor.clone.dir}/build.xml" dir="${adaptor.clone.dir}"
-      target="package" inheritAll="false">
+      target="dist" inheritAll="false">
       <property name="adaptorlib.suffix" value=""/>
     </ant>
   </target>
