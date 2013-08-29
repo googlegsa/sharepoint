@@ -15,11 +15,14 @@
 package com.google.enterprise.adaptor.sharepoint;
 
 import com.google.enterprise.adaptor.AdaptorContext;
+import com.google.enterprise.adaptor.AuthnAuthority;
+import com.google.enterprise.adaptor.AuthzAuthority;
 import com.google.enterprise.adaptor.Config;
 import com.google.enterprise.adaptor.DocId;
 import com.google.enterprise.adaptor.DocIdEncoder;
 import com.google.enterprise.adaptor.DocIdPusher;
 import com.google.enterprise.adaptor.ExceptionHandler;
+import com.google.enterprise.adaptor.PollingIncrementalLister;
 import com.google.enterprise.adaptor.SensitiveValueDecoder;
 import com.google.enterprise.adaptor.Session;
 import com.google.enterprise.adaptor.StatusSource;
@@ -57,6 +60,7 @@ class MockAdaptorContext implements AdaptorContext {
       return nonReadable;
     }
   };
+  private PollingIncrementalLister pollingIncrementalLister;
 
   public MockAdaptorContext(Config config, DocIdPusher pusher) {
     if (config == null) {
@@ -101,11 +105,6 @@ class MockAdaptorContext implements AdaptorContext {
   }
 
   @Override
-  public void removeStatusSource(StatusSource source) {
-    throw new UnsupportedOperationException();
-  }
-
-  @Override
   public void setGetDocIdsFullErrorHandler(ExceptionHandler handler) {
     throw new UnsupportedOperationException();
   }
@@ -127,6 +126,26 @@ class MockAdaptorContext implements AdaptorContext {
 
   @Override
   public void setGetDocIdsIncrementalErrorHandler(ExceptionHandler h) {
+    throw new UnsupportedOperationException();
+  }
+
+  @Override
+  public synchronized void setPollingIncrementalLister(
+      PollingIncrementalLister lister) {
+    this.pollingIncrementalLister = lister;
+  }
+
+  public synchronized PollingIncrementalLister getPollingIncrementalLister() {
+    return pollingIncrementalLister;
+  }
+
+  @Override
+  public void setAuthzAuthority(AuthzAuthority authzAuthority) {
+    throw new UnsupportedOperationException();
+  }
+
+  @Override
+  public void setAuthnAuthority(AuthnAuthority authnAuthority) {
     throw new UnsupportedOperationException();
   }
 }

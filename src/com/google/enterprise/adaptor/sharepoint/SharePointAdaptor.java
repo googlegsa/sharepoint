@@ -26,7 +26,7 @@ import com.google.enterprise.adaptor.DocIdEncoder;
 import com.google.enterprise.adaptor.DocIdPusher;
 import com.google.enterprise.adaptor.GroupPrincipal;
 import com.google.enterprise.adaptor.IOHelper;
-import com.google.enterprise.adaptor.PollingIncrementalAdaptor;
+import com.google.enterprise.adaptor.PollingIncrementalLister;
 import com.google.enterprise.adaptor.Principal;
 import com.google.enterprise.adaptor.Request;
 import com.google.enterprise.adaptor.Response;
@@ -104,7 +104,7 @@ import javax.xml.ws.wsaddressing.W3CEndpointReferenceBuilder;
  * SharePoint Adaptor for the GSA.
  */
 public class SharePointAdaptor extends AbstractAdaptor
-    implements PollingIncrementalAdaptor {
+    implements PollingIncrementalLister {
   /** Charset used in generated HTML responses. */
   private static final Charset CHARSET = Charset.forName("UTF-8");
   private static final String XMLNS_DIRECTORY
@@ -306,6 +306,7 @@ public class SharePointAdaptor extends AbstractAdaptor
   @Override
   public void init(AdaptorContext context) throws Exception {
     this.context = context;
+    context.setPollingIncrementalLister(this);
     Config config = context.getConfig();
     virtualServer = config.getValue("sharepoint.server");
     String username = config.getValue("sharepoint.username");

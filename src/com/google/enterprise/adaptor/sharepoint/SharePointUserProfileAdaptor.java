@@ -9,7 +9,7 @@ import com.google.enterprise.adaptor.Config;
 import com.google.enterprise.adaptor.DocId;
 import com.google.enterprise.adaptor.DocIdPusher;
 import com.google.enterprise.adaptor.GroupPrincipal;
-import com.google.enterprise.adaptor.PollingIncrementalAdaptor;
+import com.google.enterprise.adaptor.PollingIncrementalLister;
 import com.google.enterprise.adaptor.Request;
 import com.google.enterprise.adaptor.Response;
 import com.microsoft.schemas.sharepoint.soap.authentication.AuthenticationSoap;
@@ -77,7 +77,7 @@ import javax.xml.ws.wsaddressing.W3CEndpointReferenceBuilder;
  *
  */
 public class SharePointUserProfileAdaptor extends AbstractAdaptor
-    implements PollingIncrementalAdaptor {
+    implements PollingIncrementalLister {
   private static final Map<String, String> SP_GSA_PROPERTY_MAPPINGS;
 
   private static final Charset encoding = Charset.forName("UTF-8");
@@ -175,6 +175,7 @@ public class SharePointUserProfileAdaptor extends AbstractAdaptor
 
   @Override
   public void init(AdaptorContext context) throws IOException {
+    context.setPollingIncrementalLister(this);
     Config config = context.getConfig();
 
     virtualServer = config.getValue("sharepoint.server");
