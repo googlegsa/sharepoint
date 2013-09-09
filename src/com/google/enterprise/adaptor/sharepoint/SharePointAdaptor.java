@@ -1165,6 +1165,11 @@ public class SharePointAdaptor extends AbstractAdaptor
 
     private long addMetadata(Response response, String name, String value) {
       long size = 0;
+      if ("ows_MetaInfo".equals(name)) {
+        // ows_MetaInfo is parsed out into other fields for us by SharePoint.
+        // We filter it since it only duplicates those other fields.
+        return 0;
+      }
       if (name.startsWith("ows_")) {
         name = name.substring("ows_".length());
       }
