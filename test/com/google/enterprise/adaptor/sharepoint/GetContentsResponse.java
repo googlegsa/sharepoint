@@ -138,6 +138,10 @@ class GetContentsResponse implements Response {
     return acl;
   }
 
+  public Date getLastModified() {
+    return lastModified;
+  }
+
   public List<URI> getAnchorUris() {
     return anchorUris;
   }

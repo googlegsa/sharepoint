@@ -798,7 +798,8 @@ public class SharePointAdaptorTest {
         InputStream contents = new ByteArrayInputStream(
             goldenContents.getBytes(charset));
         List<String> headers = Arrays.asList("not-the-Content-Type", "early",
-            "conTent-TypE", goldenContentType, "Content-Type", "late");
+            "conTent-TypE", goldenContentType, "Content-Type", "late",
+            "Last-Modified", "Tue, 01 May 2012 22:14:41 GMT");
         return new FileInfo.Builder(contents).setHeaders(headers).build();
       }
     }, executorFactory);
@@ -826,6 +827,7 @@ public class SharePointAdaptorTest {
           "http://localhost:1/sites/SiteCollection/Lists/Custom%20List/"
             + "Attachments/2/1046000.pdf"),
         response.getDisplayUrl());
+    assertEquals(new Date(1335910481000L), response.getLastModified());
   }
 
   @Test
@@ -921,6 +923,7 @@ public class SharePointAdaptorTest {
     assertEquals(URI.create("http://localhost:1/sites/SiteCollection/Lists/"
           + "Custom%20List/DispForm.aspx?ID=2"),
         response.getDisplayUrl());
+    assertEquals(new Date(1335910446000L), response.getLastModified());
   }
 
   @Test

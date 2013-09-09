@@ -87,6 +87,9 @@ import org.w3c.dom.NodeList;
 import java.io.*;
 import java.net.*;
 import java.nio.charset.Charset;
+import java.text.DateFormat;
+import java.text.ParseException;
+import java.text.SimpleDateFormat;
 import java.util.*;
 import java.util.concurrent.*;
 import java.util.logging.*;
@@ -162,6 +165,9 @@ public class SharePointAdaptor extends AbstractAdaptor
   private static final String CONTENTTYPEID_DOCUMENT_PREFIX = "0x0101";
   /** Provides the number of attachments the list item has. */
   private static final String OWS_ATTACHMENTS_ATTRIBUTE = "ows_Attachments";
+  /** The last time metadata or content was modified. */
+  private static final String OWS_LAST_MODIFIED_ATTRIBUTE
+      = "ows_Last_x0020_Modified";
   /**
    * Matches a SP-encoded value that contains one or more values. See {@link
    * SiteAdaptor.addMetadata}.
@@ -264,6 +270,28 @@ public class SharePointAdaptor extends AbstractAdaptor
   private final Object refreshMemberIdMappingLock = new Object();
   
   private FormsAuthenticationHandler authenticationHandler;
+  private static final TimeZone gmt = TimeZone.getTimeZone("GMT");
+  /** RFC 822 date format, as updated by RFC 1123. */
+  private final ThreadLocal<DateFormat> dateFormatRfc1123
+      = new ThreadLocal<DateFormat>() {
+        @Override
+        protected DateFormat initialValue() {
+          DateFormat df = new SimpleDateFormat(
+              "EEE, dd MMM yyyy HH:mm:ss zzz", Locale.ENGLISH);
+          df.setTimeZone(gmt);
+          return df;
+        }
+      };
+  private final ThreadLocal<DateFormat> modifiedDateFormat
+      = new ThreadLocal<DateFormat>() {
+        @Override
+        protected DateFormat initialValue() {
+          DateFormat df = new SimpleDateFormat(
+              "yyyy-MM-dd'T'HH:mm:ss'Z'", Locale.ENGLISH);
+          df.setTimeZone(gmt);
+          return df;
+        }
+      };
 
   public SharePointAdaptor() {
     this(new SoapFactoryImpl(), new HttpClientImpl(),
@@ -1463,7 +1491,7 @@ public class SharePointAdaptor extends AbstractAdaptor
       }
       response.addMetadata(METADATA_OBJECT_TYPE, "Aspx");      
       response.addMetadata(METADATA_PARENT_WEB_TITLE, w.webTitle);
-      getFileDocContent(request, response);
+      getFileDocContent(request, response, true);
       log.exiting("SiteAdaptor", "getAspxDocContent");
     }
 
@@ -1474,8 +1502,8 @@ public class SharePointAdaptor extends AbstractAdaptor
      * ACLs and other metadata and security measures should be set before making
      * this call.
      */
-    private void getFileDocContent(Request request, Response response)
-        throws IOException {
+    private void getFileDocContent(Request request, Response response,
+        boolean setLastModified) throws IOException {
       log.entering("SiteAdaptor", "getFileDocContent",
           new Object[] {request, response});
       URI displayUrl = docIdToUri(request.getDocId());
@@ -1490,6 +1518,16 @@ public class SharePointAdaptor extends AbstractAdaptor
         String contentType = fi.getFirstHeaderWithName("Content-Type");
         if (contentType != null) {
           response.setContentType(contentType);
+        }
+        String lastModifiedString = fi.getFirstHeaderWithName("Last-Modified");
+        if (lastModifiedString != null && setLastModified) {
+          try {
+            response.setLastModified(
+                dateFormatRfc1123.get().parse(lastModifiedString));
+          } catch (ParseException ex) {
+            log.log(Level.INFO, "Could not parse Last-Modified: {0}",
+                lastModifiedString);
+          }
         }
         IOHelper.copyStream(fi.getContents(), response.getOutputStream());
       } finally {
@@ -1519,6 +1557,21 @@ public class SharePointAdaptor extends AbstractAdaptor
       Xml xml = i.getXml();
       Element data = getFirstChildWithName(xml, DATA_ELEMENT);
       Element row = getChildrenWithName(data, ROW_ELEMENT).get(0);
+
+      String modifiedString = row.getAttribute(OWS_LAST_MODIFIED_ATTRIBUTE);
+      if (modifiedString == null) {
+        log.log(Level.FINE, "No last modified information for list item");
+      } else {
+        // This should be in the form of "1234;#DATE".
+        modifiedString = modifiedString.split(";#", 2)[1];
+        try {
+          response.setLastModified(
+              modifiedDateFormat.get().parse(modifiedString));
+        } catch (ParseException ex) {
+          log.log(Level.INFO, "Could not parse ows_Modified: {0}",
+              modifiedString);
+        }
+      }
 
       // This should be in the form of "1234;#{GUID}". We want to extract the
       // {GUID}.
@@ -1700,7 +1753,7 @@ public class SharePointAdaptor extends AbstractAdaptor
         // contents.
         metadataLength += addMetadata(
             response, METADATA_OBJECT_TYPE, "Document");
-        getFileDocContent(request, response);
+        getFileDocContent(request, response, false);
       } else {
         // Some list item.
         URI displayPage = sharePointUrlToUri(l.defaultViewItemUrl);
@@ -1806,7 +1859,7 @@ public class SharePointAdaptor extends AbstractAdaptor
       response.addMetadata(METADATA_PARENT_WEB_TITLE, w.webTitle);
       response.addMetadata(METADATA_LIST_GUID, listId);
       // If the attachment doesn't exist, then this responds Not Found.
-      getFileDocContent(request, response);
+      getFileDocContent(request, response, true);
       log.exiting("SiteAdaptor", "getAttachmentDocContent", true);
       return true;
     }
