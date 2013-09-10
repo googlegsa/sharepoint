@@ -275,9 +275,6 @@ public class SharePointAdaptorTest {
         = new SharePointAdaptor.SoapFactoryImpl();
     assertNotNull(
         sdfi.newSiteData("http://localhost:1/_vti_bin/SiteData.asmx"));
-    // Test a site with a space.
-    assertNotNull(sdfi.newSiteData(
-        "http://localhost:1/Site with space/_vti_bin/SiteData.asmx"));
   }
 
   @Test

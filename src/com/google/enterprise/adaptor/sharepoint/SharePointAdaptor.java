@@ -328,8 +328,8 @@ public class SharePointAdaptor extends AbstractAdaptor
     Authenticator.setDefault(ntlmAuthenticator);
     URL virtualServerUrl = new URL(virtualServer);
     ntlmAuthenticator.addPermitForHost(virtualServerUrl);
-    String authenticationEndPoint 
-        =  virtualServer + "/_vti_bin/Authentication.asmx";
+    String authenticationEndPoint = spUrlToUri(
+        virtualServer + "/_vti_bin/Authentication.asmx").toString();
     authenticationHandler = new FormsAuthenticationHandler(username,
         password, scheduledExecutor,
         soapFactory.newAuthentication(authenticationEndPoint));
@@ -577,12 +577,14 @@ public class SharePointAdaptor extends AbstractAdaptor
         site = site.substring(0, site.length() - 1);
       }
       ntlmAuthenticator.addPermitForHost(new URL(web));
-      String endpoint = web + "/_vti_bin/SiteData.asmx";
+      String endpoint = spUrlToUri(web + "/_vti_bin/SiteData.asmx").toString();
       SiteDataSoap siteDataSoap = soapFactory.newSiteData(endpoint);
       
-      String endpointUserGroup = site + "/_vti_bin/UserGroup.asmx";
+      String endpointUserGroup = spUrlToUri(site + "/_vti_bin/UserGroup.asmx")
+          .toString();
       UserGroupSoap userGroupSoap = soapFactory.newUserGroup(endpointUserGroup);
-      String endpointPeople = site + "/_vti_bin/People.asmx";
+      String endpointPeople = spUrlToUri(site + "/_vti_bin/People.asmx")
+          .toString();
       PeopleSoap peopleSoap = soapFactory.newPeople(endpointPeople);
       // JAX-WS RT 2.1.4 doesn't handle headers correctly and always assumes the
       // list contains precisely one entry, so we work around it here.
@@ -2123,7 +2125,7 @@ public class SharePointAdaptor extends AbstractAdaptor
      * The {@code endpoint} string is a SharePoint URL, meaning that spaces are
      * not encoded.
      */
-    public SiteDataSoap newSiteData(String endpoint) throws IOException;
+    public SiteDataSoap newSiteData(String endpoint);
 
     public UserGroupSoap newUserGroup(String endpoint);
     
@@ -2158,10 +2160,9 @@ public class SharePointAdaptor extends AbstractAdaptor
     }
 
     @Override
-    public SiteDataSoap newSiteData(String endpoint) throws IOException {
+    public SiteDataSoap newSiteData(String endpoint) {
       EndpointReference endpointRef = new W3CEndpointReferenceBuilder()
-          .address(handleEncoding(SharePointAdaptor.spUrlToUri(endpoint)
-            .toString())).build();
+          .address(handleEncoding(endpoint)).build();
       return siteDataService.getPort(endpointRef, SiteDataSoap.class);
     }
 
