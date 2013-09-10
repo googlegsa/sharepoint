@@ -2152,24 +2152,30 @@ public class SharePointAdaptor extends AbstractAdaptor
           new QName(XMLNS, "People"));
     }
 
+    private static String handleEncoding(String endpoint) {
+      // Handle Unicode. Java does not properly encode the POST path.
+      return URI.create(endpoint).toASCIIString();
+    }
+
     @Override
     public SiteDataSoap newSiteData(String endpoint) throws IOException {
       EndpointReference endpointRef = new W3CEndpointReferenceBuilder()
-          .address(SharePointAdaptor.spUrlToUri(endpoint).toString()).build();
+          .address(handleEncoding(SharePointAdaptor.spUrlToUri(endpoint)
+            .toString())).build();
       return siteDataService.getPort(endpointRef, SiteDataSoap.class);
     }
 
     @Override
     public UserGroupSoap newUserGroup(String endpoint) {
       EndpointReference endpointRef = new W3CEndpointReferenceBuilder()
-          .address(endpoint).build();
+          .address(handleEncoding(endpoint)).build();
       return userGroupService.getPort(endpointRef, UserGroupSoap.class);
     }
     
     @Override
     public AuthenticationSoap newAuthentication(String endpoint) {
       EndpointReference endpointRef = new W3CEndpointReferenceBuilder()
-          .address(endpoint).build();
+          .address(handleEncoding(endpoint)).build();
       return 
           authenticationService.getPort(endpointRef, AuthenticationSoap.class);
     }
@@ -2177,7 +2183,7 @@ public class SharePointAdaptor extends AbstractAdaptor
     @Override
     public PeopleSoap newPeople(String endpoint) {
       EndpointReference endpointRef = new W3CEndpointReferenceBuilder()
-          .address(endpoint).build();
+          .address(handleEncoding(endpoint)).build();
       return peopleService.getPort(endpointRef, PeopleSoap.class);      
     }
   }
