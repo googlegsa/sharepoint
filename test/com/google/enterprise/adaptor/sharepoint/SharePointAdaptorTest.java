@@ -334,6 +334,19 @@ public class SharePointAdaptorTest {
   }
 
   @Test
+  public void testMetadataDecoding() {
+    assertEquals("NothingSpecial",
+        SharePointAdaptor.decodeMetadataName("NothingSpecial"));
+    assertEquals("_x020__x00020__0020__x0020",
+        SharePointAdaptor.decodeMetadataName("_x020__x00020__0020__x0020"));
+    assertEquals("Simple Space",
+        SharePointAdaptor.decodeMetadataName("Simple_x0020_Space"));
+    assertEquals("Multiple \u0394Replacements\u2ee8",
+        SharePointAdaptor.decodeMetadataName(
+            "Multiple_x0020__x0394_Replacements_x2ee8_"));
+  }
+
+  @Test
   public void testGetDocContentWrongServer() throws Exception {
     SoapFactory siteDataFactory = MockSoapFactory.blank()
         .endpoint(AUTH_ENDPOINT, new MockAuthenticationSoap())

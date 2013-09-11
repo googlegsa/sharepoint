@@ -91,6 +91,7 @@ import java.util.*;
 import java.util.concurrent.*;
 import java.util.logging.*;
 import java.util.regex.Pattern;
+import java.util.regex.Matcher;
 
 import javax.xml.namespace.QName;
 import javax.xml.ws.BindingProvider;
@@ -199,6 +200,9 @@ public class SharePointAdaptor extends AbstractAdaptor
   private static final String METADATA_PARENT_WEB_TITLE 
       = "sharepoint:parentwebtitle";
   private static final String METADATA_LIST_GUID = "sharepoint:listguid";
+
+  private static final Pattern METADATA_ESCAPE_PATTERN
+      = Pattern.compile("_x([0-9a-f]{4})_");
 
   private static final Logger log
       = Logger.getLogger(SharePointAdaptor.class.getName());
@@ -636,6 +640,23 @@ public class SharePointAdaptor extends AbstractAdaptor
       throw new IOException(ex);
     }
     return hostUri.resolve(pathUri);
+  }
+
+  /**
+   * SharePoint encodes special characters as _x????_ where the ? are hex
+   * digits. Each such encoding is a UTF-16 character. For example, _x0020_ is
+   * space and _xFFE5_ is the fullwidth yen sign.
+   */
+  @VisibleForTesting
+  static String decodeMetadataName(String name) {
+    Matcher m = METADATA_ESCAPE_PATTERN.matcher(name);
+    StringBuffer sb = new StringBuffer();
+    while (m.find()) {
+      char c = (char) Integer.parseInt(m.group(1), 16);
+      m.appendReplacement(sb, "" + c);
+    }
+    m.appendTail(sb);
+    return sb.toString();
   }
 
   public static void main(String[] args) {
@@ -1173,7 +1194,7 @@ public class SharePointAdaptor extends AbstractAdaptor
       if (name.startsWith("ows_")) {
         name = name.substring("ows_".length());
       }
-      name = name.replace("_x0020_", " ");
+      name = decodeMetadataName(name);
       if (ALTERNATIVE_VALUE_PATTERN.matcher(value).find()) {
         // This is a lookup field. We need to take alternative values only.
         // Ignore the integer part. 314;#pi;#42;#the answer
