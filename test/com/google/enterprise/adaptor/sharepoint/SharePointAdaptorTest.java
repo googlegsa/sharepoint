@@ -1391,13 +1391,9 @@ public class SharePointAdaptorTest {
     List<DocId> docIds = new ArrayList<DocId>();
     Map<GroupPrincipal, Collection<Principal>> groupDefs
         = new HashMap<GroupPrincipal, Collection<Principal>>();
-    adaptor.new SiteAdaptor(
-        "http://localhost:1/sites/SiteCollection",
-        "http://localhost:1/sites/SiteCollection", new UnsupportedSiteData(),
-        new UnsupportedUserGroupSoap(), new UnsupportedPeopleSoap(),
-        new UnsupportedCallable<MemberIdMapping>(),
-        new UnsupportedCallable<MemberIdMapping>())
-        .getModifiedDocIdsContentDatabase(result, docIds, groupDefs);
+    Set<String> updatedSiteSecurity = new HashSet<String>();
+    adaptor.getModifiedDocIdsContentDatabase(
+        result, docIds, updatedSiteSecurity);    
     assertEquals(Arrays.asList(
           new DocId("http://localhost:1/Lists/Announcements/2_.000")),
         docIds);

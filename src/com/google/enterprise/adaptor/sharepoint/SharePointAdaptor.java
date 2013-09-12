@@ -524,8 +524,7 @@ public class SharePointAdaptor extends AbstractAdaptor
           = client.getChangesContentDatabase(contentDatabase, changeId,
               isSp2007);
       Set<DocId> docIds = new HashSet<DocId>();
-      Map<GroupPrincipal, Collection<Principal>> groupDefs
-          = new HashMap<GroupPrincipal, Collection<Principal>>();
+      Set<String> updatedSiteSecurity = new HashSet<String>();
       try {
         while (true) {
           try {
@@ -533,8 +532,8 @@ public class SharePointAdaptor extends AbstractAdaptor
             if (changes == null) {
               break;
             }
-            siteAdaptor.getModifiedDocIdsContentDatabase(
-                changes, docIds, groupDefs);
+            getModifiedDocIdsContentDatabase(changes, docIds,
+                updatedSiteSecurity);
           } catch (XmlProcessingException ex) {
             log.log(Level.WARNING, "Error parsing changes from content "
                 + "database: " + contentDatabase, ex);
@@ -559,9 +558,126 @@ public class SharePointAdaptor extends AbstractAdaptor
         records.add(builder.setDocId(docId).build());
       }
       pusher.pushRecords(records);
+      if (updatedSiteSecurity.isEmpty()) {
+        continue;
+      }
+      Map<GroupPrincipal, Collection<Principal>> groupDefs
+          = new HashMap<GroupPrincipal, Collection<Principal>>();
+      for (String siteUrl : updatedSiteSecurity) {
+        Site site;
+        try {
+          site = getSiteAdaptor(siteUrl, siteUrl).getSiteDataClient()
+              .getContentSite();
+        } catch (IOException ex) {
+          log.log(Level.WARNING, "Failed to get local groups for site {0}",
+              siteUrl);
+          continue;
+        }
+        groupDefs.putAll(siteAdaptor.computeMembersForGroups(site.getGroups()));
+      }
       pusher.pushGroupDefinitions(groupDefs, false);
     }
     log.exiting("SharePointAdaptor", "getModifiedDocIds", pusher);
+  }
+
+  @VisibleForTesting
+  void getModifiedDocIdsContentDatabase(SPContentDatabase changes,
+      Collection<DocId> docIds,
+      Collection<String> updatedSiteSecurity) throws IOException {
+    log.entering("SharePointAdaptor", "getModifiedDocIdsContentDatabase",
+        new Object[] {changes, docIds});
+    if (!"Unchanged".equals(changes.getChange())) {
+      docIds.add(virtualServerDocId);
+    }
+    for (SPSite site : changes.getSPSite()) {       
+      getModifiedDocIdsSite(site, docIds, updatedSiteSecurity);
+    }
+    log.exiting("SharePointAdaptor", "getModifiedDocIdsContentDatabase");
+  }
+
+  private void getModifiedDocIdsSite(SPSite changes, Collection<DocId> docIds,
+      Collection<String> updatedSiteSecurity) throws IOException {
+    log.entering("SharePointAdaptor", "getModifiedDocIdsSite",
+        new Object[] {changes, docIds});
+    if (isModified(changes.getChange())) {
+      String siteUrl = changes.getServerUrl() + changes.getDisplayUrl();
+      if (siteUrl.endsWith("/")) {
+        siteUrl = siteUrl.substring(0, siteUrl.length() - 1);
+      }
+      docIds.add(new DocId(siteUrl));
+      if ("UpdateSecurity".equals(changes.getChange())) {
+        updatedSiteSecurity.add(siteUrl);
+      }
+    }
+    for (SPWeb web : changes.getSPWeb()) {
+      getModifiedDocIdsWeb(web, docIds);
+    }
+    log.exiting("SharePointAdaptor", "getModifiedDocIdsSite");
+  }
+
+  private void getModifiedDocIdsWeb(SPWeb changes, Collection<DocId> docIds) {
+    log.entering("SharePointAdaptor", "getModifiedDocIdsWeb",
+        new Object[] {changes, docIds});
+    if (isModified(changes.getChange())) {
+      String webUrl = changes.getServerUrl() + changes.getDisplayUrl();
+      if (webUrl.endsWith("/")) {
+        webUrl = webUrl.substring(0, webUrl.length() - 1);
+      }
+      docIds.add(new DocId(webUrl));
+    }
+    
+    for (Object choice : changes.getSPFolderOrSPListOrSPFile()) {      
+      if (choice instanceof SPList) {
+        getModifiedDocIdsList((SPList) choice, docIds);
+      }
+    }
+    log.exiting("SharePointAdaptor", "getModifiedDocIdsWeb");
+  }
+
+  private void getModifiedDocIdsList(SPList changes,
+      Collection<DocId> docIds) {
+    log.entering("SharePointAdaptor", "getModifiedDocIdsList",
+        new Object[] {changes, docIds});
+    if (isModified(changes.getChange())) {
+      String listUrl = changes.getServerUrl() + changes.getDisplayUrl();
+      docIds.add(new DocId(listUrl));
+    }
+    for (Object choice : changes.getSPViewOrSPListItem()) {
+      // Ignore view change detection.
+
+      if (choice instanceof SPListItem) {
+        getModifiedDocIdsListItem((SPListItem) choice, docIds);
+      }
+    }
+    log.exiting("SharePointAdaptor", "getModifiedDocIdsList");
+  }
+
+  private void getModifiedDocIdsListItem(SPListItem changes,
+      Collection<DocId> docIds) {
+    log.entering("SharePointAdaptor", "getModifiedDocIdsListItem",
+        new Object[] {changes, docIds});
+    if (isModified(changes.getChange())) {
+      Object oData = changes.getListItem().getAny();
+      if (!(oData instanceof Element)) {
+        log.log(Level.WARNING, "Unexpected object type for data: {0}",
+            oData.getClass());
+      } else {
+        Element data = (Element) oData;
+        String serverUrl = data.getAttribute(OWS_SERVERURL_ATTRIBUTE);        
+        if (serverUrl == null) {
+          log.log(Level.WARNING, "Could not find server url attribute for "
+              + "list item {0}", changes.getId());
+        } else {
+          String url = changes.getServerUrl() + serverUrl;
+          docIds.add(new DocId(url));
+        }
+      }
+    }
+    log.exiting("SharePointAdaptor", "getModifiedDocIdsListItem");
+  }
+
+  private boolean isModified(String change) {
+    return !"Unchanged".equals(change) && !"Delete".equals(change);
   }
 
   private SiteAdaptor getSiteAdaptor(String site, String web)
@@ -1665,130 +1781,6 @@ public class SharePointAdaptor extends AbstractAdaptor
       getFileDocContent(request, response);
       log.exiting("SiteAdaptor", "getAttachmentDocContent", true);
       return true;
-    }
-
-    @VisibleForTesting
-    void getModifiedDocIdsContentDatabase(SPContentDatabase changes,
-        Collection<DocId> docIds,
-        Map<GroupPrincipal, Collection<Principal>> groupDefs)
-        throws IOException {
-      log.entering("SiteAdaptor", "getModifiedDocIdsContentDatabase",
-          new Object[] {changes, docIds});
-      if (!"Unchanged".equals(changes.getChange())) {
-        docIds.add(virtualServerDocId);
-      }
-      for (SPSite site : changes.getSPSite()) {
-        String siteString
-            = encodeDocId(site.getSite().getMetadata().getURL()).getUniqueId();
-        SiteAdaptor siteAdaptor = getSiteAdaptor(siteString, siteString);
-        siteAdaptor.getModifiedDocIdsSite(site, docIds, groupDefs);
-      }
-      log.exiting("SiteAdaptor", "getModifiedDocIdsContentDatabase");
-    }
-
-    private void getModifiedDocIdsSite(SPSite changes, Collection<DocId> docIds,
-        Map<GroupPrincipal, Collection<Principal>> groupDefs)
-        throws IOException {
-      log.entering("SiteAdaptor", "getModifiedDocIdsSite",
-          new Object[] {changes, docIds});
-      if (isModified(changes.getChange())) {
-        docIds.add(new DocId(siteUrl));
-        if (changes.getSite().getGroups() != null) {
-          groupDefs.putAll(computeMembersForGroups(
-              changes.getSite().getGroups()));
-        }
-      }
-      for (SPWeb web : changes.getSPWeb()) {
-        String webString
-            = encodeDocId(web.getWeb().getMetadata().getURL()).getUniqueId();
-        SiteAdaptor webAdaptor = getSiteAdaptor(siteUrl, webString);
-        webAdaptor.getModifiedDocIdsWeb(web, docIds);
-      }
-      log.exiting("SiteAdaptor", "getModifiedDocIdsSite");
-    }
-
-    private void getModifiedDocIdsWeb(SPWeb changes, Collection<DocId> docIds) {
-      log.entering("SiteAdaptor", "getModifiedDocIdsWeb",
-          new Object[] {changes, docIds});
-      if (isModified(changes.getChange())) {
-        docIds.add(new DocId(webUrl));
-      }
-      for (Object choice : changes.getSPFolderOrSPListOrSPFile()) {
-        if (choice instanceof SPFolder) {
-          getModifiedDocIdsFolder((SPFolder) choice, docIds);
-        }
-        if (choice instanceof SPList) {
-          getModifiedDocIdsList((SPList) choice, docIds);
-        }
-        if (choice instanceof SPFile) {
-          getModifiedDocIdsFile((SPFile) choice, docIds);
-        }
-      }
-      log.exiting("SiteAdaptor", "getModifiedDocIdsWeb");
-    }
-
-    private void getModifiedDocIdsFolder(SPFolder changes,
-        Collection<DocId> docIds) {
-      log.entering("SiteAdaptor", "getModifiedDocIdsFolder",
-          new Object[] {changes, docIds});
-      if (isModified(changes.getChange())) {
-        docIds.add(encodeDocId(changes.getDisplayUrl()));
-      }
-      log.exiting("SiteAdaptor", "getModifiedDocIdsFolder");
-    }
-
-    private void getModifiedDocIdsList(SPList changes,
-        Collection<DocId> docIds) {
-      log.entering("SiteAdaptor", "getModifiedDocIdsList",
-          new Object[] {changes, docIds});
-      if (isModified(changes.getChange())) {
-        docIds.add(encodeDocId(changes.getDisplayUrl()));
-      }
-      for (Object choice : changes.getSPViewOrSPListItem()) {
-        // Ignore view change detection.
-
-        if (choice instanceof SPListItem) {
-          getModifiedDocIdsListItem((SPListItem) choice, docIds);
-        }
-      }
-      log.exiting("SiteAdaptor", "getModifiedDocIdsList");
-    }
-
-    private void getModifiedDocIdsListItem(SPListItem changes,
-        Collection<DocId> docIds) {
-      log.entering("SiteAdaptor", "getModifiedDocIdsListItem",
-          new Object[] {changes, docIds});
-      if (isModified(changes.getChange())) {
-        Object oData = changes.getListItem().getAny();
-        if (!(oData instanceof Element)) {
-          log.log(Level.WARNING, "Unexpected object type for data: {0}",
-              oData.getClass());
-        } else {
-          Element data = (Element) oData;
-          String url = data.getAttribute(OWS_SERVERURL_ATTRIBUTE);
-          if (url == null) {
-            log.log(Level.WARNING, "Could not find server url attribute for "
-                + "list item {0}", changes.getId());
-          } else {
-            docIds.add(encodeDocId(url));
-          }
-        }
-      }
-      log.exiting("SiteAdaptor", "getModifiedDocIdsListItem");
-    }
-
-    private void getModifiedDocIdsFile(SPFile changes,
-        Collection<DocId> docIds) {
-      log.entering("SiteAdaptor", "getModifiedDocIdsFile",
-          new Object[] {changes, docIds});
-      if (isModified(changes.getChange())) {
-        docIds.add(encodeDocId(changes.getDisplayUrl()));
-      }
-      log.exiting("SiteAdaptor", "getModifiedDocIdsFile");
-    }
-
-    private boolean isModified(String change) {
-      return !"Unchanged".equals(change) && !"Delete".equals(change);
     }
 
     private String decodeClaim(String loginName, String name
