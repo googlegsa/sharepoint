@@ -275,9 +275,6 @@ public class SharePointAdaptorTest {
         = new SharePointAdaptor.SoapFactoryImpl();
     assertNotNull(
         sdfi.newSiteData("http://localhost:1/_vti_bin/SiteData.asmx"));
-    // Test a site with a space.
-    assertNotNull(sdfi.newSiteData(
-        "http://localhost:1/Site with space/_vti_bin/SiteData.asmx"));
   }
 
   @Test
@@ -334,6 +331,19 @@ public class SharePointAdaptorTest {
   @Test(expected = IllegalArgumentException.class)
   public void testSpUrlToUriNoSceme() throws Exception {
     SharePointAdaptor.spUrlToUri("http:/");
+  }
+
+  @Test
+  public void testMetadataDecoding() {
+    assertEquals("NothingSpecial",
+        SharePointAdaptor.decodeMetadataName("NothingSpecial"));
+    assertEquals("_x020__x00020__0020__x0020",
+        SharePointAdaptor.decodeMetadataName("_x020__x00020__0020__x0020"));
+    assertEquals("Simple Space",
+        SharePointAdaptor.decodeMetadataName("Simple_x0020_Space"));
+    assertEquals("Multiple \u0394Replacements\u2ee8",
+        SharePointAdaptor.decodeMetadataName(
+            "Multiple_x0020__x0394_Replacements_x2ee8_"));
   }
 
   @Test

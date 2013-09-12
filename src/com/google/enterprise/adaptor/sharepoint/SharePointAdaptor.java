@@ -91,6 +91,7 @@ import java.util.*;
 import java.util.concurrent.*;
 import java.util.logging.*;
 import java.util.regex.Pattern;
+import java.util.regex.Matcher;
 
 import javax.xml.namespace.QName;
 import javax.xml.ws.BindingProvider;
@@ -199,6 +200,9 @@ public class SharePointAdaptor extends AbstractAdaptor
   private static final String METADATA_PARENT_WEB_TITLE 
       = "sharepoint:parentwebtitle";
   private static final String METADATA_LIST_GUID = "sharepoint:listguid";
+
+  private static final Pattern METADATA_ESCAPE_PATTERN
+      = Pattern.compile("_x([0-9a-f]{4})_");
 
   private static final Logger log
       = Logger.getLogger(SharePointAdaptor.class.getName());
@@ -328,8 +332,8 @@ public class SharePointAdaptor extends AbstractAdaptor
     Authenticator.setDefault(ntlmAuthenticator);
     URL virtualServerUrl = new URL(virtualServer);
     ntlmAuthenticator.addPermitForHost(virtualServerUrl);
-    String authenticationEndPoint 
-        =  virtualServer + "/_vti_bin/Authentication.asmx";
+    String authenticationEndPoint = spUrlToUri(
+        virtualServer + "/_vti_bin/Authentication.asmx").toString();
     authenticationHandler = new FormsAuthenticationHandler(username,
         password, scheduledExecutor,
         soapFactory.newAuthentication(authenticationEndPoint));
@@ -693,12 +697,14 @@ public class SharePointAdaptor extends AbstractAdaptor
         site = site.substring(0, site.length() - 1);
       }
       ntlmAuthenticator.addPermitForHost(new URL(web));
-      String endpoint = web + "/_vti_bin/SiteData.asmx";
+      String endpoint = spUrlToUri(web + "/_vti_bin/SiteData.asmx").toString();
       SiteDataSoap siteDataSoap = soapFactory.newSiteData(endpoint);
       
-      String endpointUserGroup = site + "/_vti_bin/UserGroup.asmx";
+      String endpointUserGroup = spUrlToUri(site + "/_vti_bin/UserGroup.asmx")
+          .toString();
       UserGroupSoap userGroupSoap = soapFactory.newUserGroup(endpointUserGroup);
-      String endpointPeople = site + "/_vti_bin/People.asmx";
+      String endpointPeople = spUrlToUri(site + "/_vti_bin/People.asmx")
+          .toString();
       PeopleSoap peopleSoap = soapFactory.newPeople(endpointPeople);
       // JAX-WS RT 2.1.4 doesn't handle headers correctly and always assumes the
       // list contains precisely one entry, so we work around it here.
@@ -750,6 +756,23 @@ public class SharePointAdaptor extends AbstractAdaptor
       throw new IOException(ex);
     }
     return hostUri.resolve(pathUri);
+  }
+
+  /**
+   * SharePoint encodes special characters as _x????_ where the ? are hex
+   * digits. Each such encoding is a UTF-16 character. For example, _x0020_ is
+   * space and _xFFE5_ is the fullwidth yen sign.
+   */
+  @VisibleForTesting
+  static String decodeMetadataName(String name) {
+    Matcher m = METADATA_ESCAPE_PATTERN.matcher(name);
+    StringBuffer sb = new StringBuffer();
+    while (m.find()) {
+      char c = (char) Integer.parseInt(m.group(1), 16);
+      m.appendReplacement(sb, "" + c);
+    }
+    m.appendTail(sb);
+    return sb.toString();
   }
 
   public static void main(String[] args) {
@@ -1279,10 +1302,15 @@ public class SharePointAdaptor extends AbstractAdaptor
 
     private long addMetadata(Response response, String name, String value) {
       long size = 0;
+      if ("ows_MetaInfo".equals(name)) {
+        // ows_MetaInfo is parsed out into other fields for us by SharePoint.
+        // We filter it since it only duplicates those other fields.
+        return 0;
+      }
       if (name.startsWith("ows_")) {
         name = name.substring("ows_".length());
       }
-      name = name.replace("_x0020_", " ");
+      name = decodeMetadataName(name);
       if (ALTERNATIVE_VALUE_PATTERN.matcher(value).find()) {
         // This is a lookup field. We need to take alternative values only.
         // Ignore the integer part. 314;#pi;#42;#the answer
@@ -2115,7 +2143,7 @@ public class SharePointAdaptor extends AbstractAdaptor
      * The {@code endpoint} string is a SharePoint URL, meaning that spaces are
      * not encoded.
      */
-    public SiteDataSoap newSiteData(String endpoint) throws IOException;
+    public SiteDataSoap newSiteData(String endpoint);
 
     public UserGroupSoap newUserGroup(String endpoint);
     
@@ -2144,24 +2172,29 @@ public class SharePointAdaptor extends AbstractAdaptor
           new QName(XMLNS, "People"));
     }
 
+    private static String handleEncoding(String endpoint) {
+      // Handle Unicode. Java does not properly encode the POST path.
+      return URI.create(endpoint).toASCIIString();
+    }
+
     @Override
-    public SiteDataSoap newSiteData(String endpoint) throws IOException {
+    public SiteDataSoap newSiteData(String endpoint) {
       EndpointReference endpointRef = new W3CEndpointReferenceBuilder()
-          .address(SharePointAdaptor.spUrlToUri(endpoint).toString()).build();
+          .address(handleEncoding(endpoint)).build();
       return siteDataService.getPort(endpointRef, SiteDataSoap.class);
     }
 
     @Override
     public UserGroupSoap newUserGroup(String endpoint) {
       EndpointReference endpointRef = new W3CEndpointReferenceBuilder()
-          .address(endpoint).build();
+          .address(handleEncoding(endpoint)).build();
       return userGroupService.getPort(endpointRef, UserGroupSoap.class);
     }
     
     @Override
     public AuthenticationSoap newAuthentication(String endpoint) {
       EndpointReference endpointRef = new W3CEndpointReferenceBuilder()
-          .address(endpoint).build();
+          .address(handleEncoding(endpoint)).build();
       return 
           authenticationService.getPort(endpointRef, AuthenticationSoap.class);
     }
@@ -2169,7 +2202,7 @@ public class SharePointAdaptor extends AbstractAdaptor
     @Override
     public PeopleSoap newPeople(String endpoint) {
       EndpointReference endpointRef = new W3CEndpointReferenceBuilder()
-          .address(endpoint).build();
+          .address(handleEncoding(endpoint)).build();
       return peopleService.getPort(endpointRef, PeopleSoap.class);      
     }
   }
