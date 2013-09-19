@@ -222,7 +222,8 @@ public class SharePointAdaptorTest {
       = MockSoapFactory.blank()
       .endpoint(AUTH_ENDPOINT, new MockAuthenticationSoap())
       .endpoint(VS_ENDPOINT, MockSiteData.blank()
-          .register(VS_CONTENT_EXCHANGE));
+          .register(VS_CONTENT_EXCHANGE)
+          .register(CD_CONTENT_EXCHANGE));
 
   @Rule
   public ExpectedException thrown = ExpectedException.none();
@@ -352,6 +353,7 @@ public class SharePointAdaptorTest {
         .endpoint(AUTH_ENDPOINT, new MockAuthenticationSoap())
         .endpoint(VS_ENDPOINT, MockSiteData.blank()
             .register(VS_CONTENT_EXCHANGE)
+            .register(CD_CONTENT_EXCHANGE)
             .register(new SiteAndWebExchange(
                 "http://wronghost:1/", 1, null, null)));
 
@@ -373,6 +375,7 @@ public class SharePointAdaptorTest {
         .endpoint(AUTH_ENDPOINT, new MockAuthenticationSoap())
         .endpoint(VS_ENDPOINT, MockSiteData.blank()
             .register(VS_CONTENT_EXCHANGE)
+            .register(CD_CONTENT_EXCHANGE)
             .register(new SiteAndWebExchange(
                 wrongPage, 0, "http://localhost:1", "http://localhost:1"))
             .register(new URLSegmentsExchange(
@@ -487,6 +490,7 @@ public class SharePointAdaptorTest {
         .endpoint(AUTH_ENDPOINT, new MockAuthenticationSoap())
         .endpoint(VS_ENDPOINT, MockSiteData.blank()
             .register(VS_CONTENT_EXCHANGE)
+            .register(CD_CONTENT_EXCHANGE)
             .register(SITES_SITECOLLECTION_SAW_EXCHANGE))
         .endpoint(SITES_SITECOLLECTION_ENDPOINT, MockSiteData.blank()
             .register(SITES_SITECOLLECTION_URLSEG_EXCHANGE)
@@ -543,6 +547,7 @@ public class SharePointAdaptorTest {
         .endpoint(AUTH_ENDPOINT, new MockAuthenticationSoap())
         .endpoint(VS_ENDPOINT, MockSiteData.blank()
             .register(VS_CONTENT_EXCHANGE)
+            .register(CD_CONTENT_EXCHANGE)
             .register(SITES_SITECOLLECTION_SAW_EXCHANGE))
         .endpoint(SITES_SITECOLLECTION_ENDPOINT, MockSiteData.blank()
             .register(SITES_SITECOLLECTION_URLSEG_EXCHANGE)
@@ -587,6 +592,7 @@ public class SharePointAdaptorTest {
         .endpoint(AUTH_ENDPOINT, new MockAuthenticationSoap())
         .endpoint(VS_ENDPOINT, MockSiteData.blank()
             .register(VS_CONTENT_EXCHANGE)
+            .register(CD_CONTENT_EXCHANGE)
             .register(SITES_SITECOLLECTION_SAW_EXCHANGE))
         .endpoint(SITES_SITECOLLECTION_ENDPOINT, MockSiteData.blank()
             .register(SITES_SITECOLLECTION_URLSEG_EXCHANGE)
@@ -631,6 +637,7 @@ public class SharePointAdaptorTest {
         .endpoint(AUTH_ENDPOINT, new MockAuthenticationSoap())
         .endpoint(VS_ENDPOINT, MockSiteData.blank()
             .register(VS_CONTENT_EXCHANGE)
+            .register(CD_CONTENT_EXCHANGE)
             .register(SITES_SITECOLLECTION_SAW_EXCHANGE))
         .endpoint(SITES_SITECOLLECTION_ENDPOINT, siteData);
     SiteDataSoap siteDataState1 = MockSiteData.blank()
@@ -1239,7 +1246,8 @@ public class SharePointAdaptorTest {
         + "</ContentDatabase></SPContentDatabase>";
     final ReferenceSiteData siteData = new ReferenceSiteData();
     SiteDataSoap state0 = MockSiteData.blank()
-        .register(VS_CONTENT_EXCHANGE);
+        .register(VS_CONTENT_EXCHANGE)
+        .register(CD_CONTENT_EXCHANGE);
     SiteDataSoap state1 = new UnsupportedSiteData() {
       @Override
       public void getContent(ObjectType objectType, String objectId,
@@ -1348,6 +1356,7 @@ public class SharePointAdaptorTest {
     final AtomicLong atomicNumberGetChangesCalls = new AtomicLong(0);
     final SiteDataSoap siteData = MockSiteData.blank()
         .register(vsContentExchange)
+        .register(CD_CONTENT_EXCHANGE)
         .register(new ContentExchange(ObjectType.CONTENT_DATABASE,
               "{4fb7dea1-2912-4927-9eda-1ea2f0977cf8}", null, null, false,
               false, null, getContentContentDatabase4fb))

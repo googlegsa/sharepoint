@@ -368,8 +368,9 @@ public class SharePointAdaptor extends AbstractAdaptor
     authenticationHandler.start();
     executor = executorFactory.call();
     try {
+      SiteAdaptor vsAdaptor = getSiteAdaptor(virtualServer, virtualServer);
       SiteDataClient virtualServerSiteDataClient =
-          getSiteAdaptor(virtualServer, virtualServer).getSiteDataClient();
+          vsAdaptor.getSiteDataClient();
       rareModCache
           = new RareModificationCache(virtualServerSiteDataClient, executor);
 
@@ -381,6 +382,29 @@ public class SharePointAdaptor extends AbstractAdaptor
       // Version for SP2010 is 14. Version for SP2013 is 15.
       isSp2007 = (version == null);
       log.log(Level.FINE, "isSP2007 : {0}", isSp2007);
+      
+      // Loop through all host-named site collections and add them to
+      // whitelist for authenticator.
+      for (ContentDatabases.ContentDatabase cdcd : 
+          vs.getContentDatabases().getContentDatabase()) {
+        ContentDatabase cd;
+        try {
+          cd = virtualServerSiteDataClient.getContentContentDatabase(
+              cdcd.getID(), true);
+        } catch (IOException ex) {
+          log.log(Level.WARNING, "Failed to get sites for database {0}",
+              cdcd.getID());
+          continue;
+        }
+        if (cd.getSites() == null) {
+          continue;
+        }
+        for (Sites.Site siteListing : cd.getSites().getSite()) {
+          String siteString
+              = vsAdaptor.encodeDocId(siteListing.getURL()).getUniqueId();
+          ntlmAuthenticator.addPermitForHost(spUrlToUri(siteString).toURL());
+        }
+      }      
     } catch (Exception e) {
       // Don't leak the executor.
       destroy();
@@ -414,13 +438,21 @@ public class SharePointAdaptor extends AbstractAdaptor
     log.entering("SharePointAdaptor", "getDocContent",
         new Object[] {request, response});
     DocId id = request.getDocId();
-    SiteAdaptor virtualServerSiteAdaptor
-        = getSiteAdaptor(virtualServer, virtualServer);
-    if (id.equals(virtualServerDocId)) {
+     if (id.equals(virtualServerDocId)) {
+      SiteAdaptor virtualServerSiteAdaptor
+          = getSiteAdaptor(virtualServer, virtualServer);
       virtualServerSiteAdaptor.getVirtualServerDocContent(request, response);
     } else {
+      SiteAdaptor rootSiteAdaptor
+          = getRootAdaptorForUrl(spUrlToUri(id.getUniqueId()));
+      if (rootSiteAdaptor == null) {
+        log.log(Level.FINE, "responding not found");
+        response.respondNotFound();
+        log.exiting("SharePointAdaptor", "getDocContent");
+        return;
+      }
       SiteAdaptor siteAdaptor
-          = virtualServerSiteAdaptor.getAdaptorForUrl(id.getUniqueId());
+          = rootSiteAdaptor.getAdaptorForUrl(id.getUniqueId());
       if (siteAdaptor == null) {
         log.log(Level.FINE, "responding not found");
         response.respondNotFound();
@@ -459,6 +491,7 @@ public class SharePointAdaptor extends AbstractAdaptor
       for (Sites.Site siteListing : cd.getSites().getSite()) {
         String siteString
             = vsAdaptor.encodeDocId(siteListing.getURL()).getUniqueId();
+        ntlmAuthenticator.addPermitForHost(spUrlToUri(siteString).toURL());           
         SiteAdaptor siteAdaptor = getSiteAdaptor(siteString, siteString);
         Site site;
         try {
@@ -637,6 +670,9 @@ public class SharePointAdaptor extends AbstractAdaptor
         siteUrl = siteUrl.substring(0, siteUrl.length() - 1);
       }
       docIds.add(new DocId(siteUrl));
+      // Add modified site to whitelist for authenticator as this might be new
+      // host name site collection.
+      ntlmAuthenticator.addPermitForHost(spUrlToUri(siteUrl).toURL());
       if ("UpdateSecurity".equals(changes.getChange())) {
         updatedSiteSecurity.add(siteUrl);
       }
@@ -805,6 +841,25 @@ public class SharePointAdaptor extends AbstractAdaptor
 
   public static void main(String[] args) {
     AbstractAdaptor.main(new SharePointAdaptor(), args);
+  }
+
+  private SiteAdaptor getRootAdaptorForUrl(URI uri) throws IOException {
+    if (!ntlmAuthenticator.isPermittedHost(uri.toURL())) {
+      log.log(Level.WARNING, "URL {0} not white listed", uri);
+      return null;
+    }
+    String rootUrl;
+    try {
+       rootUrl = getRootUrl(uri);
+    } catch (URISyntaxException e) {
+      throw new IOException(e);
+    }
+    return getSiteAdaptor(rootUrl, rootUrl);
+  }
+  
+  private String getRootUrl(URI uri) throws URISyntaxException {
+    return new URI(
+        uri.getScheme(), uri.getAuthority(), null, null, null).toString();
   }
 
   @VisibleForTesting
@@ -2273,6 +2328,11 @@ public class SharePointAdaptor extends AbstractAdaptor
     public void addPermitForHost(URL urlContainingHost) {
       permittedHosts.add(urlToHostString(urlContainingHost));
     }
+    
+    private boolean isPermittedHost(URL toVerify) {
+      return permittedHosts.contains(urlToHostString(toVerify));
+    }
+    
 
     private String urlToHostString(URL url) {
       // If the port is missing (so that the default is used), we replace it
@@ -2287,7 +2347,7 @@ public class SharePointAdaptor extends AbstractAdaptor
     @Override
     protected PasswordAuthentication getPasswordAuthentication() {
       URL url = getRequestingURL();
-      if (permittedHosts.contains(urlToHostString(url))) {
+      if (isPermittedHost(url)) {
         return new PasswordAuthentication(username, password);
       } else {
         return super.getPasswordAuthentication();
