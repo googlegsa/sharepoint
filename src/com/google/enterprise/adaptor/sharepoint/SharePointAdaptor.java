@@ -51,8 +51,6 @@ import com.microsoft.schemas.sharepoint.soap.ObjectType;
 import com.microsoft.schemas.sharepoint.soap.Permission;
 import com.microsoft.schemas.sharepoint.soap.PolicyUser;
 import com.microsoft.schemas.sharepoint.soap.SPContentDatabase;
-import com.microsoft.schemas.sharepoint.soap.SPFile;
-import com.microsoft.schemas.sharepoint.soap.SPFolder;
 import com.microsoft.schemas.sharepoint.soap.SPList;
 import com.microsoft.schemas.sharepoint.soap.SPListItem;
 import com.microsoft.schemas.sharepoint.soap.SPSite;
@@ -93,8 +91,8 @@ import java.text.SimpleDateFormat;
 import java.util.*;
 import java.util.concurrent.*;
 import java.util.logging.*;
-import java.util.regex.Pattern;
 import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 
 import javax.xml.namespace.QName;
 import javax.xml.ws.BindingProvider;
@@ -209,6 +207,8 @@ public class SharePointAdaptor extends AbstractAdaptor
 
   private static final Pattern METADATA_ESCAPE_PATTERN
       = Pattern.compile("_x([0-9a-f]{4})_");
+
+  private static final String SITE_COLLECTION_ADMIN_FRAGMENT = "admin";
 
   private static final Logger log
       = Logger.getLogger(SharePointAdaptor.class.getName());
@@ -876,6 +876,7 @@ public class SharePointAdaptor extends AbstractAdaptor
     private final PeopleSoap people;
     private final String siteUrl;
     private final String webUrl;
+    private final DocId siteDocId;
     /**
      * Callable for accessing an up-to-date instance of {@link MemberIdMapping}.
      * Using a callable instead of accessing {@link #memberIdsCache} directly as
@@ -900,6 +901,7 @@ public class SharePointAdaptor extends AbstractAdaptor
         throw new NullPointerException();
       }
       this.siteUrl = site;
+      this.siteDocId = new DocId(site);
       this.webUrl = web;
       this.userGroup = userGroupSoap;
       this.people = people;
@@ -1166,6 +1168,31 @@ public class SharePointAdaptor extends AbstractAdaptor
       if (webUrl.endsWith("/")) {
         throw new AssertionError();
       }
+
+      if (isWebSiteCollection()) {
+        Collection<Principal> admins = new LinkedList<Principal>();
+        for (UserDescription user : w.getUsers().getUser()) {
+          if (user.getIsSiteAdmin() != TrueFalseType.TRUE) {
+            continue;
+          }
+          Principal principal = userDescriptionToPrincipal(user);
+          if (principal == null) {
+            log.log(Level.WARNING,
+                "Unable to determine login name. Skipping admin user with ID "
+                + "{0}", user.getID());
+            continue;
+          }
+          admins.add(principal);
+        }
+        response.putNamedResource(SITE_COLLECTION_ADMIN_FRAGMENT,
+            new Acl.Builder()
+              .setEverythingCaseInsensitive()
+              .setPermits(admins)
+              .setInheritFrom(virtualServerDocId)
+              .setInheritanceType(Acl.InheritanceType.PARENT_OVERRIDES)
+              .build());
+      }
+
       boolean allowAnonymousAccess
           = isAllowAnonymousReadForWeb(new CachedWeb(w))
           // Check if anonymous access is denied by web application policy
@@ -1191,7 +1218,7 @@ public class SharePointAdaptor extends AbstractAdaptor
           List<Permission> permissions
               = w.getACL().getPermissions().getPermission();
           acl = generateAcl(permissions, LIST_ITEM_MASK)
-              .setInheritFrom(virtualServerDocId);
+              .setInheritFrom(siteDocId, SITE_COLLECTION_ADMIN_FRAGMENT);
         } else {
           acl = new Acl.Builder().setInheritFrom(new DocId(getWebParentUrl()));
         }
@@ -1289,7 +1316,7 @@ public class SharePointAdaptor extends AbstractAdaptor
           List<Permission> permissions
               = l.getACL().getPermissions().getPermission();
           acl = generateAcl(permissions, LIST_ITEM_MASK)
-              .setInheritFrom(virtualServerDocId);
+              .setInheritFrom(siteDocId, SITE_COLLECTION_ADMIN_FRAGMENT);
         }
         response.setAcl(acl
             .setInheritanceType(Acl.InheritanceType.PARENT_OVERRIDES)
@@ -1714,7 +1741,7 @@ public class SharePointAdaptor extends AbstractAdaptor
           for (Scopes.Scope scope : scopes.getScope()) {
             if (scope.getId().toLowerCase(Locale.ENGLISH).equals(scopeId)) {
               acl = generateAcl(scope.getPermission(), LIST_ITEM_MASK)
-                  .setInheritFrom(virtualServerDocId);
+                  .setInheritFrom(siteDocId, SITE_COLLECTION_ADMIN_FRAGMENT);
               break;
             }
           }
@@ -1750,7 +1777,7 @@ public class SharePointAdaptor extends AbstractAdaptor
         }
         Acl.Builder aclNamedResource
             = generateAcl(permission, READ_SECURITY_LIST_ITEM_MASK)
-            .setInheritFrom(virtualServerDocId)
+            .setInheritFrom(siteDocId, SITE_COLLECTION_ADMIN_FRAGMENT)
             .setInheritanceType(Acl.InheritanceType.AND_BOTH_PERMIT);
         addPermitUserToAcl(authorId, aclNamedResource);
         response.putNamedResource(fragmentName, aclNamedResource.build());

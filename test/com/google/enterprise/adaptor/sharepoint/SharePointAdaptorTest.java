@@ -529,7 +529,8 @@ public class SharePointAdaptorTest {
     assertEquals(golden, responseString);
     assertEquals(new Acl.Builder()
         .setEverythingCaseInsensitive()
-        .setInheritFrom(new DocId(""))
+        .setInheritFrom(new DocId("http://localhost:1/sites/SiteCollection"),
+          "admin")
         .setInheritanceType(Acl.InheritanceType.PARENT_OVERRIDES)
         .setPermitGroups(Arrays.asList(
             SITES_SITECOLLECTION_MEMBERS,
@@ -537,6 +538,13 @@ public class SharePointAdaptorTest {
             SITES_SITECOLLECTION_VISITORS))
         .setPermitUsers(Arrays.asList(GDC_PSL_SPUSER1)).build(),
         response.getAcl());
+    assertEquals(Collections.singletonMap("admin", new Acl.Builder()
+        .setEverythingCaseInsensitive()
+        .setPermitUsers(Arrays.asList(new UserPrincipal("GDC-PSL\\spuser1"),
+            new UserPrincipal("GDC-PSL\\administrator")))
+        .setInheritFrom(new DocId(""))
+        .setInheritanceType(Acl.InheritanceType.PARENT_OVERRIDES)
+        .build()), response.getNamedResources());
     assertEquals(URI.create("http://localhost:1/sites/SiteCollection"),
         response.getDisplayUrl());
   }
@@ -572,7 +580,8 @@ public class SharePointAdaptorTest {
     adaptor.getDocContent(request, response);
     assertEquals(new Acl.Builder()
         .setEverythingCaseInsensitive()
-        .setInheritFrom(new DocId(""))
+        .setInheritFrom(new DocId("http://localhost:1/sites/SiteCollection"),
+          "admin")
         .setInheritanceType(Acl.InheritanceType.PARENT_OVERRIDES)
         .setPermitGroups(Arrays.asList(SITES_SITECOLLECTION_MEMBERS,
             SITES_SITECOLLECTION_OWNERS, SITES_SITECOLLECTION_VISITORS,
@@ -612,7 +621,8 @@ public class SharePointAdaptorTest {
     adaptor.getDocContent(request, response);
     assertEquals(new Acl.Builder()
         .setEverythingCaseInsensitive()
-        .setInheritFrom(new DocId(""))
+        .setInheritFrom(new DocId("http://localhost:1/sites/SiteCollection"),
+          "admin")
         .setInheritanceType(Acl.InheritanceType.PARENT_OVERRIDES)
         .setPermitUsers(Arrays.asList(GDC_PSL_SPUSER1,
             new UserPrincipal("GSA-CONNECTORS\\User1", DEFAULT_NAMESPACE),
@@ -667,7 +677,8 @@ public class SharePointAdaptorTest {
     adaptor.getDocContent(request, response);
     assertEquals(new Acl.Builder()
         .setEverythingCaseInsensitive()
-        .setInheritFrom(new DocId(""))
+        .setInheritFrom(new DocId("http://localhost:1/sites/SiteCollection"),
+          "admin")
         .setInheritanceType(Acl.InheritanceType.PARENT_OVERRIDES)
         .setPermitGroups(Arrays.asList(SITES_SITECOLLECTION_MEMBERS,
             SITES_SITECOLLECTION_OWNERS, SITES_SITECOLLECTION_VISITORS))
@@ -680,7 +691,8 @@ public class SharePointAdaptorTest {
     adaptor.getDocContent(request, response);
     assertEquals(new Acl.Builder()
         .setEverythingCaseInsensitive()
-        .setInheritFrom(new DocId(""))
+        .setInheritFrom(new DocId("http://localhost:1/sites/SiteCollection"),
+          "admin")
         .setInheritanceType(Acl.InheritanceType.PARENT_OVERRIDES)
         .setPermitGroups(Arrays.asList(SITES_SITECOLLECTION_MEMBERS,
             SITES_SITECOLLECTION_OWNERS, SITES_SITECOLLECTION_VISITORS))
@@ -745,7 +757,8 @@ public class SharePointAdaptorTest {
     assertEquals(golden, responseString);
     assertEquals(new Acl.Builder()
         .setEverythingCaseInsensitive()
-        .setInheritFrom(new DocId(""))
+        .setInheritFrom(new DocId("http://localhost:1/sites/SiteCollection"),
+          "admin")
         .setInheritanceType(Acl.InheritanceType.PARENT_OVERRIDES)
         .setPermitGroups(Arrays.asList(SITES_SITECOLLECTION_MEMBERS,
             SITES_SITECOLLECTION_OWNERS, SITES_SITECOLLECTION_VISITORS))
@@ -1041,7 +1054,8 @@ public class SharePointAdaptorTest {
                 new UserPrincipal("System.Account", DEFAULT_NAMESPACE)))
             .setPermitGroups(Arrays.asList(SITES_SITECOLLECTION_OWNERS))
             .setInheritanceType(Acl.InheritanceType.AND_BOTH_PERMIT)
-            .setInheritFrom(new DocId(""))
+            .setInheritFrom(
+                new DocId("http://localhost:1/sites/SiteCollection"), "admin")
             .build()),
         response.getNamedResources());
   }
@@ -1173,7 +1187,8 @@ public class SharePointAdaptorTest {
     assertEquals(goldenMetadata, response.getMetadata());
     assertEquals(new Acl.Builder()
         .setEverythingCaseInsensitive()
-        .setInheritFrom(new DocId(""))
+        .setInheritFrom(new DocId("http://localhost:1/sites/SiteCollection"),
+          "admin")
         .setInheritanceType(Acl.InheritanceType.PARENT_OVERRIDES)
         .setPermitGroups(Arrays.asList(SITES_SITECOLLECTION_MEMBERS,
             SITES_SITECOLLECTION_OWNERS, SITES_SITECOLLECTION_VISITORS))
