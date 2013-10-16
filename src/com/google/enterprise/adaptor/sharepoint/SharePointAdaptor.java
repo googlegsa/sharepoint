@@ -790,11 +790,18 @@ public class SharePointAdaptor extends AbstractAdaptor
     if (authenticationHandler.getAuthenticationCookies().isEmpty()) {
       // JAX-WS RT 2.1.4 doesn't handle headers correctly and always assumes the
       // list contains precisely one entry, so we work around it here.
+      disableFormsAuthentication(port);    
       return;
     }
     port.getRequestContext().put(MessageContext.HTTP_REQUEST_HEADERS,
         Collections.singletonMap("Cookie", 
             authenticationHandler.getAuthenticationCookies()));
+  }
+  
+  private void disableFormsAuthentication(BindingProvider port) {
+    port.getRequestContext().put(MessageContext.HTTP_REQUEST_HEADERS, 
+        Collections.singletonMap("X-FORMS_BASED_AUTH_ACCEPTED", 
+          Collections.singletonList("f")));
   }
 
   static URI spUrlToUri(String url) throws IOException {
@@ -2217,8 +2224,12 @@ public class SharePointAdaptor extends AbstractAdaptor
       }
       HttpURLConnection conn = (HttpURLConnection) url.openConnection();
      
-      for (String cookie : authenticationCookies) {
-        conn.addRequestProperty("Cookie", cookie);
+      if (authenticationCookies.isEmpty()) {
+        conn.addRequestProperty("X-FORMS_BASED_AUTH_ACCEPTED", "f");
+      } else {
+        for (String cookie : authenticationCookies) {
+          conn.addRequestProperty("Cookie", cookie);
+        }
       }
       conn.setDoInput(true);
       conn.setDoOutput(false);

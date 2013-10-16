@@ -332,9 +332,18 @@ public class SharePointUserProfileAdaptor extends AbstractAdaptor
     
     private void addFormsAuthenticationCookies(BindingProvider port, 
         List<String> cookies) {
+      if (cookies.isEmpty()) {
+        disableFormsAuthentication(port);
+      }
       port.getRequestContext().put(MessageContext.HTTP_REQUEST_HEADERS,
           Collections.singletonMap("Cookie", cookies));
     }
+    
+    private void disableFormsAuthentication(BindingProvider port) {
+      port.getRequestContext().put(MessageContext.HTTP_REQUEST_HEADERS, 
+          Collections.singletonMap(
+            "X-FORMS_BASED_AUTH_ACCEPTED", Collections.singletonList("f")));
+    } 
 
     @Override
     public AuthenticationSoap newAuthentication(String endpoint) {

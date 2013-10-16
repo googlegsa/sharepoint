@@ -96,8 +96,11 @@ class FormsAuthenticationHandler {
     log.log(Level.FINE, 
         "Login Cookie Expiration in = {0}", result.getTimeoutSeconds());
     if (result.getErrorCode() != LoginErrorCode.NO_ERROR) {
-      throw new IOException("Forms authentication failed with authentication "
-          + "web service with Error Code " + result.getErrorCode());
+      log.log(Level.WARNING, "Forms authentication failed with authentication "
+          + "web service with Error Code {0}. Possible SharePoint environment "
+          + "with multiple claims provider. Adaptor might have been configured "
+          + "to use windows authentication.", result.getErrorCode());
+      return;
     }
     @SuppressWarnings("unchecked")
     Map<String, Object> responseHeaders
