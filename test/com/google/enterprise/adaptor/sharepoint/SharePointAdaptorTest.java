@@ -312,6 +312,17 @@ public class SharePointAdaptorTest {
   }
 
   @Test
+  public void testInitDestroyInitDestroy() throws Exception {
+    adaptor = new SharePointAdaptor(initableSoapFactory,
+        new UnsupportedHttpClient(), executorFactory);
+    adaptor.init(new MockAdaptorContext(config, pusher));
+    adaptor.destroy();
+    adaptor.init(new MockAdaptorContext(config, pusher));
+    adaptor.destroy();
+    adaptor = null;
+  }
+
+  @Test
   public void testTrailingSlashInit() throws Exception {
     adaptor = new SharePointAdaptor(initableSoapFactory,
         new UnsupportedHttpClient(), executorFactory);

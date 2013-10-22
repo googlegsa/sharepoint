@@ -254,8 +254,7 @@ public class SharePointAdaptor extends AbstractAdaptor
   private int feedMaxUrls;
   private long maxIndexableSize;
   
-  private ScheduledThreadPoolExecutor scheduledExecutor 
-      = new ScheduledThreadPoolExecutor(1);
+  private ScheduledThreadPoolExecutor scheduledExecutor;
   private String defaultNamespace;
   /** Authenticator instance that authenticates with SP. */
   /**
@@ -365,6 +364,7 @@ public class SharePointAdaptor extends AbstractAdaptor
     Authenticator.setDefault(ntlmAuthenticator);
     URL virtualServerUrl = new URL(virtualServer);
     ntlmAuthenticator.addPermitForHost(virtualServerUrl);
+    scheduledExecutor = new ScheduledThreadPoolExecutor(1);
     String authenticationEndPoint = spUrlToUri(
         virtualServer + "/_vti_bin/Authentication.asmx").toString();
     authenticationHandler = new FormsAuthenticationHandler(username,
