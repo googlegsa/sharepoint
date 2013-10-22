@@ -342,6 +342,9 @@ public class SharePointAdaptor extends AbstractAdaptor
     context.setPollingIncrementalLister(this);
     Config config = context.getConfig();
     virtualServer = config.getValue("sharepoint.server");
+    if (virtualServer.endsWith("/")) {
+      virtualServer = virtualServer.substring(0, virtualServer.length() - 1);
+    }
     String username = config.getValue("sharepoint.username");
     String password = context.getSensitiveValueDecoder().decodeValue(
         config.getValue("sharepoint.password"));

@@ -312,6 +312,14 @@ public class SharePointAdaptorTest {
   }
 
   @Test
+  public void testTrailingSlashInit() throws Exception {
+    adaptor = new SharePointAdaptor(initableSoapFactory,
+        new UnsupportedHttpClient(), executorFactory);
+    config.overrideKey("sharepoint.server", "http://localhost:1/");
+    adaptor.init(new MockAdaptorContext(config, pusher));
+  }
+
+  @Test
   public void testSpUrlToUriPassthrough() throws Exception {
     assertEquals("http://somehost:1/path/file",
         SharePointAdaptor.spUrlToUri("http://somehost:1/path/file").toString());
