@@ -531,6 +531,10 @@ public class SharePointUserProfileAdaptor extends AbstractAdaptor
               propertyName);
           continue;
         }
+        // Skipping UserProfile_GUID field.
+        if ("UserProfile_GUID".equals(propertyName)) {
+          continue;
+        }
         List<String> values = readUserProfilePropertyValues(prop);
         for (String v : values) {
           response.addMetadata(propertyName, v);

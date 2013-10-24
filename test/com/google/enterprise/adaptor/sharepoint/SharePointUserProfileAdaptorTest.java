@@ -67,14 +67,14 @@ public class SharePointUserProfileAdaptorTest {
     config.overrideKey("profile.setacl", "true");
   }
 
-  private void poulateProfileProperties (
+  private void populateProfileProperties (
       ArrayOfPropertyData userProfileProperties,
       String property, String[] values) {
-    poulateProfileProperties(
+    populateProfileProperties(
         userProfileProperties, property, values, Privacy.PUBLIC);
   }
 
-  private void poulateProfileProperties (
+  private void populateProfileProperties (
       ArrayOfPropertyData userProfileProperties,
       String property, String[] values, Privacy privacy) {
     ArrayOfValueData valueData = new ArrayOfValueData();
@@ -98,19 +98,19 @@ public class SharePointUserProfileAdaptorTest {
     MockUserProfileServiceFactoryImpl serviceFactory =
         new MockUserProfileServiceFactoryImpl(null);
     ArrayOfPropertyData profile = new ArrayOfPropertyData();
-    poulateProfileProperties(profile,
+    populateProfileProperties(profile,
         SharePointUserProfileAdaptor.PROFILE_ACCOUNTNAME_PROPERTY,
         new String[] {"user1"});
     serviceFactory.addUserProfileToCollection(1, 2, "user1", profile, null);
 
     profile = new ArrayOfPropertyData();
-    poulateProfileProperties(profile,
+    populateProfileProperties(profile,
         SharePointUserProfileAdaptor.PROFILE_ACCOUNTNAME_PROPERTY,
         new String[] {"user2"});
     serviceFactory.addUserProfileToCollection(2, 4, "user2", profile, null);
 
     profile = new ArrayOfPropertyData();
-    poulateProfileProperties(profile,
+    populateProfileProperties(profile,
         SharePointUserProfileAdaptor.PROFILE_ACCOUNTNAME_PROPERTY,
         new String[] {"user3"});
     serviceFactory.addUserProfileToCollection(4, 5, "user3", profile, null);
@@ -145,22 +145,24 @@ public class SharePointUserProfileAdaptorTest {
     MockUserProfileServiceFactoryImpl serviceFactory =
         new MockUserProfileServiceFactoryImpl(null);
     ArrayOfPropertyData profile = new ArrayOfPropertyData();
-    poulateProfileProperties(profile,
+    populateProfileProperties(profile,
         SharePointUserProfileAdaptor.PROFILE_ACCOUNTNAME_PROPERTY,
         new String[] {"domain\\user1"});
-    poulateProfileProperties(profile,
+    populateProfileProperties(profile,
         SharePointUserProfileAdaptor.PROFILE_PREFERRED_NAME_PROPERTY,
         new String[] {"First & Last"});
     String[] skills =
         new String[] {"Java", "SharePoint", "C++", "Design"};
-    poulateProfileProperties(profile, "SPS-Skills", skills);
-    poulateProfileProperties(profile, "SP Single Value Property",
+    populateProfileProperties(profile, "SPS-Skills", skills);
+    populateProfileProperties(profile, "SP Single Value Property",
         new String[] {"Value1"});
-    poulateProfileProperties(profile, "SP Multi Value Property",
+    populateProfileProperties(profile, "SP Multi Value Property",
         new String[] {"Value1", "Value2", "Value3"});
-    poulateProfileProperties(profile, "Empty Property", null);
-    poulateProfileProperties(profile, "Private Property",
+    populateProfileProperties(profile, "Empty Property", null);
+    populateProfileProperties(profile, "Private Property",
         new String[] {"Private Value"}, Privacy.PRIVATE);
+    populateProfileProperties(profile, "UserProfile_GUID", 
+        new String[] {"{guid}"});
     ArrayOfContactData colleaguesData = new ArrayOfContactData();
     ContactData cPublic = new ContactData();
 
@@ -214,6 +216,7 @@ public class SharePointUserProfileAdaptorTest {
         "SP Multi Value Property").size());
     assertFalse(response.getMetadata().getKeys().contains("Empty Property"));
     assertFalse(response.getMetadata().getKeys().contains("Private Property"));
+    assertFalse(response.getMetadata().getKeys().contains("UserProfile_GUID"));
 
     // Colleagues Verification
     String xml = response.getMetadata().getOneValue(
@@ -281,7 +284,7 @@ public class SharePointUserProfileAdaptorTest {
     MockUserProfileServiceFactoryImpl serviceFactory =
         new MockUserProfileServiceFactoryImpl(null);
     ArrayOfPropertyData profile = new ArrayOfPropertyData();
-    poulateProfileProperties(profile,
+    populateProfileProperties(profile,
         SharePointUserProfileAdaptor.PROFILE_ACCOUNTNAME_PROPERTY,
         new String[] {"user1"});
     serviceFactory.addUserProfileToCollection(1, 2, "user1", profile, null);
