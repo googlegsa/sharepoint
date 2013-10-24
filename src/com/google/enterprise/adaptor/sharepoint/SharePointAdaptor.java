@@ -17,6 +17,8 @@ package com.google.enterprise.adaptor.sharepoint;
 import com.google.common.annotations.VisibleForTesting;
 import com.google.common.cache.CacheBuilder;
 import com.google.common.cache.LoadingCache;
+import com.google.common.collect.Multimap;
+import com.google.common.collect.TreeMultimap;
 import com.google.enterprise.adaptor.AbstractAdaptor;
 import com.google.enterprise.adaptor.Acl;
 import com.google.enterprise.adaptor.AdaptorContext;
@@ -207,6 +209,29 @@ public class SharePointAdaptor extends AbstractAdaptor
 
   private static final Pattern METADATA_ESCAPE_PATTERN
       = Pattern.compile("_x([0-9a-f]{4})_");
+
+  private static final String HTML_NAME = "[a-zA-Z:_][a-zA-Z:_0-9.-]*";
+  private static final Pattern HTML_TAG_PATTERN
+      = Pattern.compile(
+          // Tag and attributes
+          "<" + HTML_NAME + "(?:[ \n\t]+" + HTML_NAME + "="
+            // Attribute values
+            + "(?:'[^']*'|\"[^\"]*\"|[a-zA-Z0-9._:-]*))*[ \n\t]*/?>"
+          // Close tags
+          + "|</" + HTML_NAME + ">", Pattern.DOTALL);
+  private static final Pattern HTML_ENTITY_PATTERN
+      = Pattern.compile("&(#[0-9]+|[a-zA-Z0-9]+);");
+  private static final Map<String, String> HTML_ENTITIES;
+  static {
+    HashMap<String, String> map = new HashMap<String, String>();
+    map.put("quot", "\"");
+    map.put("amp", "&");
+    map.put("lt", "<");
+    map.put("gt", ">");
+    map.put("nbsp", "\u00a0");
+    map.put("apos", "'");
+    HTML_ENTITIES = Collections.unmodifiableMap(map);
+  }
 
   private static final String SITE_COLLECTION_ADMIN_FRAGMENT = "admin";
 
@@ -883,6 +908,42 @@ public class SharePointAdaptor extends AbstractAdaptor
         uri.getScheme(), uri.getAuthority(), null, null, null).toString();
   }
 
+  /**
+   * Convert from text/html to text/plain. Although we hope for good fidelity,
+   * getting the conversion perfect is not necessary.
+   */
+  @VisibleForTesting
+  static String stripHtml(String html) {
+    html = HTML_TAG_PATTERN.matcher(html).replaceAll("");
+    Matcher m = HTML_ENTITY_PATTERN.matcher(html);
+    StringBuffer sb = new StringBuffer();
+    while (m.find()) {
+      String entity = m.group(1);
+      String decodedEntity;
+      if (entity.startsWith("#")) {
+        entity = entity.substring(1);
+        try {
+          // HTML entities are only in UCS-2 range, so no need to worry about
+          // converting to surrogates.
+          char c = (char) Integer.parseInt(entity);
+          decodedEntity = Character.toString(c);
+        } catch (NumberFormatException ex) {
+          log.log(Level.FINE, "Could not decode entity", ex);
+          decodedEntity = "";
+        }
+      } else {
+        entity = entity.toLowerCase(Locale.ENGLISH);
+        decodedEntity = HTML_ENTITIES.get(entity);
+        if (decodedEntity == null) {
+          decodedEntity = "";
+        }
+      }
+      m.appendReplacement(sb, Matcher.quoteReplacement(decodedEntity));
+    }
+    m.appendTail(sb);
+    return sb.toString();
+  }
+
   @VisibleForTesting
   class SiteAdaptor {
     private final SiteDataClient siteDataClient;
@@ -1432,6 +1493,11 @@ public class SharePointAdaptor extends AbstractAdaptor
     }
 
     private long addMetadata(Response response, String name, String value) {
+      return addMetadata(response, name, value, null);
+    }
+
+    private long addMetadata(Response response, String name, String value,
+        Multimap<String, String> addedMetadata) {
       long size = 0;
       if ("ows_MetaInfo".equals(name)) {
         // ows_MetaInfo is parsed out into other fields for us by SharePoint.
@@ -1451,6 +1517,9 @@ public class SharePointAdaptor extends AbstractAdaptor
             continue;
           }
           response.addMetadata(name, parts[i]);
+          if (addedMetadata != null) {
+            addedMetadata.put(name, parts[i]);
+          }
           // +30 for per-metadata-possible overhead, just to make sure that we
           // don't count too few.
           size += name.length() + parts[i].length() + 30;
@@ -1463,12 +1532,18 @@ public class SharePointAdaptor extends AbstractAdaptor
             continue;
           }
           response.addMetadata(name, part);
+          if (addedMetadata != null) {
+            addedMetadata.put(name, part);
+          }
           // +30 for per-metadata-possible overhead, just to make sure that we
           // don't count too few.
           size += name.length() + part.length() + 30;
         }
       } else {
         response.addMetadata(name, value);
+        if (addedMetadata != null) {
+          addedMetadata.put(name, value);
+        }
         // +30 for per-metadata-possible overhead, just to make sure that we
         // don't count too few.
         size += name.length() + value.length() + 30;
@@ -1807,10 +1882,11 @@ public class SharePointAdaptor extends AbstractAdaptor
       String title = row.getAttribute(OWS_TITLE_ATTRIBUTE);
       String serverUrl = row.getAttribute(OWS_SERVERURL_ATTRIBUTE);
 
+      Multimap<String, String> metadata = TreeMultimap.create();
       long metadataLength = 0;
       for (Attr attribute : getAllAttributes(row)) {
-        metadataLength
-            += addMetadata(response, attribute.getName(), attribute.getValue());
+        metadataLength += addMetadata(response, attribute.getName(),
+            attribute.getValue(), metadata);
       }
       metadataLength += addMetadata(response,
           METADATA_PARENT_WEB_TITLE, w.webTitle);
@@ -1846,6 +1922,7 @@ public class SharePointAdaptor extends AbstractAdaptor
         writer.start(request.getDocId(), ObjectType.FOLDER, null);
         processAttachments(listId, itemId, row, writer);
         processFolder(listId, folder.substring(root.length()), writer);
+        writeMetadataAsContent(writer, metadata);
         writer.finish();
         log.exiting("SiteAdaptor", "getListItemDocContent");
         return;
@@ -1874,6 +1951,7 @@ public class SharePointAdaptor extends AbstractAdaptor
             = createHtmlResponseWriter(response, metadataLength);
         writer.start(request.getDocId(), ObjectType.LIST_ITEM, title);
         processAttachments(listId, itemId, row, writer);
+        writeMetadataAsContent(writer, metadata);
         writer.finish();
       }
       log.exiting("SiteAdaptor", "getListItemDocContent");
@@ -1892,6 +1970,26 @@ public class SharePointAdaptor extends AbstractAdaptor
           writer.addLink(encodeDocId(attachment.getURL()), null);
         }
       }
+    }
+
+    /**
+     * Write out metadata as content so that snippets can be more helpful.
+     */
+    private void writeMetadataAsContent(HtmlResponseWriter writer,
+        Multimap<String, String> metadata) throws IOException {
+      Multimap<String, String> cleanedMetadata = TreeMultimap.create();
+      for (Map.Entry<String, String> me : metadata.entries()) {
+        String value = me.getValue();
+        if (value.startsWith("<") && value.endsWith(">")) {
+          // Assume it is HTML and remove the tags, since otherwise the HTML
+          // will be encoded and show up in snippets. If we assumed wrong, then
+          // we simply removed some content from showing up in snippets. In no
+          // way is this cleanup necessary for correctness.
+          value = stripHtml(value);
+        }
+        cleanedMetadata.put(me.getKey(), value);
+      }
+      writer.addMetadata(cleanedMetadata);
     }
 
     private boolean getAttachmentDocContent(Request request, Response response)

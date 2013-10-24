@@ -15,6 +15,7 @@
 package com.google.enterprise.adaptor.sharepoint;
 
 import com.google.common.annotations.VisibleForTesting;
+import com.google.common.collect.Multimap;
 import com.google.common.io.CountingOutputStream;
 import com.google.enterprise.adaptor.DocId;
 import com.google.enterprise.adaptor.DocIdEncoder;
@@ -30,6 +31,7 @@ import java.text.MessageFormat;
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.Locale;
+import java.util.Map;
 import java.util.concurrent.Executor;
 import java.util.logging.Level;
 import java.util.logging.Logger;
@@ -164,6 +166,37 @@ class HtmlResponseWriter implements Closeable {
     writer.write("\">");
     writer.write(escapeContent(computeLabel(label, doc)));
     writer.write("</a></li>");
+  }
+
+  private void addComment(String comment) throws IOException {
+    writer.write("<!--");
+    writer.write(escapeContent(comment));
+    writer.write("-->");
+  }
+
+  private void googleoffIndex() throws IOException {
+    addComment("googleoff: index");
+  }
+
+  private void googleonIndex() throws IOException {
+    addComment("googleon: index");
+  }
+
+  public void addMetadata(Multimap<String, String> metadata)
+      throws IOException {
+    checkAndCloseSection();
+    googleoffIndex();
+    writer.write("<table style='border: none'>");
+    for (Map.Entry<String, String> me : metadata.entries()) {
+      writer.write("<tr><td>");
+      writer.write(escapeContent(me.getKey()));
+      writer.write("</td><td>");
+      writer.write(escapeContent(me.getValue()));
+      writer.write("</td></tr>");
+    }
+    writer.write("</table>");
+    googleonIndex();
+    state = State.STARTED;
   }
 
   /**
