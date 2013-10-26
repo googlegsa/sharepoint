@@ -854,7 +854,7 @@ public class SharePointAdaptor extends AbstractAdaptor
     StringBuffer sb = new StringBuffer();
     while (m.find()) {
       char c = (char) Integer.parseInt(m.group(1), 16);
-      m.appendReplacement(sb, "" + c);
+      m.appendReplacement(sb, Matcher.quoteReplacement("" + c));
     }
     m.appendTail(sb);
     return sb.toString();

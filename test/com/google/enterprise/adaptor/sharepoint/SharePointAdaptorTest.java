@@ -361,9 +361,9 @@ public class SharePointAdaptorTest {
         SharePointAdaptor.decodeMetadataName("_x020__x00020__0020__x0020"));
     assertEquals("Simple Space",
         SharePointAdaptor.decodeMetadataName("Simple_x0020_Space"));
-    assertEquals("Multiple \u0394Replacements\u2ee8",
+    assertEquals("Multiple \u0394Replacements\u2ee8$",
         SharePointAdaptor.decodeMetadataName(
-            "Multiple_x0020__x0394_Replacements_x2ee8_"));
+            "Multiple_x0020__x0394_Replacements_x2ee8__x0024_"));
   }
 
   @Test
