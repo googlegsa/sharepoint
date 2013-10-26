@@ -96,9 +96,9 @@ public class HtmlResponseWriterTest {
   @Test
   public void testBasicFlow() throws Exception {
     final String golden = "<!DOCTYPE html>\n"
-        + "<html><head><title>Site s</title></head>"
-        + "<body><h1>Site s</h1>"
-        + "<p>Lists</p>"
+        + "<html><head><title>s</title></head>"
+        + "<body><h1><!--googleoff: index-->Site<!--googleon: index--> s</h1>"
+        + "<p><!--googleoff: index-->Lists<!--googleon: index--></p>"
         + "<ul><li><a href=\"s/l\">My List</a></li></ul>"
         + "</body></html>";
     writer.start(new DocId("s"), ObjectType.SITE, null);
@@ -111,9 +111,9 @@ public class HtmlResponseWriterTest {
   @Test
   public void testOverflowToDocIdPusher() throws Exception {
     final String golden = "<!DOCTYPE html>\n"
-        + "<html><head><title>Site s</title></head>"
-        + "<body><h1>Site s</h1>"
-        + "<p>Lists</p>"
+        + "<html><head><title>s</title></head>"
+        + "<body><h1><!--googleoff: index-->Site<!--googleon: index--> s</h1>"
+        + "<p><!--googleoff: index-->Lists<!--googleon: index--></p>"
         + "<ul><li><a href=\"s/l\">My List</a></li></ul>"
         + "</body></html>";
     final List<DocIdPusher.Record> goldenRecords = Arrays.asList(
@@ -166,8 +166,9 @@ public class HtmlResponseWriterTest {
   @Test
   public void testFinishNoSections() throws Exception {
     final String golden = "<!DOCTYPE html>\n"
-        + "<html><head><title>Site a</title></head>"
-        + "<body><h1>Site a</h1></body></html>";
+        + "<html><head><title>a</title></head>"
+        + "<body><h1><!--googleoff: index-->Site<!--googleon: index--> a</h1>"
+        + "</body></html>";
     writer.start(new DocId("a"), ObjectType.SITE, "");
     writer.finish();
     writer.close();

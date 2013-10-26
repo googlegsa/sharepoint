@@ -27,7 +27,6 @@ import java.io.*;
 import java.net.URI;
 import java.net.URISyntaxException;
 import java.nio.charset.Charset;
-import java.text.MessageFormat;
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.Locale;
@@ -118,13 +117,16 @@ class HtmlResponseWriter implements Closeable {
     }
     this.docId = docId;
     this.docUri = docIdEncoder.encodeDocId(docId);
-    // TODO(ejona): Localize.
-    String header = MessageFormat.format("{0} {1}",
-        computeTypeHeaderLabel(type), computeLabel(label, docId));
+    String documentLabel = computeLabel(label, docId);
     writer.write("<!DOCTYPE html>\n<html><head><title>");
-    writer.write(escapeContent(header));
+    writer.write(escapeContent(documentLabel));
     writer.write("</title></head><body><h1>");
-    writer.write(escapeContent(header));
+    googleoffIndex();
+    // TODO(ejona): Localize.
+    writer.write(computeTypeHeaderLabel(type));
+    googleonIndex();
+    writer.write(" ");
+    writer.write(escapeContent(documentLabel));
     writer.write("</h1>");
     state = State.STARTED;
   }
@@ -135,7 +137,9 @@ class HtmlResponseWriter implements Closeable {
     }
     checkAndCloseSection();
     writer.write("<p>");
+    googleoffIndex();
     writer.write(escapeContent(computeTypeSectionLabel(type)));
+    googleonIndex();
     writer.write("</p><ul>");
     state = State.IN_SECTION;
   }

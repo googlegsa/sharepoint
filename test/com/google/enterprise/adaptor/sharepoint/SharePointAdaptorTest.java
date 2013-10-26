@@ -451,9 +451,10 @@ public class SharePointAdaptorTest {
     adaptor.getDocContent(new GetContentsRequest(new DocId("")), response);
     String responseString = new String(baos.toByteArray(), charset);
     final String golden = "<!DOCTYPE html>\n"
-        + "<html><head><title>Virtual Server http://localhost:1/</title></head>"
-        + "<body><h1>Virtual Server http://localhost:1/</h1>"
-        + "<p>Sites</p><ul>"
+        + "<html><head><title>http://localhost:1/</title></head>"
+        + "<body><h1><!--googleoff: index-->Virtual Server"
+        +   "<!--googleon: index--> http://localhost:1/</h1>"
+        + "<p><!--googleoff: index-->Sites<!--googleon: index--></p><ul>"
         // These are relative URLs to DocIds that are URLs, and thus the "./"
         // prefix is correct.
         + "<li><a href=\"./http://localhost:1\">localhost:1</a></li>"
@@ -544,12 +545,13 @@ public class SharePointAdaptorTest {
     adaptor.getDocContent(request, response);
     String responseString = new String(baos.toByteArray(), charset);
     final String golden = "<!DOCTYPE html>\n"
-        + "<html><head><title>Site chinese1</title></head>"
-        + "<body><h1>Site chinese1</h1>"
-        + "<p>Sites</p>"
+        + "<html><head><title>chinese1</title></head>"
+        + "<body><h1><!--googleoff: index-->Site<!--googleon: index-->"
+        +   " chinese1</h1>"
+        + "<p><!--googleoff: index-->Sites<!--googleon: index--></p>"
         + "<ul><li><a href=\"SiteCollection/somesite\">"
         + "http://localhost:1/sites/SiteCollection/somesite</a></li></ul>"
-        + "<p>Lists</p>"
+        + "<p><!--googleoff: index-->Lists<!--googleon: index--></p>"
         + "<ul><li><a href=\"SiteCollection/Lists/Announcements/"
         +   "AllItems.aspx\">"
         + "/sites/SiteCollection/Lists/Announcements/AllItems.aspx</a></li>"
@@ -557,9 +559,9 @@ public class SharePointAdaptorTest {
         +   "AllItems.aspx\">"
         + "/sites/SiteCollection/Shared Documents/Forms/AllItems.aspx</a>"
         + "</li></ul>"
-        + "<p>Folders</p>"
+        + "<p><!--googleoff: index-->Folders<!--googleon: index--></p>"
         + "<ul></ul>"
-        + "<p>List Items</p>"
+        + "<p><!--googleoff: index-->List Items<!--googleon: index--></p>"
         + "<ul><li><a href=\"SiteCollection/default.aspx\">"
         + "default.aspx</a></li></ul>"
         + "</body></html>";
@@ -784,9 +786,10 @@ public class SharePointAdaptorTest {
     String responseString = new String(baos.toByteArray(), charset);
     final String golden
         = "<!DOCTYPE html>\n"
-        + "<html><head><title>List Custom List</title></head>"
-        + "<body><h1>List Custom List</h1>"
-        + "<p>List Items</p>"
+        + "<html><head><title>Custom List</title></head>"
+        + "<body><h1><!--googleoff: index-->List<!--googleon: index-->"
+        +   " Custom List</h1>"
+        + "<p><!--googleoff: index-->List Items<!--googleon: index--></p>"
         + "<ul>"
         + "<li><a href=\"3_.000\">Outside Folder</a></li>"
         + "<li><a href=\"Test%20Folder\">Test Folder</a></li>"
@@ -915,9 +918,10 @@ public class SharePointAdaptorTest {
     String responseString = new String(baos.toByteArray(), charset);
     final String golden
         = "<!DOCTYPE html>\n"
-        + "<html><head><title>List Item Inside Folder</title></head>"
-        + "<body><h1>List Item Inside Folder</h1>"
-        + "<p>Attachments</p><ul>"
+        + "<html><head><title>Inside Folder</title></head>"
+        + "<body><h1><!--googleoff: index-->List Item<!--googleon: index-->"
+        +   " Inside Folder</h1>"
+        + "<p><!--googleoff: index-->Attachments<!--googleon: index--></p><ul>"
         + "<li><a href=\"../Attachments/2/1046000.pdf\">1046000.pdf</a></li>"
         + "</ul>"
         + "<!--googleoff: index--><table style='border: none'>"
@@ -1121,8 +1125,9 @@ public class SharePointAdaptorTest {
         .getDocContent(request, response);
     String responseString = new String(baos.toByteArray(), charset);
     final String golden = "<!DOCTYPE html>\n"
-        + "<html><head><title>List Item Inside Folder</title></head>"
-        + "<body><h1>List Item Inside Folder</h1>"
+        + "<html><head><title>Inside Folder</title></head>"
+        + "<body><h1><!--googleoff: index-->List Item<!--googleon: index-->"
+        +   " Inside Folder</h1>"
         + "<!--googleoff: index--><table style='border: none'>"
         + "<tr><td>Attachments</td><td>0</td></tr>"
         + "<tr><td>Author</td><td>System Account</td></tr>"
@@ -1268,9 +1273,10 @@ public class SharePointAdaptorTest {
     String responseString = new String(baos.toByteArray(), charset);
     final String golden
         = "<!DOCTYPE html>\n"
-        + "<html><head><title>Folder Test Folder</title></head>"
-        + "<body><h1>Folder Test Folder</h1>"
-        + "<p>List Items</p>"
+        + "<html><head><title>Test Folder</title></head>"
+        + "<body><h1><!--googleoff: index-->Folder<!--googleon: index-->"
+        +   " Test Folder</h1>"
+        + "<p><!--googleoff: index-->List Items<!--googleon: index--></p>"
         + "<ul>"
         + "<li><a href=\"Test%20Folder/2_.000\">Inside Folder</a></li>"
         + "<li><a href=\"Test%20Folder/testing\">testing</a></li>"
