@@ -891,6 +891,44 @@ public class SharePointAdaptorTest {
   }
 
   @Test
+  public void testGetDocContentAttachmentSpecialMimeType() throws Exception {
+    SiteDataSoap siteData = MockSiteData.blank()
+        .register(SITES_SITECOLLECTION_S_CONTENT_EXCHANGE)
+        .register(SITES_SITECOLLECTION_LISTS_CUSTOMLIST_URLSEG_EXCHANGE)
+        .register(SITES_SITECOLLECTION_LISTS_CUSTOMLIST_L_CONTENT_EXCHANGE)
+        .register(SITES_SITECOLLECTION_LISTS_CUSTOMLIST_2_LI_CONTENT_EXCHANGE);
+    final String site = "http://localhost:1/sites/SiteCollection";
+    final String attachmentId = site + "/Lists/Custom List/Attachments/2/104600"
+        + "0.pdf";
+
+    adaptor = new SharePointAdaptor(initableSoapFactory,
+        new HttpClient() {
+      @Override
+      public FileInfo issueGetRequest(URL url,
+          List<String> authenticationCookies) {
+        InputStream contents = new ByteArrayInputStream(new byte[0]);
+        List<String> headers = Arrays.asList(
+            "Content-Type", "application/vnd.ms-excel.12");
+        return new FileInfo.Builder(contents).setHeaders(headers).build();
+      }
+    }, executorFactory);
+    adaptor.init(new MockAdaptorContext(config, pusher));
+    ByteArrayOutputStream baos = new ByteArrayOutputStream();
+    GetContentsRequest request = new GetContentsRequest(
+        new DocId(attachmentId));
+    GetContentsResponse response = new GetContentsResponse(baos);
+    adaptor.new SiteAdaptor("http://localhost:1/sites/SiteCollection",
+          "http://localhost:1/sites/SiteCollection", siteData,
+          new UnsupportedUserGroupSoap(), new UnsupportedPeopleSoap(),
+          new UnsupportedCallable<MemberIdMapping>(),
+          new UnsupportedCallable<MemberIdMapping>())
+        .getDocContent(request, response);
+    assertEquals(
+        "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        response.getContentType());
+  }
+
+  @Test
   public void testGetDocContentListItem() throws Exception {
     SiteDataSoap siteData = MockSiteData.blank()
         .register(SITES_SITECOLLECTION_S_CONTENT_EXCHANGE)

@@ -235,6 +235,50 @@ public class SharePointAdaptor extends AbstractAdaptor
 
   private static final String SITE_COLLECTION_ADMIN_FRAGMENT = "admin";
 
+  /**
+   * Mapping of mime-types used by SharePoint to ones that the GSA comprehends.
+   */
+  private static final Map<String, String> MIME_TYPE_MAPPING;
+  static {
+    Map<String, String> map = new HashMap<String, String>();
+    // Mime types used by SharePoint that aren't IANA-registered.
+    // Extension .xlsx
+    map.put("application/vnd.ms-excel.12",
+        "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet");
+    // Extension .pptx
+    map.put("application/vnd.ms-powerpoint.presentation.12", "application/"
+        + "vnd.openxmlformats-officedocument.presentationml.presentation");
+    // Extension .docx
+    map.put("application/vnd.ms-word.document.12", "application/"
+        + "vnd.openxmlformats-officedocument.wordprocessingml.document");
+    // Extension .ppsm
+    map.put("application/vnd.ms-powerpoint.show.macroEnabled.12", "application/"
+        + "vnd.openxmlformats-officedocument.presentationml.presentation");
+    // Extension .ppsx
+    map.put("application/vnd.ms-powerpoint.show.12", "application/"
+        + "vnd.openxmlformats-officedocument.presentationml.presentation");
+    // Extension .pptm
+    map.put("application/vnd.ms-powerpoint.macroEnabled.12", "application/"
+        + "vnd.openxmlformats-officedocument.presentationml.presentation");
+    // Extension .xlsm
+    map.put("application/vnd.ms-excel.macroEnabled.12",
+        "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet");
+
+    // IANA-registered mime types unknown to GSA 7.2.
+    // Extension .docm
+    map.put("application/vnd.ms-word.document.macroEnabled.12", "application/"
+        + "vnd.openxmlformats-officedocument.wordprocessingml.document");
+    // Extension .pptm
+    map.put("application/vnd.ms-powerpoint.presentation.macroEnabled.12",
+        "application/"
+        + "vnd.openxmlformats-officedocument.presentationml.presentation");
+    // Extension .xlsm
+    map.put("application/vnd.ms-excel.sheet.macroEnabled.12",
+        "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet");
+
+    MIME_TYPE_MAPPING = Collections.unmodifiableMap(map);
+  }
+
   private static final Logger log
       = Logger.getLogger(SharePointAdaptor.class.getName());
 
@@ -1695,6 +1739,10 @@ public class SharePointAdaptor extends AbstractAdaptor
         response.setDisplayUrl(displayUrl);
         String contentType = fi.getFirstHeaderWithName("Content-Type");
         if (contentType != null) {
+          String lowerType = contentType.toLowerCase(Locale.ENGLISH);
+          if (MIME_TYPE_MAPPING.containsKey(lowerType)) {
+            contentType = MIME_TYPE_MAPPING.get(lowerType);
+          }
           response.setContentType(contentType);
         }
         String lastModifiedString = fi.getFirstHeaderWithName("Last-Modified");
