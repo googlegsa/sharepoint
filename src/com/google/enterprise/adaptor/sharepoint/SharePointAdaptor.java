@@ -210,6 +210,8 @@ public class SharePointAdaptor extends AbstractAdaptor
   private static final Pattern METADATA_ESCAPE_PATTERN
       = Pattern.compile("_x([0-9a-f]{4})_");
 
+  private static final Pattern INTEGER_PATTERN = Pattern.compile("[0-9]+");
+
   private static final String HTML_NAME = "[a-zA-Z:_][a-zA-Z:_0-9.-]*";
   private static final Pattern HTML_TAG_PATTERN
       = Pattern.compile(
@@ -2051,7 +2053,7 @@ public class SharePointAdaptor extends AbstractAdaptor
         return false;
       }
       String[] parts = url.split("/Attachments/", 2);
-      String listUrl = parts[0] + "/AllItems.aspx";
+      String listBase = parts[0];
       parts = parts[1].split("/", 2);
       if (parts.length != 2) {
         log.fine("Could not separate attachment file name and list item id");
@@ -2060,14 +2062,28 @@ public class SharePointAdaptor extends AbstractAdaptor
       }
       String itemId = parts[0];
       log.log(Level.FINE, "Detected possible attachment: "
-          + "listUrl={0}, itemId={1}", new Object[] {listUrl, itemId});
-      Holder<String> listIdHolder = new Holder<String>();
-      boolean result
-          = siteDataClient.getUrlSegments(listUrl, listIdHolder, null);
-      if (!result) {
-        log.fine("Could not get list id from list url");
+          + "listBase={0}, itemId={1}", new Object[] {listBase, itemId});
+      if (!INTEGER_PATTERN.matcher(itemId).matches()) {
+        log.fine("Item Id isn't an integer, so it isn't actually an id");
         log.exiting("SiteAdaptor", "getAttachmentDocContent", false);
         return false;
+      }
+      Holder<String> listIdHolder = new Holder<String>();
+      // TODO(ejona): Find a more reliable way to determine the list's id.
+      // Hope the list's default view is AllItems.aspx.
+      boolean result = siteDataClient.getUrlSegments(
+          listBase + "/AllItems.aspx", listIdHolder, null);
+      if (!result) {
+        log.fine("Could not get list id from list url");
+        // AllItems.aspx may not be the default view, so hope that list items
+        // follow the ${id}_.000-style format and that there aren't any folders.
+        result = siteDataClient.getUrlSegments(
+            listBase + "/" + itemId + "_.000", listIdHolder, null);
+        if (!result) {
+          log.fine("Could not get list id from list item url");
+          log.exiting("SiteAdaptor", "getAttachmentDocContent", false);
+          return false;
+        }
       }
       String listId = listIdHolder.value;
       if (listId == null) {
