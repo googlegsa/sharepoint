@@ -33,6 +33,7 @@ import com.google.enterprise.adaptor.UserPrincipal;
 import com.google.enterprise.adaptor.sharepoint.SharePointAdaptor.SiteUserIdMappingCallable;
 import com.google.enterprise.adaptor.sharepoint.SharePointAdaptor.SoapFactory;
 
+import com.microsoft.schemas.sharepoint.soap.ItemData;
 import com.microsoft.schemas.sharepoint.soap.ObjectType;
 import com.microsoft.schemas.sharepoint.soap.SPContentDatabase;
 import com.microsoft.schemas.sharepoint.soap.SiteDataSoap;
@@ -1703,6 +1704,16 @@ public class SharePointAdaptorTest {
     assertNotNull(client.jaxbParse(xml, SPContentDatabase.class));
   }
 
+  @Test
+  public void testChar31Stripping() throws Exception {
+    SiteDataClient client = new SiteDataClient(
+        new UnsupportedSiteData(), true);
+    String xml = loadTestString("sites-SiteCollection-Lists-CustomList-1-f.xml")
+        .replace("<Folder>",
+            "<Folder xmlns='http://schemas.microsoft.com/sharepoint/soap/'>")
+        .replace("MetaInfo='2;#'", "MetaInfo='2;#&#31;'");
+    assertNotNull(client.jaxbParse(xml, ItemData.class));
+  }
 
   @Test
   public void testParseUnknownXml() throws Exception {

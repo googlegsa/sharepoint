@@ -292,6 +292,12 @@ class SiteDataClient {
   @VisibleForTesting
   <T> T jaxbParse(String xml, Class<T> klass)
       throws XmlProcessingException {
+    if (xml.contains("&#31;")) {
+      // Unit separator is sometimes present in ows_MetaInfo of the response
+      // XML, but it prevents the XML from being parsed. Since we don't actually
+      // care about MetaInfo we strip it out.
+      xml = xml.replace("&#31;", "");
+    }
     Source source = new StreamSource(new StringReader(xml));
     try {
       Unmarshaller unmarshaller = jaxbContext.createUnmarshaller();
