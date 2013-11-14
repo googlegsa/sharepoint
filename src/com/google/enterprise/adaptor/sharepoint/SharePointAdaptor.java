@@ -1367,6 +1367,16 @@ public class SharePointAdaptor extends AbstractAdaptor
       if (w.getLists() != null) {
         writer.startSection(ObjectType.LIST);
         for (Lists.List list : w.getLists().getList()) {
+          if ("".equals(list.getDefaultViewUrl())) {
+            // Do some I/O to give a good informational message. This is
+            // expected to be a very rare case.
+            com.microsoft.schemas.sharepoint.soap.List l
+                = siteDataClient.getContentList(list.getID());
+            log.log(Level.INFO,
+                "Ignoring List {0} in {1}, since it has no default view URL",
+                new Object[] {l.getMetadata().getTitle(), webUrl});
+            continue;
+          }
           writer.addLink(encodeDocId(list.getDefaultViewUrl()),
               list.getDefaultViewUrl());
         }
