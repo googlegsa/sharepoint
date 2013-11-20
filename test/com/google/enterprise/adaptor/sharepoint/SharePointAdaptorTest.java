@@ -807,6 +807,7 @@ public class SharePointAdaptorTest {
         response.getAcl());
     assertEquals(URI.create("http://localhost:1/sites/SiteCollection/Lists/"
           + "Custom%20List/AllItems.aspx"), response.getDisplayUrl());
+    assertEquals(new Date(1336166672000L), response.getLastModified());
   }
 
   @Test

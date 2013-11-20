@@ -363,6 +363,16 @@ public class SharePointAdaptor extends AbstractAdaptor
           return df;
         }
       };
+  private final ThreadLocal<DateFormat> listLastModifiedDateFormat
+      = new ThreadLocal<DateFormat>() {
+        @Override
+        protected DateFormat initialValue() {
+          DateFormat df = new SimpleDateFormat(
+              "yyyy-MM-dd HH:mm:ss'Z'", Locale.ENGLISH);
+          df.setTimeZone(gmt);
+          return df;
+        }
+      };
 
   public SharePointAdaptor() {
     this(new SoapFactoryImpl(), new HttpClientImpl(),
@@ -1462,6 +1472,13 @@ public class SharePointAdaptor extends AbstractAdaptor
 
       response.setDisplayUrl(sharePointUrlToUri(
           l.getMetadata().getDefaultViewUrl()));
+      String lastModified = l.getMetadata().getLastModified();
+      try {
+        response.setLastModified(
+            listLastModifiedDateFormat.get().parse(lastModified));
+      } catch (ParseException ex) {
+        log.log(Level.INFO, "Could not parse LastModified: {0}", lastModified);
+      }
       HtmlResponseWriter writer = createHtmlResponseWriter(response);
       writer.start(request.getDocId(), ObjectType.LIST,
           l.getMetadata().getTitle());
