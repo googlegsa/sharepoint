@@ -137,24 +137,24 @@ Profile Service Application.
   directory that contains the adaptor binary. Within the file, provide the
   configuration (replacing bolded items with your real configuration):
   <pre>gsa.hostname=<b>yourgsa.example.com</b>
-  sharepoint.server=<b>http://yoursharepoint.example.com/</b></pre>
+sharepoint.server=<b>http://yoursharepoint.example.com/</b></pre>
 
   <li>If the adaptor will <em>not</em> be running as the user account that has
   appropriate SharePoint permissions, then add these additional configuration
   options to <code>adaptor-config.properties</code>:
   <pre>sharepoint.username=<b>YOURDOMAIN\\AdaptorUser</b>
-  sharepoint.password=<b>uS3R_passWoRD</b></pre>
+sharepoint.password=<b>uS3R_passWoRD</b></pre>
 
   <li>Create a file named <code>logging.properties</code> in the same directory
   that contains logging configuration:
   <pre>
-  .level=INFO
-  handlers=java.util.logging.FileHandler,java.util.logging.ConsoleHandler
-  java.util.logging.FileHandler.formatter=com.google.enterprise.adaptor.CustomFormatter
-  java.util.logging.FileHandler.pattern=adaptor.%g.log
-  java.util.logging.FileHandler.limit=10485760
-  java.util.logging.FileHandler.count=20
-  java.util.logging.ConsoleHandler.formatter=com.google.enterprise.adaptor.CustomFormatter
+.level=INFO
+handlers=java.util.logging.FileHandler,java.util.logging.ConsoleHandler
+java.util.logging.FileHandler.formatter=com.google.enterprise.adaptor.CustomFormatter
+java.util.logging.FileHandler.pattern=adaptor.%g.log
+java.util.logging.FileHandler.limit=10485760
+java.util.logging.FileHandler.count=20
+java.util.logging.ConsoleHandler.formatter=com.google.enterprise.adaptor.CustomFormatter</pre>
 
   <li>Run the adaptor using cmd.exe:
   <pre>java -Djava.util.logging.config.file=logging.properties -jar adaptor-sharepoint-user-profile-YYYYMMDD-withlib.jar</pre>
