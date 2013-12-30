@@ -11,7 +11,7 @@ Therefore, you will need to deploy one adaptor instance per Web Applicaton.
 
 <h4>Requirements</h4>
 <ul>
-  <li>GSA 7.0 P1 or higher
+  <li>GSA 7.2 or higher
   <li>GSA user authentication configured for authentication system in use
     (typically Active Directory)
   <li>Java JRE on computer that runs adaptor (1.6u27 or higher for linux;
@@ -50,13 +50,15 @@ sharepoint.server=<b>http://yoursharepoint.example.com/</b></pre>
   <pre>sharepoint.username=<b>YOURDOMAIN\\AdaptorUser</b>
 sharepoint.password=<b>uS3R_passWoRD</b></pre>
 
+  <li>Create a folder named <code>logs</code> in the same directory.
+
   <li>Create a file named <code>logging.properties</code> in the same directory
   that contains logging configuration:
   <pre>
 .level=INFO
 handlers=java.util.logging.FileHandler,java.util.logging.ConsoleHandler
 java.util.logging.FileHandler.formatter=com.google.enterprise.adaptor.CustomFormatter
-java.util.logging.FileHandler.pattern=adaptor.%g.log
+java.util.logging.FileHandler.pattern=logs/adaptor.%g.log
 java.util.logging.FileHandler.limit=10485760
 java.util.logging.FileHandler.count=20
 java.util.logging.ConsoleHandler.formatter=com.google.enterprise.adaptor.CustomFormatter</pre>
@@ -65,11 +67,18 @@ java.util.logging.ConsoleHandler.formatter=com.google.enterprise.adaptor.CustomF
   <pre>java -Djava.util.logging.config.file=logging.properties -jar adaptor-sharepoint-YYYYMMDD-withlib.jar</pre>
 </ol>
 
-<!--
-<h4>Running as service on Windows</h4>
-  <p>Example execution with jsvc:
+<h4>Running as a service</h4>
+  <p>Example service creation on Windows with prunsrv:
+  <pre>prunsrv install adaptor-sharepoint --StartPath="%CD%" ^
+  --Classpath=adaptor-sharepoint-YYYYMMDD-withlib.jar ^
+  --StartMode=jvm --StartClass=com.google.enterprise.adaptor.Daemon ^
+  --StartMethod=serviceStart --StartParams=com.google.enterprise.adaptor.sharepoint.SharePointAdaptor
+  --StopMode=jvm --StopClass=com.google.enterprise.adaptor.Daemon ^
+  --StopMethod=serviceStop --StdOutput=stdout.log --StdError=stderr.log ^
+  ++JvmOptions=-Djava.util.logging.config.file=logging.properties</pre>
+
+  <p>Example execution on Linux with jsvc:
   <pre>jsvc -pidfile adaptor.pid -cp adaptor-sharepoint-YYYYMMDD-withlib.jar com.google.enterprise.adaptor.Daemon com.google.enterprise.adaptor.sharepoint.SharePointAdaptor</pre>
--->
 
 <h4>Optional <code>adaptor-config.properties</code> fields</h4>
 <dl>
@@ -129,6 +138,21 @@ Profile Service Application.
     Add an entry like <code>http://adaptor.example.com:5678/doc/
     </code> where <code>adaptor.example.com</code> is the hostname of the
     machine that hosts the adaptor. By default the adaptor runs on port 5678.
+  <li>Create and configure a new result collection for user profile documents.
+    <p>In the Admin console, go to <b>Index &gt; Collections</b>, in the
+    <b>Create New Collection</b> section specify a unique name for the new
+    collection. Select <b>Empty</b> for <b>Initial Configuration</b> and click
+    <b>Create</b>.
+    <p>Then, in the <b>Current Collections</b> section click <b>Edit</b> for the
+    newly-created user profile collection. In the <b>Include Content Matching
+    the Following Patterns</b> box, add the URL pattern for the adaptor as used
+    in step 2 and click <b>Save</b>.
+  <li>Configure the default_collection to exclude user profile documents.
+    <p>In the Admin console at <b>Index &gt; Collection</b>, in the <b>Current
+    Collections</b> section click <b>Edit</b> for
+    <code>default_collection</code>. In the <b>Do Not Include Content Matching
+    the Following Patterns</b> box, add the URL pattern for the adaptor as used
+    in step 2 and click <b>Save</b>.
 </ol>
 
 <h4>Configure Adaptor</h4>
@@ -145,13 +169,15 @@ sharepoint.server=<b>http://yoursharepoint.example.com/</b></pre>
   <pre>sharepoint.username=<b>YOURDOMAIN\\AdaptorUser</b>
 sharepoint.password=<b>uS3R_passWoRD</b></pre>
 
+  <li>Create a folder named <code>logs</code> in the same directory.
+
   <li>Create a file named <code>logging.properties</code> in the same directory
   that contains logging configuration:
   <pre>
 .level=INFO
 handlers=java.util.logging.FileHandler,java.util.logging.ConsoleHandler
 java.util.logging.FileHandler.formatter=com.google.enterprise.adaptor.CustomFormatter
-java.util.logging.FileHandler.pattern=adaptor.%g.log
+java.util.logging.FileHandler.pattern=logs/adaptor.%g.log
 java.util.logging.FileHandler.limit=10485760
 java.util.logging.FileHandler.count=20
 java.util.logging.ConsoleHandler.formatter=com.google.enterprise.adaptor.CustomFormatter</pre>
@@ -160,11 +186,18 @@ java.util.logging.ConsoleHandler.formatter=com.google.enterprise.adaptor.CustomF
   <pre>java -Djava.util.logging.config.file=logging.properties -jar adaptor-sharepoint-user-profile-YYYYMMDD-withlib.jar</pre>
 </ol>
 
-<!--
-<h4>Running as service on Windows</h4>
-  <p>Example execution with jsvc:
+<h4>Running as a service</h4>
+  <p>Example service creation on Windows with prunsrv:
+  <pre>prunsrv install adaptor-sharepoint-user-profile --StartPath="%CD%" ^
+  --Classpath=adaptor-sharepoint-user-profile-YYYYMMDD-withlib.jar ^
+  --StartMode=jvm --StartClass=com.google.enterprise.adaptor.Daemon ^
+  --StartMethod=serviceStart --StartParams=com.google.enterprise.adaptor.sharepoint.SharePointUserProfileAdaptor
+  --StopMode=jvm --StopClass=com.google.enterprise.adaptor.Daemon ^
+  --StopMethod=serviceStop --StdOutput=stdout.log --StdError=stderr.log ^
+  ++JvmOptions=-Djava.util.logging.config.file=logging.properties</pre>
+
+  <p>Example execution on Linux with jsvc:
   <pre>jsvc -pidfile adaptor.pid -cp adaptor-sharepoint-user-profile-YYYYMMDD-withlib.jar com.google.enterprise.adaptor.Daemon com.google.enterprise.adaptor.sharepoint.SharePointUserProfileAdaptor</pre>
--->
 
 <h4>Optional <code>adaptor-config.properties</code> fields</h4>
 <dl>
