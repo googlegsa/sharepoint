@@ -15,6 +15,7 @@
 package com.google.enterprise.adaptor.sharepoint;
 
 import com.google.common.annotations.VisibleForTesting;
+import com.google.common.base.Strings;
 import com.microsoft.schemas.sharepoint.soap.authentication.AuthenticationMode;
 import com.microsoft.schemas.sharepoint.soap.authentication.AuthenticationSoap;
 import com.microsoft.schemas.sharepoint.soap.authentication.LoginErrorCode;
@@ -68,7 +69,7 @@ class FormsAuthenticationHandler {
     this.password = password;   
     this.executor = executor;
     this.authenticationClient = authenticationClient;
-  }  
+  }
 
   public List<String> getAuthenticationCookies() {
     return Collections.unmodifiableList(authenticationCookiesList);
@@ -82,6 +83,13 @@ class FormsAuthenticationHandler {
     log.log(Level.FINE, "AuthenticationMode = {0}", authenticationMode);
     if (authenticationMode != AuthenticationMode.FORMS) {
       return;
+    }
+    
+    if ("".equals(userName) || "".equals(password)) {
+      log.log(Level.FINE, 
+          "Empty username / password. Using authentication mode as Windows");
+       authenticationMode = AuthenticationMode.WINDOWS;
+       return;
     }
     
     LoginResult result;
