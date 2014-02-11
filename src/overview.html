@@ -19,6 +19,12 @@ Therefore, you will need to deploy one adaptor instance per Web Applicaton.
   <li>SharePoint Adaptor JAR executable
   <li>User account for adaptor, with Full Read permissions to SharePoint Web
     Application in the User Policy
+  <li>When running Adaptor from Windows 7, Windows Server 2008, 
+      Windows Server 2008 R2 or Windows Server 2012 machine, on adaptor machine
+      set local security policy for <b>Network security: LAN Manager 
+      authentication level</b> to <b>Send LM &amp; NTLM - use NTLMv2 session 
+      security if negotiated</b>. Use these <a href="#secpolicy">
+      configuration steps</a> to set local security policy.
 </ul>
 
 <h4>Configure GSA for Adaptor</h4>
@@ -123,6 +129,12 @@ Profile Service Application.
   <li>SharePoint User Profile Adaptor JAR executable
   <li>User account for adaptor, with Full Control permissions to SharePoint User
       Profile Service Application
+  <li>When running Adaptor from Windows 7, Windows Server 2008, 
+      Windows Server 2008 R2 or Windows Server 2012 machine, on adaptor machine
+      set local security policy for <b>Network security: LAN Manager 
+      authentication level</b> to <b>Send LM &amp; NTLM - use NTLMv2 session 
+      security if negotiated</b>. Use these <a href="#secpolicy">
+      configuration steps</a> to set local security policy.
 </ul>
 
 <h4>Configure GSA for Adaptor</h4>
@@ -223,4 +235,11 @@ java.util.logging.ConsoleHandler.formatter=com.google.enterprise.adaptor.CustomF
   </dd>
 </dl>
 
+<h4 id="secpolicy">Steps to specify LAN Manager Authentication Level Policy</h4>
+<ol>
+    <li>Run <code>secpol.msc</code> on Adaptor machine.        
+    <li>Under Security settings, navigate to Local policies > Security Options.
+    <li>Select Network security: LAN Manager authentication level policy and 
+        set it to Send LM &amp; NTLM - use NTLMv2 session security if negotiated.   
+</ol>
 </body>
