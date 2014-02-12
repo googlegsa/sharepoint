@@ -836,6 +836,31 @@ public class SharePointAdaptorTest {
   }
 
   @Test
+  public void testGetDocContentListNonDefaultView() throws Exception {
+    SiteDataSoap siteData = MockSiteData.blank()
+        .register(SITES_SITECOLLECTION_S_CONTENT_EXCHANGE)       
+        .register(new URLSegmentsExchange(
+          "http://localhost:1/sites/SiteCollection/Lists/Custom List"
+          + "/NonDefault.aspx",false, null, null, null, null))
+        .register(SITES_SITECOLLECTION_LISTS_CUSTOMLIST_L_CONTENT_EXCHANGE);
+    adaptor = new SharePointAdaptor(initableSoapFactory,
+        new UnsupportedHttpClient(), executorFactory);
+    adaptor.init(new MockAdaptorContext(config, pusher));
+    ByteArrayOutputStream baos = new ByteArrayOutputStream();
+    GetContentsRequest request = new GetContentsRequest(
+        new DocId("http://localhost:1/sites/SiteCollection/Lists/Custom List/"
+          + "NonDefault.aspx"));
+    GetContentsResponse response = new GetContentsResponse(baos);
+    adaptor.new SiteAdaptor("http://localhost:1/sites/SiteCollection",
+          "http://localhost:1/sites/SiteCollection", siteData,
+          new UnsupportedUserGroupSoap(), new UnsupportedPeopleSoap(),
+          new UnsupportedCallable<MemberIdMapping>(),
+          new UnsupportedCallable<MemberIdMapping>())
+        .getDocContent(request, response);
+    assertTrue(response.isNotFound());
+  }
+
+  @Test
   public void testGetDocContentAttachment() throws Exception {
     SiteDataSoap siteData = MockSiteData.blank()
         .register(SITES_SITECOLLECTION_S_CONTENT_EXCHANGE)

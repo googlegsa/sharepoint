@@ -1728,14 +1728,28 @@ public class SharePointAdaptor extends AbstractAdaptor
         return;
       }
 
+      String aspxId = request.getDocId().getUniqueId();
+      String parentId = aspxId.substring(0, aspxId.lastIndexOf('/'));
+      boolean isDirectChild = webUrl.equalsIgnoreCase(parentId);
+      // Check for valid ASPX pages
+      // Process only direct child for current web
+      if (!isDirectChild) {
+        // Alternative approach to this string comparison is to make a
+        // additional web service call for SiteData.GetContentWeb and
+        // check if ASPX page is available under Web.getFPFolder().getFiles()
+        log.log(Level.FINE, "Document [{0}] is not a direct child of Web [{1}]",
+            new Object[] {aspxId, webUrl});
+        response.respondNotFound();
+        log.exiting("SiteAdaptor", "getAspxDocContent");
+        return;
+      }
+
       boolean allowAnonymousAccess
           = isAllowAnonymousReadForWeb(w)
           // Check if anonymous access is denied by web application policy
           && !isDenyAnonymousAccessOnVirtualServer(
               rareModCache.getVirtualServer());
       if (!allowAnonymousAccess) {
-        String aspxId = request.getDocId().getUniqueId();
-        String parentId = aspxId.substring(0, aspxId.lastIndexOf('/'));
         response.setAcl(new Acl.Builder()
             .setInheritFrom(new DocId(parentId))
             .build());
