@@ -94,6 +94,22 @@ public class SharePointUserProfileAdaptorTest {
   }
 
   @Test
+  public void testBlankCredentialsOnWindows() throws IOException {
+    Assume.assumeTrue(System.getProperty("os.name").contains("Windows"));
+    Config adaptorConfig = new Config();
+    new SharePointUserProfileAdaptor().initConfig(adaptorConfig);
+    adaptorConfig.overrideKey(
+        "sharepoint.server", "http://sharepoint.example.com");
+    assertEquals(adaptorConfig.getValue("sharepoint.username"), "");
+    assertEquals(adaptorConfig.getValue("sharepoint.password"), "");
+    MockUserProfileServiceFactoryImpl serviceFactory =
+        new MockUserProfileServiceFactoryImpl(null);
+    adaptor = new SharePointUserProfileAdaptor(serviceFactory);
+    AccumulatingDocIdPusher pusher = new AccumulatingDocIdPusher();
+    adaptor.init(new MockAdaptorContext(adaptorConfig, pusher));
+  }
+
+  @Test
   public void testGetDocIds() throws IOException, InterruptedException {
     MockUserProfileServiceFactoryImpl serviceFactory =
         new MockUserProfileServiceFactoryImpl(null);

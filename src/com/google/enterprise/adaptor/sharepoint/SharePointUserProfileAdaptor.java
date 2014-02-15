@@ -166,8 +166,10 @@ public class SharePointUserProfileAdaptor extends AbstractAdaptor
   @Override
   public void initConfig(Config config) {
     config.addKey("sharepoint.server", null);
-    config.addKey("sharepoint.username", null);
-    config.addKey("sharepoint.password", null);
+    boolean onWindows = System.getProperty("os.name").contains("Windows");
+    // When running on Windows, Windows Authentication can log us in.
+    config.addKey("sharepoint.username", onWindows ? "" : null);
+    config.addKey("sharepoint.password", onWindows ? "" : null);
     config.addKey("profile.setacl", "true");
     config.addKey("adaptor.namespace", "Default");
     config.addKey("profile.mysitehost", "");
