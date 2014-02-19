@@ -2489,6 +2489,24 @@ public class SharePointAdaptor extends AbstractAdaptor
       if (conn.getResponseCode() != HttpURLConnection.HTTP_OK) {
         throw new IOException("Got status code: " + conn.getResponseCode());
       }
+      String errorHeader = conn.getHeaderField("SharePointError");
+      // SharePoint adds header SharePointError to response to indicate error
+      // on SharePoint for requested URL.
+      // errorHeader = 2 if SharePoint rejects current request because 
+      // of current processing load
+      // errorHeader = 0 for other errors on SharePoint server
+      
+      if (errorHeader != null) {            
+        if ("2".equals(errorHeader)) {
+          throw new IOException("Got error 2 from SharePoint for URL [" + url 
+              + "]. Error Code 2 indicates SharePoint has rejected current "
+              + "request because of current processing load on SharePoint.");            
+        } else {
+          throw new IOException("Got error " + errorHeader 
+              + " from SharePoint for URL [" + url + "].");
+        }
+      }
+      
       List<String> headers = new LinkedList<String>();
       // Start at 1 since index 0 is special.
       for (int i = 1;; i++) {
