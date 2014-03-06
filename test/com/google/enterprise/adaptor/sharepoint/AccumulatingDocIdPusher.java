@@ -68,7 +68,7 @@ class AccumulatingDocIdPusher extends UnsupportedDocIdPusher {
   }
   
   public List<Map<DocId, Acl>> getNamedResources() {
-    return namedResouces;
+    return Collections.unmodifiableList(namedResouces);
   }
 
   public Map<GroupPrincipal, Collection<Principal>> getGroups() {
@@ -78,6 +78,7 @@ class AccumulatingDocIdPusher extends UnsupportedDocIdPusher {
   public void reset() {
     records.clear();
     namedResouces.clear();
+    groups.clear();
   }
 
   @Override
