@@ -17,7 +17,11 @@ package com.google.enterprise.adaptor.sharepoint;
 import static com.google.enterprise.adaptor.sharepoint.SharePointAdaptor.FileInfo;
 import static com.google.enterprise.adaptor.sharepoint.SharePointAdaptor.HttpClient;
 import static com.google.enterprise.adaptor.sharepoint.SharePointAdaptor.SoapFactory;
-import static org.junit.Assert.*;
+import static org.junit.Assert.assertEquals;
+import static org.junit.Assert.assertNotNull;
+import static org.junit.Assert.assertNull;
+import static org.junit.Assert.assertTrue;
+import static org.junit.Assert.fail;
 
 import com.google.common.base.Objects;
 import com.google.common.util.concurrent.Callables;
@@ -82,16 +86,34 @@ import com.microsoft.schemas.sharepoint.soap.people.PeopleSoap;
 import com.microsoft.schemas.sharepoint.soap.people.PrincipalInfo;
 import com.microsoft.schemas.sharepoint.soap.people.SPPrincipalType;
 
-import org.junit.*;
+import org.junit.After;
+import org.junit.Before;
+import org.junit.BeforeClass;
+import org.junit.Rule;
+import org.junit.Test;
 import org.junit.rules.ExpectedException;
 
-import java.io.*;
+import java.io.ByteArrayInputStream;
+import java.io.ByteArrayOutputStream;
+import java.io.IOException;
+import java.io.InputStream;
 import java.math.BigInteger;
 import java.net.URI;
 import java.net.URL;
 import java.nio.charset.Charset;
-import java.util.*;
-import java.util.concurrent.*;
+import java.util.ArrayList;
+import java.util.Arrays;
+import java.util.Collection;
+import java.util.Collections;
+import java.util.Date;
+import java.util.HashMap;
+import java.util.HashSet;
+import java.util.List;
+import java.util.Map;
+import java.util.Set;
+import java.util.TreeMap;
+import java.util.concurrent.Callable;
+import java.util.concurrent.ExecutorService;
 import java.util.concurrent.atomic.AtomicLong;
 
 import javax.xml.ws.Holder;
@@ -841,7 +863,7 @@ public class SharePointAdaptorTest {
         .register(SITES_SITECOLLECTION_S_CONTENT_EXCHANGE)       
         .register(new URLSegmentsExchange(
           "http://localhost:1/sites/SiteCollection/Lists/Custom List"
-          + "/NonDefault.aspx",false, null, null, null, null))
+          + "/NonDefault.aspx", false, null, null, null, null))
         .register(SITES_SITECOLLECTION_LISTS_CUSTOMLIST_L_CONTENT_EXCHANGE);
     adaptor = new SharePointAdaptor(initableSoapFactory,
         new UnsupportedHttpClient(), executorFactory);

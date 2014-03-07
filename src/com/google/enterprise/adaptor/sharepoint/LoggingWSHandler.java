@@ -15,8 +15,12 @@
 package com.google.enterprise.adaptor.sharepoint;
 
 import java.lang.annotation.Annotation;
-import java.lang.reflect.*;
-import java.util.logging.*;
+import java.lang.reflect.InvocationHandler;
+import java.lang.reflect.InvocationTargetException;
+import java.lang.reflect.Method;
+import java.lang.reflect.Proxy;
+import java.util.logging.Level;
+import java.util.logging.Logger;
 
 import javax.jws.WebMethod;
 import javax.jws.WebParam;

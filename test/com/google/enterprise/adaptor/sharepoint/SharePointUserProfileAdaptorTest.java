@@ -1,6 +1,10 @@
 package com.google.enterprise.adaptor.sharepoint;
 
-import static org.junit.Assert.*;
+import static org.junit.Assert.assertEquals;
+import static org.junit.Assert.assertFalse;
+import static org.junit.Assert.assertNotNull;
+import static org.junit.Assert.assertNull;
+import static org.junit.Assert.assertTrue;
 
 import com.google.enterprise.adaptor.Acl;
 import com.google.enterprise.adaptor.Config;
@@ -27,7 +31,9 @@ import com.microsoft.webservices.sharepointportalserver.userprofileservice.Priva
 import com.microsoft.webservices.sharepointportalserver.userprofileservice.PropertyData;
 import com.microsoft.webservices.sharepointportalserver.userprofileservice.ValueData;
 
-import org.junit.*;
+import org.junit.Assume;
+import org.junit.Before;
+import org.junit.Test;
 
 import org.w3c.dom.DOMImplementation;
 

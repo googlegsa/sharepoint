@@ -23,7 +23,11 @@ import com.google.enterprise.adaptor.DocIdPusher;
 
 import com.microsoft.schemas.sharepoint.soap.ObjectType;
 
-import java.io.*;
+import java.io.Closeable;
+import java.io.IOException;
+import java.io.OutputStream;
+import java.io.OutputStreamWriter;
+import java.io.Writer;
 import java.net.URI;
 import java.net.URISyntaxException;
 import java.nio.charset.Charset;

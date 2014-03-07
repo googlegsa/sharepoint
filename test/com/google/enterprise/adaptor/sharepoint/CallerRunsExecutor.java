@@ -16,7 +16,9 @@ package com.google.enterprise.adaptor.sharepoint;
 
 import java.util.Collections;
 import java.util.List;
-import java.util.concurrent.*;
+import java.util.concurrent.AbstractExecutorService;
+import java.util.concurrent.RejectedExecutionException;
+import java.util.concurrent.TimeUnit;
 
 /**
  * A simple ExecutorService that executes all tasks in the calling thread. It

@@ -18,7 +18,9 @@ import com.google.common.collect.Interner;
 import com.google.common.collect.Interners;
 import com.google.enterprise.adaptor.Principal;
 
-import java.util.*;
+import java.util.Collections;
+import java.util.HashMap;
+import java.util.Map;
 
 /**
  * Immutable lookup from identifier to name for users and groups.

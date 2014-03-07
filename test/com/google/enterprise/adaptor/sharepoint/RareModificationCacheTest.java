@@ -14,16 +14,19 @@
 
 package com.google.enterprise.adaptor.sharepoint;
 
-import static org.junit.Assert.*;
+import static org.junit.Assert.assertEquals;
+import static org.junit.Assert.assertFalse;
 
 import com.google.common.util.concurrent.ExecutionError;
 import com.google.common.util.concurrent.UncheckedExecutionException;
 import com.microsoft.schemas.sharepoint.soap.SiteDataSoap;
 
-import org.junit.*;
+import org.junit.After;
+import org.junit.Test;
 
 import java.io.IOException;
-import java.util.concurrent.*;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
 
 /** Test cases for {@link RareModificationCache}. */
 public class RareModificationCacheTest {

@@ -21,7 +21,8 @@ import com.google.enterprise.adaptor.ExceptionHandler;
 import com.google.enterprise.adaptor.GroupPrincipal;
 import com.google.enterprise.adaptor.Principal;
 
-import java.util.*;
+import java.util.Collection;
+import java.util.Map;
 
 /** Forwards all calls to delegate. */
 abstract class DelegatingDocIdPusher implements DocIdPusher {

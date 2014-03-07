@@ -14,7 +14,7 @@
 
 package com.google.enterprise.adaptor.sharepoint;
 
-import static org.junit.Assert.*;
+import static org.junit.Assert.assertEquals;
 
 import com.google.enterprise.adaptor.Config;
 import com.google.enterprise.adaptor.DocId;
@@ -22,14 +22,18 @@ import com.google.enterprise.adaptor.DocIdPusher;
 
 import com.microsoft.schemas.sharepoint.soap.ObjectType;
 
-import org.junit.*;
+import org.junit.After;
+import org.junit.Rule;
+import org.junit.Test;
 import org.junit.rules.ExpectedException;
 
 import java.io.ByteArrayOutputStream;
 import java.net.URI;
 import java.net.URISyntaxException;
 import java.nio.charset.Charset;
-import java.util.*;
+import java.util.Arrays;
+import java.util.List;
+import java.util.Locale;
 import java.util.concurrent.ExecutorService;
 
 /**
