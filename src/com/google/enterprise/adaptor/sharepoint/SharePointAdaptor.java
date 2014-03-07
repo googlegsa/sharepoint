@@ -2182,6 +2182,18 @@ public class SharePointAdaptor extends AbstractAdaptor
           = row.getAttribute(OWS_SCOPEID_ATTRIBUTE).split(";#", 2)[1];
       scopeId = scopeId.toLowerCase(Locale.ENGLISH);
 
+      String strAttachments = row.getAttribute(OWS_ATTACHMENTS_ATTRIBUTE);
+      int attachments = (strAttachments == null || "".equals(strAttachments))
+          ? 0 : Integer.parseInt(strAttachments);
+      if (attachments <= 0) {
+        // Either the attachment has been removed or there was a really odd
+        // collection of documents in a Document Library. Therefore, we let the
+        // code continue to try to determine if this is a File.
+        log.fine("Parent list item has no child attachments");
+        log.exiting("SiteAdaptor", "getAttachmentDocContent", false);
+        return false;
+      }
+
       boolean allowAnonymousAccess = isAllowAnonymousReadForList(l)
           && scopeId.equals(l.scopeId.toLowerCase(Locale.ENGLISH))
           && isAllowAnonymousPeekForWeb(w)
