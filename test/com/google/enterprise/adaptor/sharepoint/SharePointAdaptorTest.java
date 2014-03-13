@@ -24,6 +24,7 @@ import static org.junit.Assert.assertTrue;
 import static org.junit.Assert.fail;
 
 import com.google.common.base.Objects;
+import com.google.common.collect.ImmutableList;
 import com.google.common.util.concurrent.Callables;
 import com.google.enterprise.adaptor.Acl;
 import com.google.enterprise.adaptor.Config;
@@ -794,6 +795,7 @@ public class SharePointAdaptorTest {
 
     adaptor = new SharePointAdaptor(initableSoapFactory,
         new UnsupportedHttpClient(), executorFactory);
+    AccumulatingDocIdPusher pusher = new AccumulatingDocIdPusher();
     adaptor.init(new MockAdaptorContext(config, pusher));
     ByteArrayOutputStream baos = new ByteArrayOutputStream();
     GetContentsRequest request = new GetContentsRequest(
@@ -819,14 +821,23 @@ public class SharePointAdaptorTest {
         + "</ul></body></html>";
     assertEquals(golden, responseString);
     assertEquals(new Acl.Builder()
-        .setEverythingCaseInsensitive()
-        .setInheritFrom(new DocId("http://localhost:1/sites/SiteCollection"),
-          "admin")
+        .setInheritFrom(new DocId(
+            "http://localhost:1/sites/SiteCollection/Lists/Custom List"))
         .setInheritanceType(Acl.InheritanceType.PARENT_OVERRIDES)
-        .setPermitGroups(Arrays.asList(SITES_SITECOLLECTION_MEMBERS,
-            SITES_SITECOLLECTION_OWNERS, SITES_SITECOLLECTION_VISITORS))
         .build(),
         response.getAcl());
+    // Verify named resource for List Root Folder
+    assertEquals(ImmutableList.of(Collections.singletonMap(
+        new DocId("http://localhost:1/sites/SiteCollection/Lists/Custom List"),
+        new Acl.Builder()
+          .setEverythingCaseInsensitive()
+          .setInheritFrom(new DocId("http://localhost:1/sites/SiteCollection"),
+              "admin")
+          .setInheritanceType(Acl.InheritanceType.PARENT_OVERRIDES)
+          .setPermitGroups(Arrays.asList(SITES_SITECOLLECTION_MEMBERS,
+              SITES_SITECOLLECTION_OWNERS, SITES_SITECOLLECTION_VISITORS))
+          .build())),
+        pusher.getNamedResources());
     assertEquals(URI.create("http://localhost:1/sites/SiteCollection/Lists/"
           + "Custom%20List/AllItems.aspx"), response.getDisplayUrl());
     assertEquals(new Date(1336166672000L), response.getLastModified());
@@ -1149,6 +1160,47 @@ public class SharePointAdaptorTest {
   }
 
   @Test
+  public void testGetDocContentListItemWithListAsParent() throws Exception {
+    SiteDataSoap siteData = MockSiteData.blank()
+        .register(SITES_SITECOLLECTION_S_CONTENT_EXCHANGE)
+        .register(SITES_SITECOLLECTION_LISTS_CUSTOMLIST_L_CONTENT_EXCHANGE)
+        .register(SITES_SITECOLLECTION_LISTS_CUSTOMLIST_2_LI_CONTENT_EXCHANGE
+            .replaceInContent("ows_Attachments='1'", "ows_Attachments='0'")
+            .replaceInContent("Inside Folder", "Under List")
+            .replaceInContent("/Test Folder", "")
+            .replaceInContent("/Test%20Folder", "")
+            .replaceInContent(
+              "ows_ScopeId='2;#{2E29615C-59E7-493B-B08A-3642949CC069}'",
+              "ows_ScopeId='2;#{f9cb02b3-7f29-4cac-804f-ba6e14f1eb39}'"))
+        .register(new URLSegmentsExchange(
+            "http://localhost:1/sites/SiteCollection/Lists/Custom List/2_.000",
+          true, null, null, "{6F33949A-B3FF-4B0C-BA99-93CB518AC2C0}", "2"));
+    adaptor = new SharePointAdaptor(initableSoapFactory,
+        new UnsupportedHttpClient(), executorFactory);
+    adaptor.init(new MockAdaptorContext(config, pusher));
+    ByteArrayOutputStream baos = new ByteArrayOutputStream();
+    GetContentsRequest request = new GetContentsRequest(
+        new DocId("http://localhost:1/sites/SiteCollection/Lists/Custom List"
+          + "/2_.000"));
+    GetContentsResponse response = new GetContentsResponse(baos);
+    adaptor.new SiteAdaptor("http://localhost:1/sites/SiteCollection",
+          "http://localhost:1/sites/SiteCollection", siteData,
+          new UnsupportedUserGroupSoap(), new UnsupportedPeopleSoap(),
+          Callables.returning(SITES_SITECOLLECTION_MEMBER_MAPPING),
+          new UnsupportedCallable<MemberIdMapping>())
+        .getDocContent(request, response);
+    // just verify ACLs here
+    assertEquals(new Acl.Builder()
+        .setInheritFrom(new DocId("http://localhost:1/sites/SiteCollection/"
+            + "Lists/Custom List"))
+        .setInheritanceType(Acl.InheritanceType.PARENT_OVERRIDES).build(),
+        response.getAcl());
+    assertEquals(URI.create("http://localhost:1/sites/SiteCollection/Lists/"
+          + "Custom%20List/DispForm.aspx?ID=2"),
+        response.getDisplayUrl());
+  }
+
+  @Test
   public void testGetDocContentListItemAnonymousAccess() throws Exception {
     SiteDataSoap siteData = MockSiteData.blank()
         .register(SITES_SITECOLLECTION_LISTS_CUSTOMLIST_1_URLSEG_EXCHANGE)
@@ -1312,48 +1364,6 @@ public class SharePointAdaptorTest {
                 new DocId("http://localhost:1/sites/SiteCollection"), "admin")
             .build()),
         response.getNamedResources());
-  }
-
-  public void testGetDocContentListItemScopeSameAsParent() throws Exception {
-    SiteDataSoap siteData = MockSiteData.blank()
-        .register(new URLSegmentsExchange(
-            "http://localhost:1/sites/SiteCollection/Lists/Custom List"
-              + "/Test Folder/2_.000",
-            true, null, null, "{6F33949A-B3FF-4B0C-BA99-93CB518AC2C0}", "2"))
-        .register(new ContentExchange(ObjectType.LIST_ITEM,
-              "{6F33949A-B3FF-4B0C-BA99-93CB518AC2C0}", null, "2", true, false,
-              null, loadTestString("tapasnay-Lists-Announcements-1-li.xml")))
-        .register(new ContentExchange(ObjectType.LIST,
-              "{6F33949A-B3FF-4B0C-BA99-93CB518AC2C0}", null, null, false,
-              false, null,
-              loadTestString("tapasnay-Lists-Announcements-l.xml")));
-    final MemberIdMapping memberIdMapping
-        = new MemberIdMappingBuilder()
-        .put(1, new UserPrincipal("SOMEHOST\\administrator", DEFAULT_NAMESPACE))
-        .build();
-
-    adaptor = new SharePointAdaptor(initableSoapFactory,
-        new UnsupportedHttpClient(), executorFactory);
-    adaptor.init(new MockAdaptorContext(config, pusher));
-    ByteArrayOutputStream baos = new ByteArrayOutputStream();
-    GetContentsRequest request = new GetContentsRequest(
-        new DocId("http://localhost:1/sites/SiteCollection/Lists/Custom List/"
-          + "Test Folder/2_.000"));
-    GetContentsResponse response = new GetContentsResponse(baos);
-    adaptor.new SiteAdaptor("http://localhost:1/sites/SiteCollection",
-        "http://localhost:1/sites/SiteCollection",
-        siteData, new UnsupportedUserGroupSoap(), new UnsupportedPeopleSoap(),
-        Callables.returning(memberIdMapping),
-        new UnsupportedCallable<MemberIdMapping>())
-        .getDocContent(request, response);
-    // It looks odd that nobody can access the document since there are no
-    // groups and users, but the policy permits GDC-PSL\administrator. Thus, the
-    // policy's PARENT_OVERRIDE behavior is important.
-    assertEquals(new Acl.Builder()
-        .setInheritFrom(new DocId(
-            "http://localhost:1/tapasnay/Lists/Announcements"))
-        .setInheritanceType(Acl.InheritanceType.PARENT_OVERRIDES).build(),
-        response.getAcl());
   }
 
   @Test

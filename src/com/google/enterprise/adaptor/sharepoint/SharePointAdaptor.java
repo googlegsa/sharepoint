@@ -1476,6 +1476,9 @@ public class SharePointAdaptor extends AbstractAdaptor
         String webScopeId
             = w.getMetadata().getScopeID().toLowerCase(Locale.ENGLISH);
 
+        DocId rootFolderDocId
+            = encodeDocId(l.getMetadata().getRootFolder());
+
         Acl.Builder acl;
         if (scopeId.equals(webScopeId)) {
           acl = new Acl.Builder().setInheritFrom(new DocId(webUrl));
@@ -1485,11 +1488,23 @@ public class SharePointAdaptor extends AbstractAdaptor
           acl = generateAcl(permissions, LIST_ITEM_MASK)
               .setInheritFrom(siteDocId, SITE_COLLECTION_ADMIN_FRAGMENT);
         }
-        response.setAcl(acl
+        response.setAcl(new Acl.Builder().setInheritFrom(rootFolderDocId)
             .setInheritanceType(Acl.InheritanceType.PARENT_OVERRIDES)
             .build());
+        final Map<DocId, Acl> map = Collections.singletonMap(rootFolderDocId,
+            acl.setInheritanceType(Acl.InheritanceType.PARENT_OVERRIDES)
+            .build());
+        executor.execute(new Runnable() {
+          @Override public void run() {
+            try {
+              context.getDocIdPusher().pushNamedResources(map);
+            } catch (InterruptedException ie) {
+              log.log(Level.WARNING, "Error pushing named resource", ie);
+	    }
+          }
+        });
       }
-      
+
       response.addMetadata(METADATA_OBJECT_TYPE,
           ObjectType.LIST.value());
       response.addMetadata(METADATA_PARENT_WEB_TITLE,
@@ -1897,12 +1912,12 @@ public class SharePointAdaptor extends AbstractAdaptor
         // doesn't have a leading '/'.
         DocId folderDocId = encodeDocId("/" + rawFileDirRef.split(";#")[1]);
         DocId rootFolderDocId = encodeDocId(l.rootFolder);
-        DocId listDocId = encodeDocId(l.defaultViewUrl);
-        // If the parent is the List, we must use the list's docId instead of
-        // folderDocId, since the root folder is a List and not actually a
-        // Folder.
-        boolean parentIsList = folderDocId.equals(rootFolderDocId);
-        DocId parentDocId = parentIsList ? listDocId : folderDocId;
+        // If the parent is a list, folderDocId will be same as 
+        // rootFolderDocId. If inheritance chain is not 
+        // broken, item will inherit its permission from list root folder.
+        // If parent is a folder, item will inherit its permissions from parent
+        // folder.
+        boolean parentIsList = folderDocId.equals(rootFolderDocId);      
         String parentScopeId;
         if (parentIsList) {
           com.microsoft.schemas.sharepoint.soap.List list
@@ -1938,7 +1953,7 @@ public class SharePointAdaptor extends AbstractAdaptor
               .split(";#", 2)[1].toLowerCase(Locale.ENGLISH);
         }
         if (scopeId.equals(parentScopeId)) {
-          acl = new Acl.Builder().setInheritFrom(parentDocId);
+          acl = new Acl.Builder().setInheritFrom(folderDocId);
         } else {
           // We have to search for the correct scope within the scopes element.
           // The scope provided in the metadata is for the parent list, not for
