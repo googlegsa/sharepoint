@@ -2135,11 +2135,33 @@ public class SharePointAdaptor extends AbstractAdaptor
         log.exiting("SiteAdaptor", "getAttachmentDocContent", false);
         return false;
       }
-      Holder<String> listIdHolder = new Holder<String>();
-      // TODO(ejona): Find a more reliable way to determine the list's id.
-      // Hope the list's default view is AllItems.aspx.
-      boolean result = siteDataClient.getUrlSegments(
-          listBase + "/AllItems.aspx", listIdHolder, null);
+      String listRedirectLocation = httpClient.getRedirectLocation(
+          spUrlToUri(listBase).toURL(),
+          authenticationHandler.getAuthenticationCookies());
+      // if listRedirectLocation is null, use listBase as list url. This is
+      // possible if list has no views defined.
+      // if listRedirectLocation is not null, it should begin with listBase
+      // to be considered as valid list location else use listBase as listUrl. 
+      String listUrl 
+          = listRedirectLocation == null ? listBase
+          : listRedirectLocation.startsWith(listBase) 
+          ? listRedirectLocation : listBase;
+
+      log.log(Level.FINER, "List url {0}", listUrl);
+      Holder<String> listIdHolder = new Holder<String>();      
+      boolean result = siteDataClient.getUrlSegments(listUrl,
+          listIdHolder, null);
+      // There is a possiblity that default view url for a list is empty but
+      // list contains additional non default view.
+      // In this case, SharePoint will redirect to non default view url.
+      // getUrlSegments call fails for a non default view url.
+      // So lets try with listBase for getUrlSegments.
+      if (!result && !listUrl.equals(listBase)) {
+        result = siteDataClient.getUrlSegments(listBase, listIdHolder, null);
+      }
+      // For valid lists, one of the getUrlSegments calls above should work on
+      // SP2010 and SP2013. It can still fail for SP2007. So lets try with
+      // ItemId url. This will fail if parent item is inside a folder.
       if (!result) {
         log.fine("Could not get list id from list url");
         // AllItems.aspx may not be the default view, so hope that list items
@@ -2498,6 +2520,9 @@ public class SharePointAdaptor extends AbstractAdaptor
      */
     public FileInfo issueGetRequest(URL url, List<String> authenticationCookies)
         throws IOException;
+    
+    public String getRedirectLocation(URL url,
+        List<String> authenticationCookies) throws IOException;
   }
 
   static class HttpClientImpl implements HttpClient {
@@ -2511,7 +2536,7 @@ public class SharePointAdaptor extends AbstractAdaptor
         throw new IOException(ex);
       }
       HttpURLConnection conn = (HttpURLConnection) url.openConnection();
-     
+      // TODO :Close connection for non 200 responses.
       if (authenticationCookies.isEmpty()) {
         conn.addRequestProperty("X-FORMS_BASED_AUTH_ACCEPTED", "f");
       } else {
@@ -2559,6 +2584,42 @@ public class SharePointAdaptor extends AbstractAdaptor
       log.log(Level.FINER, "Response HTTP headers: {0}", headers);
       return new FileInfo.Builder(conn.getInputStream()).setHeaders(headers)
           .build();
+    }
+
+    @Override
+    public String getRedirectLocation(URL url,
+        List<String> authenticationCookies) throws IOException {
+
+      // Handle Unicode. Java does not properly encode the GET.
+      try {
+        url = new URL(url.toURI().toASCIIString());
+      } catch (URISyntaxException ex) {
+        throw new IOException(ex);
+      }
+      HttpURLConnection conn = (HttpURLConnection) url.openConnection();
+      try {
+        if (authenticationCookies.isEmpty()) {
+          conn.addRequestProperty("X-FORMS_BASED_AUTH_ACCEPTED", "f");
+        } else {
+          for (String cookie : authenticationCookies) {
+            conn.addRequestProperty("Cookie", cookie);
+          }
+        }
+        conn.setDoInput(true);
+        conn.setDoOutput(false);
+        conn.setInstanceFollowRedirects(false);       
+        if (conn.getResponseCode() != HttpURLConnection.HTTP_MOVED_TEMP) {
+          log.log(Level.WARNING,
+              "Received response code {0} instead of 302 for URL {1}",
+              new Object[]{conn.getResponseCode(), url});
+          return null;        
+        }
+        return conn.getHeaderField("Location");
+      } finally {
+        InputStream inputStream = conn.getResponseCode() >= 400
+            ? conn.getErrorStream() : conn.getInputStream();
+        inputStream.close();
+      }
     }
   }
 

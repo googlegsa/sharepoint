@@ -911,6 +911,17 @@ public class SharePointAdaptorTest {
             "Last-Modified", "Tue, 01 May 2012 22:14:41 GMT");
         return new FileInfo.Builder(contents).setHeaders(headers).build();
       }
+
+      @Override
+      public String getRedirectLocation(URL url,
+          List<String> authenticationCookies) throws IOException {
+        assertEquals(
+            "http://localhost:1/sites/SiteCollection/Lists/Custom%20List",
+            url.toString());
+
+        return "http://localhost:1/sites/SiteCollection/Lists/Custom List"
+            + "/AllItems.aspx";
+      }
     }, executorFactory);
     adaptor.init(new MockAdaptorContext(config, pusher));
     ByteArrayOutputStream baos = new ByteArrayOutputStream();
@@ -959,6 +970,17 @@ public class SharePointAdaptorTest {
         List<String> headers = Arrays.asList(
             "Content-Type", "application/vnd.ms-excel.12");
         return new FileInfo.Builder(contents).setHeaders(headers).build();
+      }
+
+      @Override
+      public String getRedirectLocation(URL url,
+          List<String> authenticationCookies) throws IOException {
+        assertEquals(
+            "http://localhost:1/sites/SiteCollection/Lists/Custom%20List",
+            url.toString());
+        
+        return "http://localhost:1/sites/SiteCollection/Lists/Custom List"
+            + "/AllItems.aspx";
       }
     }, executorFactory);
     adaptor.init(new MockAdaptorContext(config, pusher));
@@ -1835,6 +1857,12 @@ public class SharePointAdaptorTest {
     @Override
     public FileInfo issueGetRequest(URL url,
         List<String> authenticationCookies) {
+      throw new UnsupportedOperationException();
+    }
+
+    @Override
+    public String getRedirectLocation(URL url,
+        List<String> authenticationCookies) throws IOException {
       throw new UnsupportedOperationException();
     }
   }
