@@ -238,7 +238,9 @@ class RareModificationCache {
       this.anonymousPermMask
           = l.getMetadata().getAnonymousPermMask().longValue();
       this.rootFolder = l.getMetadata().getRootFolder();
-      this.defaultViewUrl = l.getMetadata().getDefaultViewUrl();
+      this.defaultViewUrl = "/".equals(l.getMetadata().getDefaultViewUrl()) 
+          ? l.getMetadata().getRootFolder() 
+          : l.getMetadata().getDefaultViewUrl();
       this.defaultViewItemUrl = l.getMetadata().getDefaultViewItemUrl();
       this.scopeId = l.getMetadata().getScopeID();
     }

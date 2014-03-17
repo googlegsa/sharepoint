@@ -1512,7 +1512,9 @@ public class SharePointAdaptor extends AbstractAdaptor
       response.addMetadata(METADATA_LIST_GUID, l.getMetadata().getID());
 
       response.setDisplayUrl(sharePointUrlToUri(
-          l.getMetadata().getDefaultViewUrl()));
+            "/".equals(l.getMetadata().getDefaultViewUrl()) 
+            ? l.getMetadata().getRootFolder() 
+            : l.getMetadata().getDefaultViewUrl()));
       String lastModified = l.getMetadata().getLastModified();
       try {
         response.setLastModified(

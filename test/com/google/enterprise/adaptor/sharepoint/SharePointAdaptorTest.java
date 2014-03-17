@@ -892,6 +892,39 @@ public class SharePointAdaptorTest {
         .getDocContent(request, response);
     assertTrue(response.isNotFound());
   }
+  
+  @Test
+  public void testGetDocContentListEmptyDefaultView() throws Exception {
+    SiteDataSoap siteData = MockSiteData.blank()
+        .register(SITES_SITECOLLECTION_LISTS_CUSTOMLIST_URLSEG_EXCHANGE)
+        .register(SITES_SITECOLLECTION_LISTS_CUSTOMLIST_L_CONTENT_EXCHANGE
+            .replaceInContent("DefaultViewUrl=\"/sites/SiteCollection/Lists/"
+            + "Custom List/AllItems.aspx\"", "DefaultViewUrl=\"/\""))        
+        .register(SITES_SITECOLLECTION_LISTS_CUSTOMLIST_F_CONTENT_EXCHANGE)
+        .register(SITES_SITECOLLECTION_S_CONTENT_EXCHANGE)
+        .register(new URLSegmentsExchange(
+              "http://localhost:1/sites/SiteCollection/Lists/Custom List",
+               true, null, null, "{6F33949A-B3FF-4B0C-BA99-93CB518AC2C0}",
+               null));
+    adaptor = new SharePointAdaptor(initableSoapFactory,
+        new UnsupportedHttpClient(), executorFactory);
+    AccumulatingDocIdPusher pusher = new AccumulatingDocIdPusher();
+    adaptor.init(new MockAdaptorContext(config, pusher));
+    ByteArrayOutputStream baos = new ByteArrayOutputStream();
+    GetContentsRequest request = new GetContentsRequest(
+        new DocId("http://localhost:1/sites/SiteCollection/Lists/Custom List"));
+    GetContentsResponse response = new GetContentsResponse(baos);
+    adaptor.new SiteAdaptor("http://localhost:1/sites/SiteCollection",
+          "http://localhost:1/sites/SiteCollection", siteData,
+          new UnsupportedUserGroupSoap(), new UnsupportedPeopleSoap(),
+          Callables.returning(SITES_SITECOLLECTION_MEMBER_MAPPING),
+          new UnsupportedCallable<MemberIdMapping>())
+        .getDocContent(request, response);
+    // Verify display URL for List document
+    assertEquals(URI.create("http://localhost:1/sites/SiteCollection/Lists/"
+          + "Custom%20List"), response.getDisplayUrl());    
+  }
+  
 
   @Test
   public void testGetDocContentAttachment() throws Exception {
@@ -1514,7 +1547,37 @@ public class SharePointAdaptorTest {
           + "Lists/Custom%20List/Test%20Folder"),
         response.getDisplayUrl());
   }
+  
+  @Test
+  public void testGetDocContentFolderEmptyDefaultView() throws Exception {
+    SiteDataSoap siteData = MockSiteData.blank()
+        .register(SITES_SITECOLLECTION_S_CONTENT_EXCHANGE)
+        .register(SITES_SITECOLLECTION_LISTS_CUSTOMLIST_1_URLSEG_EXCHANGE)
+        .register(SITES_SITECOLLECTION_LISTS_CUSTOMLIST_L_CONTENT_EXCHANGE
+            .replaceInContent("DefaultViewUrl=\"/sites/SiteCollection/Lists/"
+            + "Custom List/AllItems.aspx\"", "DefaultViewUrl=\"/\""))
+        .register(SITES_SITECOLLECTION_LISTS_CUSTOMLIST_1_LI_CONTENT_EXCHANGE)
+        .register(SITES_SITECOLLECTION_LISTS_CUSTOMLIST_1_F_CONTENT_EXCHANGE);
 
+    adaptor = new SharePointAdaptor(initableSoapFactory,
+        new UnsupportedHttpClient(), executorFactory);
+    adaptor.init(new MockAdaptorContext(config, pusher));
+    ByteArrayOutputStream baos = new ByteArrayOutputStream();
+    GetContentsRequest request = new GetContentsRequest(
+        new DocId("http://localhost:1/sites/SiteCollection/Lists/Custom List/"
+          + "Test Folder"));
+    GetContentsResponse response = new GetContentsResponse(baos);
+    adaptor.new SiteAdaptor("http://localhost:1/sites/SiteCollection",
+          "http://localhost:1/sites/SiteCollection",
+          siteData, new UnsupportedUserGroupSoap(), new UnsupportedPeopleSoap(),
+          Callables.returning(SITES_SITECOLLECTION_MEMBER_MAPPING),
+          new UnsupportedCallable<MemberIdMapping>())
+        .getDocContent(request, response);    
+    assertEquals(URI.create("http://localhost:1/sites/SiteCollection/Lists/"
+          + "Custom%20List?RootFolder=/sites/SiteCollection/"
+          + "Lists/Custom%20List/Test%20Folder"),response.getDisplayUrl());
+  }
+  
   @Test
   public void testGetDocIds() throws Exception {
     final Map<GroupPrincipal, Collection<Principal>> goldenGroups;
