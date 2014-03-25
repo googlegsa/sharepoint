@@ -27,7 +27,7 @@
   <property name="cobertura.dir" value="${basedir}/../cobertura/"/>
   <!-- Adaptor suffix for distribution files. Useful for placing version numbers
        on our jars. -->
-  <condition property="adaptorlib.suffix" value="-${adaptor.version}">
+  <condition property="adaptor.suffix" value="-${adaptor.version}">
     <isset property="adaptor.version"/>
   </condition>
   <!-- If adaptor.version isn't set, simply use the current date. -->
