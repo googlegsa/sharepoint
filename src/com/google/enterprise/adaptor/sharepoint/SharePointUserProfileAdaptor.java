@@ -226,9 +226,13 @@ public class SharePointUserProfileAdaptor extends AbstractAdaptor
     Authenticator.setDefault(ntlmAuthenticator);
     String authenticationEndPoint 
         =  virtualServer + "/_vti_bin/Authentication.asmx";
+    SharePointFormsAuthenticationHandler authenticationClient 
+        = new SharePointFormsAuthenticationHandler(
+            userProfileServiceFactory.newAuthentication(authenticationEndPoint),
+            username, password); 
     FormsAuthenticationHandler authenticationHandler 
         = new FormsAuthenticationHandler(username, password, scheduledExecutor,
-        userProfileServiceFactory.newAuthentication(authenticationEndPoint));
+        authenticationClient);
     authenticationHandler.start();
     log.log(Level.FINEST, "Initializing User profile Service Client for {0}",
         virtualServer + USER_PROFILE_SERVICE_ENDPOINT);

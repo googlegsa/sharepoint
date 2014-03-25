@@ -16,23 +16,14 @@ package com.google.enterprise.adaptor.sharepoint;
 
 import com.google.common.annotations.VisibleForTesting;
 import com.google.common.base.Strings;
-import com.microsoft.schemas.sharepoint.soap.authentication.AuthenticationMode;
-import com.microsoft.schemas.sharepoint.soap.authentication.AuthenticationSoap;
-import com.microsoft.schemas.sharepoint.soap.authentication.LoginErrorCode;
-import com.microsoft.schemas.sharepoint.soap.authentication.LoginResult;
 import java.io.IOException;
 import java.util.Collections;
 import java.util.List;
-import java.util.Map;
 import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.TimeUnit;
 import java.util.logging.Level;
 import java.util.logging.Logger;
-
-import javax.xml.ws.BindingProvider;
-import javax.xml.ws.WebServiceException;
-import javax.xml.ws.handler.MessageContext;
 
 
 /**
@@ -54,19 +45,19 @@ class FormsAuthenticationHandler {
   private final Runnable refreshRunnable = new RefreshRunnable();  
   private final List<String> authenticationCookiesList 
       = new CopyOnWriteArrayList<String>();
-  private AuthenticationMode authenticationMode;
-  private final AuthenticationSoap authenticationClient;
-  
+  private final AuthenticationHandler authenticationClient;
+  private boolean isFormsAuthentication = false;
+
   @VisibleForTesting    
   FormsAuthenticationHandler(String userName, String password,
       ScheduledExecutorService executor,
-      AuthenticationSoap authenticationClient) {
+      AuthenticationHandler authenticationClient) {
     if (userName == null || password == null || executor == null || 
         authenticationClient == null) {
       throw new NullPointerException();
     }
     this.userName = userName;
-    this.password = password;   
+    this.password = password;
     this.executor = executor;
     this.authenticationClient = authenticationClient;
   }
@@ -76,54 +67,38 @@ class FormsAuthenticationHandler {
   }
   
   public boolean isFormsAuthentication() {
-    return authenticationMode == AuthenticationMode.FORMS;
+    return isFormsAuthentication;
   }
   
   private void refreshCookies() throws IOException {
-    log.log(Level.FINE, "AuthenticationMode = {0}", authenticationMode);
-    if (authenticationMode != AuthenticationMode.FORMS) {
-      return;
-    }
     
     if ("".equals(userName) || "".equals(password)) {
       log.log(Level.FINE, 
           "Empty username / password. Using authentication mode as Windows");
-       authenticationMode = AuthenticationMode.WINDOWS;
+       isFormsAuthentication = false;
        return;
     }
-    
-    LoginResult result;
-    try {
-      result = authenticationClient.login(userName, password);
-    } catch (WebServiceException ex) {
-      log.log(Level.WARNING,
-          "Possible SP2013 environment with windows authentication", ex);
-      authenticationMode = AuthenticationMode.WINDOWS;
+
+    if (!isFormsAuthentication) {
       return;
     }
-    log.log(Level.FINE, 
-        "Login Cookie Expiration in = {0}", result.getTimeoutSeconds());
-    if (result.getErrorCode() != LoginErrorCode.NO_ERROR) {
-      log.log(Level.WARNING, "Forms authentication failed with authentication "
-          + "web service with Error Code {0}. Possible SharePoint environment "
-          + "with multiple claims provider. Adaptor might have been configured "
-          + "to use windows authentication.", result.getErrorCode());
+
+    log.log(Level.FINE, "About to refresh authentication cookie.");
+    AuthenticationResult result = authenticationClient.authenticate();
+    log.log(Level.FINE, "Authentication Result {0}", result.getErrorCode());
+
+    String cookie = result.getCookie();
+    if (Strings.isNullOrEmpty(cookie)) {
+      log.log(Level.INFO, "Authentication cookie is null or empty."
+          + " Adaptor will use Windows authentication.");
       return;
     }
-    @SuppressWarnings("unchecked")
-    Map<String, Object> responseHeaders
-        = (Map<String, Object>) ((BindingProvider) authenticationClient)
-        .getResponseContext().get(MessageContext.HTTP_RESPONSE_HEADERS);
-    log.log(Level.FINEST, "Response headers: {0}", responseHeaders);
-    @SuppressWarnings("unchecked")
-    String cookies = ((List<String>) responseHeaders.get("Set-cookie")).get(0);
     if (authenticationCookiesList.isEmpty()) {
-      authenticationCookiesList.add(cookies);
+      authenticationCookiesList.add(cookie);
     } else {
-      authenticationCookiesList.set(0, cookies);
+      authenticationCookiesList.set(0, cookie);
     }
-    long cookieTimeOut = (result.getTimeoutSeconds() == null) ? 
-        DEFAULT_COOKIE_TIMEOUT_SECONDS : result.getTimeoutSeconds();
+    long cookieTimeOut = result.getCookieTimeOut();
 
     long rerunAfter = (cookieTimeOut + 1) / 2;
     executor.schedule(refreshRunnable, rerunAfter, TimeUnit.SECONDS);
@@ -132,7 +107,13 @@ class FormsAuthenticationHandler {
  }
  
   public void start() throws IOException {
-    authenticationMode = authenticationClient.mode();
+    if ("".equals(userName) || "".equals(password)) {
+      log.log(Level.FINE, "Empty username or password. Using windows"
+          + " integrated authentication.");
+       isFormsAuthentication = false;
+       return;
+    }
+    isFormsAuthentication = authenticationClient.isFormsAuthentication();
     refreshCookies();
   }
 
@@ -148,4 +129,9 @@ class FormsAuthenticationHandler {
       }
     }
   }
+  
+  interface AuthenticationHandler {
+    AuthenticationResult authenticate() throws IOException;
+    boolean isFormsAuthentication() throws IOException;
+  }  
 }

@@ -474,9 +474,12 @@ public class SharePointAdaptor extends AbstractAdaptor
     scheduledExecutor = new ScheduledThreadPoolExecutor(1);
     String authenticationEndPoint = spUrlToUri(
         virtualServer + "/_vti_bin/Authentication.asmx").toString();
+    SharePointFormsAuthenticationHandler authenticationClient 
+        = new SharePointFormsAuthenticationHandler(
+            soapFactory.newAuthentication(authenticationEndPoint),
+            username, password);
     authenticationHandler = new FormsAuthenticationHandler(username,
-        password, scheduledExecutor,
-        soapFactory.newAuthentication(authenticationEndPoint));
+        password, scheduledExecutor, authenticationClient);
     authenticationHandler.start();
     executor = executorFactory.call();
     try {
