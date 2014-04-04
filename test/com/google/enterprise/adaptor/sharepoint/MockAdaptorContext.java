@@ -15,6 +15,7 @@
 package com.google.enterprise.adaptor.sharepoint;
 
 import com.google.enterprise.adaptor.AdaptorContext;
+import com.google.enterprise.adaptor.AsyncDocIdPusher;
 import com.google.enterprise.adaptor.AuthnAuthority;
 import com.google.enterprise.adaptor.AuthzAuthority;
 import com.google.enterprise.adaptor.Config;
@@ -146,6 +147,11 @@ class MockAdaptorContext implements AdaptorContext {
 
   @Override
   public void setAuthnAuthority(AuthnAuthority authnAuthority) {
+    throw new UnsupportedOperationException();
+  }
+
+  @Override
+  public AsyncDocIdPusher getAsyncDocIdPusher() {
     throw new UnsupportedOperationException();
   }
 }
