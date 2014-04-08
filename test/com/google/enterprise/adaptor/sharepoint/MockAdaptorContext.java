@@ -62,6 +62,8 @@ class MockAdaptorContext implements AdaptorContext {
     }
   };
   private PollingIncrementalLister pollingIncrementalLister;
+  
+  private final AccumulatingAsyncDocIdPusher asynPusher;
 
   public MockAdaptorContext(Config config, DocIdPusher pusher) {
     if (config == null) {
@@ -69,6 +71,7 @@ class MockAdaptorContext implements AdaptorContext {
     }
     this.config = config;
     this.pusher = pusher;
+    this.asynPusher = new AccumulatingAsyncDocIdPusher(pusher);
   }
 
   @Override
@@ -152,6 +155,6 @@ class MockAdaptorContext implements AdaptorContext {
 
   @Override
   public AsyncDocIdPusher getAsyncDocIdPusher() {
-    throw new UnsupportedOperationException();
+    return asynPusher;
   }
 }

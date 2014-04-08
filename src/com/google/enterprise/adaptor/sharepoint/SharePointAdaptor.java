@@ -1494,18 +1494,9 @@ public class SharePointAdaptor extends AbstractAdaptor
         response.setAcl(new Acl.Builder().setInheritFrom(rootFolderDocId)
             .setInheritanceType(Acl.InheritanceType.PARENT_OVERRIDES)
             .build());
-        final Map<DocId, Acl> map = Collections.singletonMap(rootFolderDocId,
-            acl.setInheritanceType(Acl.InheritanceType.PARENT_OVERRIDES)
-            .build());
-        executor.execute(new Runnable() {
-          @Override public void run() {
-            try {
-              context.getDocIdPusher().pushNamedResources(map);
-            } catch (InterruptedException ie) {
-              log.log(Level.WARNING, "Error pushing named resource", ie);
-	    }
-          }
-        });
+        context.getAsyncDocIdPusher().pushNamedResource(rootFolderDocId,
+                acl.setInheritanceType(Acl.InheritanceType.PARENT_OVERRIDES)
+                    .build());
       }
 
       response.addMetadata(METADATA_OBJECT_TYPE,
