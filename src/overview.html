@@ -6,25 +6,30 @@
 
 <h3 id="spadaptor">Adaptor for SharePoint Deployment</h3>
 
-<p>Each adaptor instance is only able to support one SharePoint Web Application.
-Therefore, you will need to deploy one adaptor instance per Web Applicaton.
+<p>A single instance of SharePoint adaptor can have GSA index a single 
+SharePoint Web Application.  An adaptor instance is needed per Web Applicaton.
 
 <h4>Requirements</h4>
 <ul>
   <li>GSA 7.2 or higher
   <li>GSA user authentication configured for authentication system in use
     (typically Active Directory)
-  <li>Java JRE on computer that runs adaptor (1.6u27 or higher for linux;
-      Java JRE 1.7u6 or higher for windows)
-  <li>SharePoint Adaptor JAR executable
-  <li>User account for adaptor, with Full Read permissions to SharePoint Web
-    Application in the User Policy
-  <li>When running Adaptor from Windows 7, Windows Server 2008, 
-      Windows Server 2008 R2 or Windows Server 2012 machine, on adaptor machine
-      set local security policy for <b>Network security: LAN Manager 
-      authentication level</b> to <b>Send LM &amp; NTLM - use NTLMv2 session 
-      security if negotiated</b>. Use these <a href="#secpolicy">
-      configuration steps</a> to set local security policy.
+  <li>Java JRE on computer that runs adaptor (1.6u27 or higher on Linux;
+      1.7u6 or higher on Windows)
+  <li>SharePoint adaptor JAR executable
+  <li>User account, with Full Read permissions to SharePoint Web
+    Application, in the User Policy
+  <li>If running adaptor on Windows 7, Windows Server 2008, Windows Server 2008 R2
+    or Windows Server 2012 machine:
+    <p>
+    <b>Specify LAN Manager Authentication Level Policy</b>
+    <ol>
+    <li>Run <code>secpol.msc</code> on adaptor machine
+    <li>Under Security settings, navigate to Local policies > Security options.
+    <li>Select <b>Network security: LAN Manager authentication level</b> and 
+        set it to <b>Send LM &amp; NTLM - use NTLMv2 session security if negotiated</b>.   
+    </ol>
+    </p>
 </ul>
 
 <h4>Configure GSA for Adaptor</h4>
@@ -89,6 +94,13 @@ java.util.logging.ConsoleHandler.formatter=com.google.enterprise.adaptor.CustomF
 <h4>Optional <code>adaptor-config.properties</code> fields</h4>
 <dl>
   <dt>
+  <code>server.dashboardPort</code>
+  </dt>
+  <dd>
+  Port on which to view web page showing information
+  and diagnostics.  Defaults to "5679".
+  </dd>
+  <dt>
   <code>sharepoint.xmlValidation</code>
   </dt>
   <dd>
@@ -115,26 +127,31 @@ java.util.logging.ConsoleHandler.formatter=com.google.enterprise.adaptor.CustomF
 <!-- SPUP -->
 <h3 id="spuserprofileadaptor">Adaptor for SharePoint User Profiles Deployment</h3>
 
-<p>Each adaptor instance is only able to support one User Profile Service 
-Application. Therefore, you will need to deploy one adaptor instance per User 
-Profile Service Application.
+<p>A single instance of SharePoint User Profile adaptor can have GSA index
+a single User Profile Service Application.  An adaptor instance is needed per 
+User Profile Service Application.
 
 <h4>Requirements</h4>
 <ul>
   <li>GSA 7.0 P1 or higher
   <li>GSA user authentication configured for authentication system in use
     (typically Active Directory)
-  <li>Java JRE on computer that runs adaptor (1.6u27 or higher for linux;
-      Java JRE 1.7u6 or higher for windows)
-  <li>SharePoint User Profile Adaptor JAR executable
-  <li>User account for adaptor, with Full Control permissions to SharePoint User
+  <li>Java JRE on computer that runs adaptor (1.6u27 or higher on Linux;
+      1.7u6 or higher on Windows)
+  <li>SharePoint User Profile adaptor JAR executable
+  <li>User account, with Full Control permissions to SharePoint User
       Profile Service Application
-  <li>When running Adaptor from Windows 7, Windows Server 2008, 
-      Windows Server 2008 R2 or Windows Server 2012 machine, on adaptor machine
-      set local security policy for <b>Network security: LAN Manager 
-      authentication level</b> to <b>Send LM &amp; NTLM - use NTLMv2 session 
-      security if negotiated</b>. Use these <a href="#secpolicy">
-      configuration steps</a> to set local security policy.
+  <li>If running adaptor on Windows 7, Windows Server 2008, Windows Server 2008 R2
+    or Windows Server 2012 machine:
+    <p>
+    <b>Specify LAN Manager Authentication Level Policy</b>
+    <ol>
+    <li>Run <code>secpol.msc</code> on adaptor machine
+    <li>Under Security settings, navigate to Local policies > Security options.
+    <li>Select <b>Network security: LAN Manager authentication level</b> and 
+        set it to <b>Send LM &amp; NTLM - use NTLMv2 session security if negotiated</b>.   
+    </ol>
+    </p>
 </ul>
 
 <h4>Configure GSA for Adaptor</h4>
@@ -214,6 +231,14 @@ java.util.logging.ConsoleHandler.formatter=com.google.enterprise.adaptor.CustomF
 <h4>Optional <code>adaptor-config.properties</code> fields</h4>
 <dl>
   <dt>
+  <code>server.dashboardPort</code>
+  </dt>
+  <dd>
+  Port on which to view web page showing information
+  and diagnostics.  Defaults to "5679".
+  </dd>
+  <dt>
+  <dt>
   <code>profile.setacl</code>
   </dt>
   <dd>
@@ -234,12 +259,4 @@ java.util.logging.ConsoleHandler.formatter=com.google.enterprise.adaptor.CustomF
   Namespace used for ACLs sent to GSA.  Defaults to "Default".
   </dd>
 </dl>
-
-<h4 id="secpolicy">Steps to specify LAN Manager Authentication Level Policy</h4>
-<ol>
-    <li>Run <code>secpol.msc</code> on Adaptor machine.        
-    <li>Under Security settings, navigate to Local policies > Security Options.
-    <li>Select Network security: LAN Manager authentication level policy and 
-        set it to Send LM &amp; NTLM - use NTLMv2 session security if negotiated.   
-</ol>
 </body>
