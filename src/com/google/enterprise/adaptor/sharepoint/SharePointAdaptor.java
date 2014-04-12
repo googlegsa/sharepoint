@@ -92,6 +92,7 @@ import java.net.PasswordAuthentication;
 import java.net.URI;
 import java.net.URISyntaxException;
 import java.net.URL;
+import java.net.UnknownHostException;
 import java.nio.charset.Charset;
 import java.text.DateFormat;
 import java.text.ParseException;
@@ -127,6 +128,7 @@ import javax.xml.ws.BindingProvider;
 import javax.xml.ws.EndpointReference;
 import javax.xml.ws.Holder;
 import javax.xml.ws.Service;
+import javax.xml.ws.WebServiceException;
 import javax.xml.ws.handler.MessageContext;
 import javax.xml.ws.wsaddressing.W3CEndpointReferenceBuilder;
 
@@ -480,9 +482,9 @@ public class SharePointAdaptor extends AbstractAdaptor
             username, password);
     authenticationHandler = new FormsAuthenticationHandler(username,
         password, scheduledExecutor, authenticationClient);
-    authenticationHandler.start();
-    executor = executorFactory.call();
     try {
+      authenticationHandler.start();
+      executor = executorFactory.call();
       SiteAdaptor vsAdaptor = getSiteAdaptor(virtualServer, virtualServer);
       SiteDataClient virtualServerSiteDataClient =
           vsAdaptor.getSiteDataClient();
@@ -519,7 +521,32 @@ public class SharePointAdaptor extends AbstractAdaptor
               = vsAdaptor.encodeDocId(siteListing.getURL()).getUniqueId();
           ntlmAuthenticator.addPermitForHost(spUrlToUri(siteString).toURL());
         }
-      }      
+      }
+    } catch (WebServiceException ex) {
+      String warning;
+      Throwable cause = ex.getCause();
+      if (cause instanceof UnknownHostException) {
+        warning = String.format("Cannot find SharePoint server \"%s\" -- "
+            + "please make sure it is specified properly.", virtualServer);
+        //TODO(myk or tvartak): Replace AssertionError with the to-be-introduced
+        // "Permanent configuration error"
+        throw new AssertionError(warning, ex);
+      }
+      if (username.equals("")) {
+        warning = String.format("Cannot connect to server \"%s\" as the "
+            + "current user.  Please make sure the server is specified "
+            + "correctly, and that the user has sufficient permission to "
+            + "access the SharePoint server.  If the SharePoint server is "
+            + "currently down, please try again later.", virtualServer);
+      } else {
+        warning = String.format("Cannot connect to server \"%s\" as user "
+            + "\"%s\" with the specified password.  Please make sure they are "
+            + "specified correctly, and that the user has sufficient "
+            + "permission to access the SharePoint server.  If the SharePoint "
+            + "server is currently down, please try again later.",
+            virtualServer, username);
+      }
+      throw new IOException(warning, ex);
     } catch (Exception e) {
       // Don't leak the executor.
       destroy();
