@@ -556,22 +556,26 @@ public class SharePointAdaptor extends AbstractAdaptor
 
   @Override
   public void destroy() {
-    executor.shutdown();
-    scheduledExecutor.shutdown();
-    try {
-      executor.awaitTermination(10, TimeUnit.SECONDS);
-      scheduledExecutor.awaitTermination(10, TimeUnit.SECONDS);
-    } catch (InterruptedException ex) {
-      Thread.currentThread().interrupt();
-    }
-    
-    executor.shutdownNow();
-    scheduledExecutor.shutdownNow();
+    shutdownExecutor(executor);
+    shutdownExecutor(scheduledExecutor);    
     executor = null;
     scheduledExecutor = null;
     rareModCache = null;
     Authenticator.setDefault(null);
     ntlmAuthenticator = null;
+  }
+
+  private synchronized void shutdownExecutor(ExecutorService executor) {
+    if (executor == null) {
+      return;
+    }
+    executor.shutdown();
+    try {
+      executor.awaitTermination(10, TimeUnit.SECONDS);
+    } catch (InterruptedException ex) {
+      Thread.currentThread().interrupt();
+    }
+    executor.shutdownNow();
   }
 
   @Override

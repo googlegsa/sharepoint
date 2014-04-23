@@ -308,6 +308,12 @@ public class SharePointAdaptorTest {
   }
 
   @Test
+  public void testDestroy() {
+    SharePointAdaptor adaptor = new SharePointAdaptor();
+    adaptor.destroy();
+  }
+
+  @Test
   public void testNullSoapFactory() {
     thrown.expect(NullPointerException.class);
     new SharePointAdaptor(null, new UnsupportedHttpClient(), executorFactory);

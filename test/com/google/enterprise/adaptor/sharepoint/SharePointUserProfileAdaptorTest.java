@@ -114,6 +114,12 @@ public class SharePointUserProfileAdaptorTest {
   }
 
   @Test
+  public void testDestroy() {
+    SharePointUserProfileAdaptor adaptor = new SharePointUserProfileAdaptor();
+    adaptor.destroy();
+  }
+
+  @Test
   public void testBlankCredentialsOnWindows() throws IOException {
     Assume.assumeTrue(System.getProperty("os.name").contains("Windows"));
     Config adaptorConfig = new Config();
