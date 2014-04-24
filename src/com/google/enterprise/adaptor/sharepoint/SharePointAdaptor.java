@@ -528,11 +528,10 @@ public class SharePointAdaptor extends AbstractAdaptor
       if (cause instanceof UnknownHostException) {
         warning = String.format("Cannot find SharePoint server \"%s\" -- "
             + "please make sure it is specified properly.", virtualServer);
-        //TODO(myk or tvartak): Replace AssertionError with the to-be-introduced
-        // "Permanent configuration error"
-        throw new AssertionError(warning, ex);
-      }
-      if (username.equals("")) {
+        // Note: even this exception should not be treated as a "Permanent
+        // configuration error" -- it can be caused by transient network down
+        // or DNS down.
+      } else if (username.equals("")) {
         warning = String.format("Cannot connect to server \"%s\" as the "
             + "current user.  Please make sure the server is specified "
             + "correctly, and that the user has sufficient permission to "
