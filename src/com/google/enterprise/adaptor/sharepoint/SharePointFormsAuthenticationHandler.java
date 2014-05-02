@@ -14,7 +14,6 @@
 
 package com.google.enterprise.adaptor.sharepoint;
 
-import com.google.enterprise.adaptor.sharepoint.FormsAuthenticationHandler.AuthenticationHandler;
 import com.microsoft.schemas.sharepoint.soap.authentication.AuthenticationMode;
 import com.microsoft.schemas.sharepoint.soap.authentication.AuthenticationSoap;
 import com.microsoft.schemas.sharepoint.soap.authentication.LoginErrorCode;
@@ -22,6 +21,7 @@ import com.microsoft.schemas.sharepoint.soap.authentication.LoginResult;
 import java.io.IOException;
 import java.util.List;
 import java.util.Map;
+import java.util.concurrent.ScheduledExecutorService;
 import java.util.logging.Level;
 import java.util.logging.Logger;
 import javax.xml.ws.BindingProvider;
@@ -33,26 +33,48 @@ import javax.xml.ws.handler.MessageContext;
  * using Authentication.asmx web service.
 */
 public class SharePointFormsAuthenticationHandler 
-    implements AuthenticationHandler {
+    extends FormsAuthenticationHandler {
   private static final Logger log
       = Logger.getLogger(SharePointFormsAuthenticationHandler.class.getName());
   // Default time out for forms authentication with .NET is 30 mins
   private static final int DEFAULT_COOKIE_TIMEOUT_SECONDS = 30 * 60;
   private final AuthenticationSoap authenticationClient;
   private AuthenticationMode authenticationMode;
-  private final String username;
-  private final String password;
 
-  SharePointFormsAuthenticationHandler(AuthenticationSoap authenticationClient,
-      String username, String password) {
-    if (authenticationClient == null || username == null || password == null) {
-      throw new NullPointerException();
-    }
+  private SharePointFormsAuthenticationHandler(String username, String password,
+      ScheduledExecutorService executor,
+      AuthenticationSoap authenticationClient) {
+    super(username, password, executor);
     this.authenticationClient = authenticationClient;
-    this.username = username;
-    this.password = password;
+  }
+  
+  public static class Builder {
+    private final String username;
+    private final String password;
+    private final ScheduledExecutorService executor;
+    private final AuthenticationSoap authenticationClient;
+    public Builder(String username, String password,
+        ScheduledExecutorService executor,
+        AuthenticationSoap authenticationClient) {
+      if (username == null || password == null || executor == null
+          || authenticationClient == null) {
+        throw new NullPointerException();        
+      }
+      this.username = username;
+      this.password = password;
+      this.executor = executor;
+      this.authenticationClient = authenticationClient;      
+    }
+    
+    public SharePointFormsAuthenticationHandler build() {
+      SharePointFormsAuthenticationHandler authenticationHandler
+          = new SharePointFormsAuthenticationHandler(
+              username, password, executor, authenticationClient);
+      return authenticationHandler;
+    }    
   }
 
+  @Override
   public AuthenticationResult authenticate() throws IOException {
     if (!isFormsAuthentication()) {
       return new AuthenticationResult(null, DEFAULT_COOKIE_TIMEOUT_SECONDS,

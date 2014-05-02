@@ -36,6 +36,7 @@ import com.google.enterprise.adaptor.UserPrincipal;
 import com.google.enterprise.adaptor.sharepoint.RareModificationCache.CachedList;
 import com.google.enterprise.adaptor.sharepoint.RareModificationCache.CachedVirtualServer;
 import com.google.enterprise.adaptor.sharepoint.RareModificationCache.CachedWeb;
+import com.google.enterprise.adaptor.sharepoint.SamlAuthenticationHandler.SamlHandshakeManager;
 import com.google.enterprise.adaptor.sharepoint.SiteDataClient.CursorPaginator;
 import com.google.enterprise.adaptor.sharepoint.SiteDataClient.Paginator;
 import com.google.enterprise.adaptor.sharepoint.SiteDataClient.XmlProcessingException;
@@ -348,6 +349,8 @@ public class SharePointAdaptor extends AbstractAdaptor
   /** Client for initiating raw HTTP connections. */
   private final HttpClient httpClient;
   private final Callable<ExecutorService> executorFactory;
+
+  private final AuthenticationClientFactory authenticationClientFactory;
   private ExecutorService executor;
   private boolean xmlValidation;
   private int feedMaxUrls;
@@ -404,18 +407,21 @@ public class SharePointAdaptor extends AbstractAdaptor
 
   public SharePointAdaptor() {
     this(new SoapFactoryImpl(), new HttpClientImpl(),
-        new CachedThreadPoolFactory());
+        new CachedThreadPoolFactory(), new AuthenticationClientFactoryImpl());
   }
 
   @VisibleForTesting
   SharePointAdaptor(SoapFactory soapFactory, HttpClient httpClient,
-      Callable<ExecutorService> executorFactory) {
-    if (soapFactory == null || httpClient == null || executorFactory == null) {
+      Callable<ExecutorService> executorFactory,
+      AuthenticationClientFactory authenticationClientFactory) {
+    if (soapFactory == null || httpClient == null || executorFactory == null 
+        || authenticationClientFactory == null) {
       throw new NullPointerException();
     }
     this.soapFactory = soapFactory;
     this.httpClient = httpClient;
     this.executorFactory = executorFactory;
+    this.authenticationClientFactory = authenticationClientFactory;
   }
 
   /**
@@ -442,6 +448,22 @@ public class SharePointAdaptor extends AbstractAdaptor
     // because the GSA won't see links outside of that content.
     config.addKey("sharepoint.maxIndexableSize", "2097152");
     config.addKey("adaptor.namespace", "Default");
+    // When running against ADFS authentication, set this to ADFS endpoint.
+    config.addKey("sharepoint.sts.endpoint", "");
+    // When running against ADFS authentication, set this to realm value.
+    // Normally realm value is either http://sharepointurl/_trust or
+    // urn:sharepointenv:com format. You can use 
+    // Get-SPTrustedIdentityTokenIssuer to get "DefaultProviderRealm" value
+    config.addKey("sharepoint.sts.realm", "");
+    // You can override default value of http://sharepointurl/_trust by 
+    // specifying this property.
+    config.addKey("sharepoint.sts.trustLocation", "");
+    // You can override default value of 
+    // http://sharepointurl/_layouts/Authenticate.aspx by specifying this 
+    // property.
+    config.addKey("sharepoint.sts.login", "");
+    // Set this to true when using Live authentication.
+    config.addKey("sharepoint.useLiveAuthentication", "false");
   }
 
   @Override
@@ -462,11 +484,19 @@ public class SharePointAdaptor extends AbstractAdaptor
     maxIndexableSize = Integer.parseInt(
         config.getValue("sharepoint.maxIndexableSize"));
     defaultNamespace = config.getValue("adaptor.namespace");
+    String stsendpoint = config.getValue("sharepoint.sts.endpoint");
+    String stsrealm = config.getValue("sharepoint.sts.realm");
+    boolean useLiveAuthentication = Boolean.parseBoolean(
+        config.getValue("sharepoint.useLiveAuthentication"));
 
     log.log(Level.CONFIG, "VirtualServer: {0}", virtualServer);
     log.log(Level.CONFIG, "Username: {0}", username);
     log.log(Level.CONFIG, "Password: {0}", password);
     log.log(Level.CONFIG, "Default Namespace: {0}", defaultNamespace);
+    log.log(Level.CONFIG, "STS Endpoint: {0}", stsendpoint);
+    log.log(Level.CONFIG, "STS Realm: {0}", stsrealm);
+    log.log(Level.CONFIG, "Use Live Authentication: {0}",
+        useLiveAuthentication);
 
     ntlmAuthenticator = new NtlmAuthenticator(username, password);
     // Unfortunately, this is a JVM-wide modification.
@@ -474,14 +504,28 @@ public class SharePointAdaptor extends AbstractAdaptor
     URL virtualServerUrl = new URL(virtualServer);
     ntlmAuthenticator.addPermitForHost(virtualServerUrl);
     scheduledExecutor = new ScheduledThreadPoolExecutor(1);
-    String authenticationEndPoint = spUrlToUri(
-        virtualServer + "/_vti_bin/Authentication.asmx").toString();
-    SharePointFormsAuthenticationHandler authenticationClient 
-        = new SharePointFormsAuthenticationHandler(
-            soapFactory.newAuthentication(authenticationEndPoint),
-            username, password);
-    authenticationHandler = new FormsAuthenticationHandler(username,
-        password, scheduledExecutor, authenticationClient);
+   
+    
+    if (useLiveAuthentication)  {
+      SamlHandshakeManager manager = authenticationClientFactory
+          .newLiveAuthentication(virtualServer, username, password);
+      authenticationHandler = new SamlAuthenticationHandler.Builder(username,
+          password, scheduledExecutor, manager).build();     
+    } else if (!"".equals(stsendpoint) && !"".equals(stsrealm)) {
+      SamlHandshakeManager manager = authenticationClientFactory
+          .newAdfsAuthentication(virtualServer, username, password, stsendpoint,
+              stsrealm, config.getValue("sharepoint.sts.login"),
+              config.getValue("sharepoint.sts.trustLocation"));
+      authenticationHandler = new SamlAuthenticationHandler.Builder(username,
+          password, scheduledExecutor, manager).build();            
+    } else {    
+      AuthenticationSoap authenticationSoap = authenticationClientFactory
+          .newSharePointFormsAuthentication(virtualServer, username, password);
+      authenticationHandler = new SharePointFormsAuthenticationHandler
+          .Builder(username, password, scheduledExecutor, authenticationSoap)
+          .build();
+    }
+   
     try {
       authenticationHandler.start();
       executor = executorFactory.call();
@@ -2674,8 +2718,6 @@ public class SharePointAdaptor extends AbstractAdaptor
 
     public UserGroupSoap newUserGroup(String endpoint);
     
-    public AuthenticationSoap newAuthentication(String endpoint);
-    
     public PeopleSoap newPeople(String endpoint);
   }
 
@@ -2683,7 +2725,6 @@ public class SharePointAdaptor extends AbstractAdaptor
   static class SoapFactoryImpl implements SoapFactory {
     private final Service siteDataService;
     private final Service userGroupService;
-    private final Service authenticationService;
     private final Service peopleService;
 
     public SoapFactoryImpl() {
@@ -2691,9 +2732,6 @@ public class SharePointAdaptor extends AbstractAdaptor
       this.userGroupService = Service.create(
           UserGroupSoap.class.getResource("UserGroup.wsdl"),
           new QName(XMLNS_DIRECTORY, "UserGroup"));
-      this.authenticationService = Service.create(
-          AuthenticationSoap.class.getResource("Authentication.wsdl"),
-          new QName(XMLNS, "Authentication"));
       this.peopleService = Service.create(
           PeopleSoap.class.getResource("People.wsdl"),
           new QName(XMLNS, "People"));
@@ -2716,14 +2754,6 @@ public class SharePointAdaptor extends AbstractAdaptor
       EndpointReference endpointRef = new W3CEndpointReferenceBuilder()
           .address(handleEncoding(endpoint)).build();
       return userGroupService.getPort(endpointRef, UserGroupSoap.class);
-    }
-    
-    @Override
-    public AuthenticationSoap newAuthentication(String endpoint) {
-      EndpointReference endpointRef = new W3CEndpointReferenceBuilder()
-          .address(handleEncoding(endpoint)).build();
-      return 
-          authenticationService.getPort(endpointRef, AuthenticationSoap.class);
     }
 
     @Override

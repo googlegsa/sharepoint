@@ -25,6 +25,7 @@ import com.google.enterprise.adaptor.Config;
 import com.google.enterprise.adaptor.DocId;
 import com.google.enterprise.adaptor.GroupPrincipal;
 
+import com.google.enterprise.adaptor.sharepoint.SamlAuthenticationHandler.SamlHandshakeManager;
 import com.google.enterprise.adaptor.sharepoint.SharePointUserProfileAdaptor.UserProfileServiceClient;
 import com.google.enterprise.adaptor.sharepoint.SharePointUserProfileAdaptor.UserProfileServiceFactory;
 import com.google.enterprise.adaptor.sharepoint.SharePointUserProfileAdaptor.UserProfileServiceWS;
@@ -76,6 +77,8 @@ public class SharePointUserProfileAdaptorTest {
   private Config config;
   private SharePointUserProfileAdaptor adaptor;
   private final Charset charset = Charset.forName("UTF-8");
+  private AuthenticationClientFactory authenticationFactory 
+      = new MockAuthenticationClientFactoryForms();
 
   @Before
   public void setup() {
@@ -130,7 +133,8 @@ public class SharePointUserProfileAdaptorTest {
     assertEquals(adaptorConfig.getValue("sharepoint.password"), "");
     MockUserProfileServiceFactoryImpl serviceFactory =
         new MockUserProfileServiceFactoryImpl(null);
-    adaptor = new SharePointUserProfileAdaptor(serviceFactory);
+    adaptor = new SharePointUserProfileAdaptor(serviceFactory,
+        authenticationFactory);
     AccumulatingDocIdPusher pusher = new AccumulatingDocIdPusher();
     adaptor.init(new MockAdaptorContext(adaptorConfig, pusher));
   }
@@ -161,7 +165,8 @@ public class SharePointUserProfileAdaptorTest {
     // since profile properties are null
     serviceFactory.addUserProfileToCollection(5, 6, "user4", null, null);
 
-    adaptor = new SharePointUserProfileAdaptor(serviceFactory);
+    adaptor = new SharePointUserProfileAdaptor(serviceFactory,
+        authenticationFactory);
     AccumulatingDocIdPusher pusher = new AccumulatingDocIdPusher();
     adaptor.init(new MockAdaptorContext(config, pusher));
     assertEquals(0, pusher.getRecords().size());
@@ -174,7 +179,8 @@ public class SharePointUserProfileAdaptorTest {
       throws IOException, InterruptedException {
     MockUserProfileServiceFactoryImpl serviceFactory =
         new MockUserProfileServiceFactoryImpl(null);
-    adaptor = new SharePointUserProfileAdaptor(serviceFactory);
+    adaptor = new SharePointUserProfileAdaptor(serviceFactory,
+        authenticationFactory);
     AccumulatingDocIdPusher pusher = new AccumulatingDocIdPusher();
     adaptor.init(new MockAdaptorContext(config, pusher));
     assertEquals(0, pusher.getRecords().size());
@@ -229,7 +235,8 @@ public class SharePointUserProfileAdaptorTest {
 
     serviceFactory.addUserProfileToCollection(1, 2, "domain\\user1",
         profile, colleaguesData);
-    adaptor = new SharePointUserProfileAdaptor(serviceFactory);
+    adaptor = new SharePointUserProfileAdaptor(serviceFactory
+        ,authenticationFactory);
     config.overrideKey("adaptor.namespace", "ns1");
 
     AccumulatingDocIdPusher pusher = new AccumulatingDocIdPusher();
@@ -308,7 +315,8 @@ public class SharePointUserProfileAdaptorTest {
   public void testGetDocContentNotFound() throws IOException {
     MockUserProfileServiceFactoryImpl serviceFactory =
         new MockUserProfileServiceFactoryImpl(null);
-    adaptor = new SharePointUserProfileAdaptor(serviceFactory);
+    adaptor = new SharePointUserProfileAdaptor(serviceFactory,
+        authenticationFactory);
 
     AccumulatingDocIdPusher pusher = new AccumulatingDocIdPusher();
     adaptor.init(new MockAdaptorContext(config, pusher));
@@ -330,7 +338,8 @@ public class SharePointUserProfileAdaptorTest {
         SharePointUserProfileAdaptor.PROFILE_ACCOUNTNAME_PROPERTY,
         new String[] {"user1"});
     serviceFactory.addUserProfileToCollection(1, 2, "user1", profile, null);
-    adaptor = new SharePointUserProfileAdaptor(serviceFactory);
+    adaptor = new SharePointUserProfileAdaptor(serviceFactory,
+        authenticationFactory);
 
     AccumulatingDocIdPusher pusher = new AccumulatingDocIdPusher();
     adaptor.init(new MockAdaptorContext(config, pusher));
@@ -349,7 +358,8 @@ public class SharePointUserProfileAdaptorTest {
     MockUserProfileServiceFactoryImpl serviceFactory =
         new MockUserProfileServiceFactoryImpl(
             "change token on mock repository");
-    adaptor = new SharePointUserProfileAdaptor(serviceFactory);
+    adaptor = new SharePointUserProfileAdaptor(serviceFactory,
+        authenticationFactory);
     AccumulatingDocIdPusher pusher = new AccumulatingDocIdPusher();
     adaptor.init(new MockAdaptorContext(config, pusher));
     adaptor.setUserProfileChangeToken(null);
@@ -366,7 +376,8 @@ public class SharePointUserProfileAdaptorTest {
     MockUserProfileServiceFactoryImpl serviceFactory =
         new MockUserProfileServiceFactoryImpl(
             "same current token");
-    adaptor = new SharePointUserProfileAdaptor(serviceFactory);
+    adaptor = new SharePointUserProfileAdaptor(serviceFactory,
+        authenticationFactory);
     AccumulatingDocIdPusher pusher = new AccumulatingDocIdPusher();
     adaptor.init(new MockAdaptorContext(config, pusher));
     adaptor.setUserProfileChangeToken("same current token");
@@ -383,7 +394,8 @@ public class SharePointUserProfileAdaptorTest {
     MockUserProfileServiceFactoryImpl serviceFactory =
         new MockUserProfileServiceFactoryImpl(
             "new token");
-    adaptor = new SharePointUserProfileAdaptor(serviceFactory);
+    adaptor = new SharePointUserProfileAdaptor(serviceFactory,
+        authenticationFactory);
     AccumulatingDocIdPusher pusher = new AccumulatingDocIdPusher();
     adaptor.init(new MockAdaptorContext(config, pusher));
     adaptor.setUserProfileChangeToken("old token");
@@ -420,7 +432,8 @@ public class SharePointUserProfileAdaptorTest {
     //batch 5 -user6
     serviceFactory.addChangeLogForUser("user6");
 
-    adaptor = new SharePointUserProfileAdaptor(serviceFactory);
+    adaptor = new SharePointUserProfileAdaptor(serviceFactory,
+        authenticationFactory);
     AccumulatingDocIdPusher pusher = new AccumulatingDocIdPusher();
     adaptor.init(new MockAdaptorContext(config, pusher));
     adaptor.setUserProfileChangeToken("old token");
@@ -437,7 +450,8 @@ public class SharePointUserProfileAdaptorTest {
     MockUserProfileServiceFactoryImpl serviceFactory =
         new MockUserProfileServiceFactoryImpl(
             "sp token");
-    adaptor = new SharePointUserProfileAdaptor(serviceFactory);
+    adaptor = new SharePointUserProfileAdaptor(serviceFactory,
+        authenticationFactory);
     AccumulatingDocIdPusher pusher = new AccumulatingDocIdPusher();
     adaptor.init(new MockAdaptorContext(config, pusher));
     adaptor.setUserProfileChangeToken("invalid");
@@ -452,7 +466,8 @@ public class SharePointUserProfileAdaptorTest {
     MockUserProfileServiceFactoryImpl serviceFactory =
         new MockUserProfileServiceFactoryImpl(
             "sp token");
-    adaptor = new SharePointUserProfileAdaptor(serviceFactory);
+    adaptor = new SharePointUserProfileAdaptor(serviceFactory,
+        authenticationFactory);
     UserProfileServiceClient client = adaptor.new UserProfileServiceClient(null);
 
     ArrayOfContactData colleaguesData = new ArrayOfContactData();
@@ -484,7 +499,8 @@ public class SharePointUserProfileAdaptorTest {
     MockUserProfileServiceFactoryImpl serviceFactory =
         new MockUserProfileServiceFactoryImpl(
             "sp token");
-    adaptor = new SharePointUserProfileAdaptor(serviceFactory);
+    adaptor = new SharePointUserProfileAdaptor(serviceFactory,
+        authenticationFactory);
     UserProfileServiceClient client =
         adaptor.new UserProfileServiceClient(null);
     // Get an instance of factory
@@ -648,11 +664,6 @@ public class SharePointUserProfileAdaptorTest {
     public void addChangeLogForUser(String userName) {
       proxy.addChangeLogForUser(userName);
     }
-
-    @Override
-    public AuthenticationSoap newAuthentication(String endpoint) {
-      return new MockAuthenticationSoap();
-    }
   }
   
   private static class MockAuthenticationSoap implements AuthenticationSoap {
@@ -664,6 +675,41 @@ public class SharePointUserProfileAdaptorTest {
     @Override
     public AuthenticationMode mode() {
       return AuthenticationMode.WINDOWS;
+    }    
+  }
+  
+  private static class UnsupportedAuthenticationClientFactory 
+      implements AuthenticationClientFactory {
+
+    @Override
+    public AuthenticationSoap newSharePointFormsAuthentication(
+        String virtualServer, String username, String password)
+        throws IOException {
+      throw new UnsupportedOperationException();
+    }
+
+    @Override
+    public SamlHandshakeManager newAdfsAuthentication(String virtualServer,
+        String username, String password, String stsendpoint, String stsrelam,
+      String login, String trustlocation) throws IOException {
+      throw new UnsupportedOperationException();
+    }
+
+    @Override
+    public SamlHandshakeManager newLiveAuthentication(String virtualServer,
+        String username, String password) throws IOException {
+      throw new UnsupportedOperationException();
+    }
+    
+  }
+  
+  private static class MockAuthenticationClientFactoryForms 
+      extends UnsupportedAuthenticationClientFactory {
+    @Override
+    public AuthenticationSoap newSharePointFormsAuthentication(
+        String virtualServer, String username, String password)
+        throws IOException {
+      return new MockAuthenticationSoap();
     }    
   }
 }

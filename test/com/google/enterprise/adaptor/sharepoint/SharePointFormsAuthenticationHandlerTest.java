@@ -20,6 +20,8 @@ import static org.junit.Assert.assertNotNull;
 import static org.junit.Assert.assertNull;
 import static org.junit.Assert.assertTrue;
 
+import com.google.enterprise.adaptor.sharepoint.FormsAuthenticationHandlerTest.UnsupportedScheduledExecutor;
+
 import com.microsoft.schemas.sharepoint.soap.authentication.AuthenticationMode;
 import com.microsoft.schemas.sharepoint.soap.authentication.AuthenticationSoap;
 import com.microsoft.schemas.sharepoint.soap.authentication.LoginErrorCode;
@@ -35,6 +37,10 @@ import java.util.Collections;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.concurrent.Callable;
+import java.util.concurrent.ScheduledExecutorService;
+import java.util.concurrent.ScheduledFuture;
+import java.util.concurrent.TimeUnit;
 
 import javax.xml.ws.Binding;
 import javax.xml.ws.BindingProvider;
@@ -92,41 +98,46 @@ public class SharePointFormsAuthenticationHandlerTest {
   }
   
   @Test
-  public void testConstructor() {
-    new SharePointFormsAuthenticationHandler (
-        new UnsupportedAuthenticationSoap(), "username", "password");
+  public void testBuilder() {
+    new SharePointFormsAuthenticationHandler.Builder("username", "password",
+        new UnsupportedScheduledExecutor(),
+        new UnsupportedAuthenticationSoap()).build();       
   }
   
   @Test
   public void testNullUserName() {
     thrown.expect(NullPointerException.class);
-    new SharePointFormsAuthenticationHandler (
-        new UnsupportedAuthenticationSoap(), null, "password");
+    new SharePointFormsAuthenticationHandler.Builder(null, "password",
+        new UnsupportedScheduledExecutor(),
+        new UnsupportedAuthenticationSoap()).build();
   }
   
   @Test
   public void testNullPassword() {
     thrown.expect(NullPointerException.class);
-    new SharePointFormsAuthenticationHandler (
-        new UnsupportedAuthenticationSoap(), "username", null);
+    new SharePointFormsAuthenticationHandler.Builder("username", null,
+        new UnsupportedScheduledExecutor(),
+        new UnsupportedAuthenticationSoap()).build();
   }
   
   @Test
   public void testNullAuthenticationClient() {
     thrown.expect(NullPointerException.class);
-    new SharePointFormsAuthenticationHandler ( null, "username", "password");
+    new SharePointFormsAuthenticationHandler.Builder("username", "password",
+        new UnsupportedScheduledExecutor(), null).build();
   }
   
   @Test
   public void testSharePointWithWindowsAuthentication() throws IOException{
     SharePointFormsAuthenticationHandler authenHandler 
-        = new SharePointFormsAuthenticationHandler(
+        = new SharePointFormsAuthenticationHandler.Builder("username",
+            "password", new UnsupportedScheduledExecutor(),
             new MockFormsAuthenticationSoap(){
                 @Override public AuthenticationMode mode()
                 {
                   return AuthenticationMode.WINDOWS;
                 }
-            }, "username", "password");
+            }).build();
     
     assertFalse(authenHandler.isFormsAuthentication());
     AuthenticationResult ar = authenHandler.authenticate();
@@ -139,7 +150,8 @@ public class SharePointFormsAuthenticationHandlerTest {
   @Test
   public void testSharePointWithFormsPasswordMismatch() throws IOException {
     SharePointFormsAuthenticationHandler authenHandler 
-        = new SharePointFormsAuthenticationHandler(
+        = new SharePointFormsAuthenticationHandler.Builder("username",
+            "password", new UnsupportedScheduledExecutor(),
             new MockFormsAuthenticationSoap(){                
                 @Override public LoginResult login(
                     String username, String password) {
@@ -147,7 +159,7 @@ public class SharePointFormsAuthenticationHandlerTest {
                   lr.setErrorCode(LoginErrorCode.PASSWORD_NOT_MATCH);
                   return lr;                  
                 }
-            }, "username", "password");
+            }).build();
     
     assertTrue(authenHandler.isFormsAuthentication());
     AuthenticationResult ar = authenHandler.authenticate();
@@ -160,8 +172,9 @@ public class SharePointFormsAuthenticationHandlerTest {
   @Test
   public void testSharePointWithFormsAuthentication() throws IOException {
     SharePointFormsAuthenticationHandler authenHandler 
-        = new SharePointFormsAuthenticationHandler(
-            new MockFormsAuthenticationSoap() {
+        = new SharePointFormsAuthenticationHandler.Builder("username",
+            "password", new UnsupportedScheduledExecutor(),
+            new MockFormsAuthenticationSoap(){
               @Override public LoginResult login(
                     String username, String password) {
                 LoginResult lr = new LoginResult();
@@ -180,7 +193,7 @@ public class SharePointFormsAuthenticationHandlerTest {
                     Collections.unmodifiableMap(responseHeaders));
                 return  Collections.unmodifiableMap(responseContext);                
               }
-            }, "username", "password");
+            }).build();    
     assertTrue(authenHandler.isFormsAuthentication());
     AuthenticationResult ar = authenHandler.authenticate();
     assertNotNull(ar);

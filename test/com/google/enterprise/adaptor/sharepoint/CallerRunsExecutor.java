@@ -17,7 +17,10 @@ package com.google.enterprise.adaptor.sharepoint;
 import java.util.Collections;
 import java.util.List;
 import java.util.concurrent.AbstractExecutorService;
+import java.util.concurrent.Callable;
 import java.util.concurrent.RejectedExecutionException;
+import java.util.concurrent.ScheduledExecutorService;
+import java.util.concurrent.ScheduledFuture;
 import java.util.concurrent.TimeUnit;
 
 /**
@@ -60,5 +63,5 @@ class CallerRunsExecutor extends AbstractExecutorService {
   public List<Runnable> shutdownNow() {
     shutdown();
     return Collections.emptyList();
-  }
+  }  
 }

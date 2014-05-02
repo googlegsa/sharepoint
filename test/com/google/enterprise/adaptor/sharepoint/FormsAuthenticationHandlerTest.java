@@ -16,10 +16,7 @@ package com.google.enterprise.adaptor.sharepoint;
 
 
 import static org.junit.Assert.assertEquals;
-import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertTrue;
-
-import com.google.enterprise.adaptor.sharepoint.FormsAuthenticationHandler.AuthenticationHandler;
 
 import org.junit.Rule;
 import org.junit.Test;
@@ -36,47 +33,9 @@ import java.util.concurrent.TimeUnit;
 public class FormsAuthenticationHandlerTest {
   
   @Rule
-  public ExpectedException thrown = ExpectedException.none();
+  public ExpectedException thrown = ExpectedException.none();   
   
-  private static class UnsupportedAuthenticationHandler 
-      implements AuthenticationHandler {
-
-    public AuthenticationResult authenticate() throws IOException {
-      throw new UnsupportedOperationException();
-    }
-
-    public boolean isFormsAuthentication() throws IOException {
-      throw new UnsupportedOperationException();
-    }
-  }
-  
-  private static class MockAuthenticationHandler 
-      extends UnsupportedAuthenticationHandler {
-    
-    private boolean isFormsAuthentication;
-    private AuthenticationResult authenticationResult;
-    
-    MockAuthenticationHandler(boolean isFormsAuthentication,
-        AuthenticationResult authenticationResult) {
-      this.isFormsAuthentication = isFormsAuthentication;
-      this.authenticationResult = authenticationResult;      
-    }
-
-    @Override
-    public AuthenticationResult authenticate() throws IOException {
-      if (authenticationResult == null) {
-        throw new UnsupportedOperationException();
-      }
-      return authenticationResult;
-    }
-
-    @Override
-    public boolean isFormsAuthentication() throws IOException {
-      return isFormsAuthentication;
-    }
-  }
-  
-  private static class UnsupportedScheduledExecutor extends CallerRunsExecutor 
+  static class UnsupportedScheduledExecutor extends CallerRunsExecutor 
       implements ScheduledExecutorService {
 
     public ScheduledFuture<?> schedule(Runnable command, long delay,
@@ -101,7 +60,7 @@ public class FormsAuthenticationHandlerTest {
     
   }
   
-  private static class MockScheduledExecutor 
+  static class MockScheduledExecutor 
       extends UnsupportedScheduledExecutor {
     long executionDelay;
     TimeUnit executionTimeUnit;   
@@ -115,69 +74,73 @@ public class FormsAuthenticationHandlerTest {
     }
   }
   
+  static class MockFormsAuthenticationHandler
+      extends FormsAuthenticationHandler {
+
+    public MockFormsAuthenticationHandler(String username, String password,
+        ScheduledExecutorService executor) {
+      super(username, password, executor);
+    }
+
+    @Override
+    boolean isFormsAuthentication() throws IOException {
+      throw new UnsupportedOperationException();
+    }
+
+    @Override
+    AuthenticationResult authenticate() throws IOException {
+      throw new UnsupportedOperationException();
+    }    
+  }  
+  
   @Test
   public void testConstructor() {
-    new FormsAuthenticationHandler("username", "password",
-        new UnsupportedScheduledExecutor(),
-        new UnsupportedAuthenticationHandler());
+    new MockFormsAuthenticationHandler("username", "password",
+        new UnsupportedScheduledExecutor());
   }
   
   @Test
   public void testNullUserName() {
     thrown.expect(NullPointerException.class);
-    new FormsAuthenticationHandler(null, "password",
-        new UnsupportedScheduledExecutor(),
-        new UnsupportedAuthenticationHandler());
+    new MockFormsAuthenticationHandler(null, "password",
+        new UnsupportedScheduledExecutor());
   }
   
   @Test
   public void testNullPassword() {
     thrown.expect(NullPointerException.class);
-    new FormsAuthenticationHandler("username", null,
-        new UnsupportedScheduledExecutor(),
-        new UnsupportedAuthenticationHandler());
+    new MockFormsAuthenticationHandler("username", null,
+        new UnsupportedScheduledExecutor());
   }
   
   @Test
   public void testNullScheduledExecutor() {
     thrown.expect(NullPointerException.class);
-    new FormsAuthenticationHandler("username", "password", null,
-        new UnsupportedAuthenticationHandler());
-  }
-  
-  @Test
-  public void testNullAuthenticationHandler() {
-    thrown.expect(NullPointerException.class);
-    new FormsAuthenticationHandler("username", "password",
-        new UnsupportedScheduledExecutor(),null);
-  }
-  
-  @Test
-  public void testWindowsAuthentication() throws IOException {
-    FormsAuthenticationHandler formsHandler = new FormsAuthenticationHandler(
-        "username", "password",  new UnsupportedScheduledExecutor(),
-        new MockAuthenticationHandler(false, null));
-    formsHandler.start();
-    assertFalse(formsHandler.isFormsAuthentication());
-    assertTrue(formsHandler.getAuthenticationCookies().isEmpty());
-  }
+    new MockFormsAuthenticationHandler("username", "password", null);
+  } 
   
   @Test
   public void testEmptyUsernamePassword() throws IOException {
-    FormsAuthenticationHandler formsHandler = new FormsAuthenticationHandler(
-        "", "",  new UnsupportedScheduledExecutor(),
-        new UnsupportedAuthenticationHandler());
-    formsHandler.start();
-    assertFalse(formsHandler.isFormsAuthentication());
+    FormsAuthenticationHandler formsHandler 
+        = new MockFormsAuthenticationHandler("", "",
+            new UnsupportedScheduledExecutor());
+    formsHandler.start();    
     assertTrue(formsHandler.getAuthenticationCookies().isEmpty());
   }
   
   @Test
   public void testFormsAuthenticationNoError() throws IOException {
-    MockScheduledExecutor executor = new MockScheduledExecutor();    
-    FormsAuthenticationHandler formsHandler = new FormsAuthenticationHandler(
-        "username", "password", executor, new MockAuthenticationHandler(true,
-            new AuthenticationResult("AuthenCookie", 99, "NO_ERROR")));
+    MockScheduledExecutor executor = new MockScheduledExecutor();
+    FormsAuthenticationHandler formsHandler 
+        = new MockFormsAuthenticationHandler("username", "password", executor) {
+          @Override public boolean isFormsAuthentication() throws IOException {
+            return true;
+          }
+          @Override public AuthenticationResult authenticate()
+              throws IOException {
+            return new AuthenticationResult("AuthenCookie", 99, "NO_ERROR");
+          }
+        };
     formsHandler.start();
     assertTrue(formsHandler.isFormsAuthentication());
     assertEquals(Collections.unmodifiableList(Arrays.asList("AuthenCookie")),
@@ -189,10 +152,17 @@ public class FormsAuthenticationHandlerTest {
   
   @Test
   public void testFormsAuthenticationPasswordMismatch() throws IOException {
-    FormsAuthenticationHandler formsHandler = new FormsAuthenticationHandler(
-        "username", "password", new UnsupportedScheduledExecutor(),
-        new MockAuthenticationHandler(true,
-            new AuthenticationResult(null, 99, "PASSWORD_NOT_MATCH")));
+    FormsAuthenticationHandler formsHandler 
+        = new MockFormsAuthenticationHandler("username", "password",
+            new UnsupportedScheduledExecutor()) {
+          @Override public boolean isFormsAuthentication() throws IOException {
+            return true;
+          }
+          @Override public AuthenticationResult authenticate()
+              throws IOException {
+            return new AuthenticationResult(null, 99, "PASSWORD_MISMATCH");
+          }
+        };
     formsHandler.start();
     assertTrue(formsHandler.isFormsAuthentication());
     assertTrue(formsHandler.getAuthenticationCookies().isEmpty());

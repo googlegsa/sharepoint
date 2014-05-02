@@ -26,6 +26,7 @@ import com.google.enterprise.adaptor.GroupPrincipal;
 import com.google.enterprise.adaptor.PollingIncrementalLister;
 import com.google.enterprise.adaptor.Request;
 import com.google.enterprise.adaptor.Response;
+import com.google.enterprise.adaptor.sharepoint.SamlAuthenticationHandler.SamlHandshakeManager;
 import com.microsoft.schemas.sharepoint.soap.authentication.AuthenticationSoap;
 
 import com.microsoft.webservices.sharepointportalserver.userprofilechangeservice.ArrayOfUserProfileChangeData;
@@ -141,6 +142,7 @@ public class SharePointUserProfileAdaptor extends AbstractAdaptor
   private String mySiteHost;
   private NtlmAuthenticator ntlmAuthenticator;
   private final UserProfileServiceFactory userProfileServiceFactory;
+  private final AuthenticationClientFactory authenticationClientFactory;
 
   private String userProfileChangeToken;
   private boolean setAcl = true;
@@ -149,21 +151,27 @@ public class SharePointUserProfileAdaptor extends AbstractAdaptor
   private ScheduledThreadPoolExecutor scheduledExecutor 
       = new ScheduledThreadPoolExecutor(1);
 
+  private FormsAuthenticationHandler authenticationHandler;
+
   public static void main(String[] args) {
     AbstractAdaptor.main(new SharePointUserProfileAdaptor(), args);
   }
 
   public SharePointUserProfileAdaptor() {
-    this(new UserProfileServiceFactoryImpl());
+    this(new UserProfileServiceFactoryImpl(),
+        new AuthenticationClientFactoryImpl());
   }
 
   @VisibleForTesting
   SharePointUserProfileAdaptor(
-      UserProfileServiceFactory userProfileServiceFactory) {
-    if (userProfileServiceFactory == null) {
+      UserProfileServiceFactory userProfileServiceFactory,
+      AuthenticationClientFactory authenticationClientFactory) {
+    if (userProfileServiceFactory == null 
+        || authenticationClientFactory == null) {
       throw new NullPointerException();
     }
     this.userProfileServiceFactory = userProfileServiceFactory;
+    this.authenticationClientFactory = authenticationClientFactory;
   }
 
   @VisibleForTesting
@@ -187,6 +195,22 @@ public class SharePointUserProfileAdaptor extends AbstractAdaptor
     config.addKey("profile.setacl", "true");
     config.addKey("adaptor.namespace", "Default");
     config.addKey("profile.mysitehost", "");
+    // When running against ADFS authentication, set this to ADFS endpoint.
+    config.addKey("sharepoint.sts.endpoint", "");
+    // When running against ADFS authentication, set this to realm value.
+    // Normally realm value is either http://sharepointurl/_trust or
+    // urn:sharepointenv:com format. You can use 
+    // Get-SPTrustedIdentityTokenIssuer to get "DefaultProviderRealm" value
+    config.addKey("sharepoint.sts.realm", "");
+    // You can override default value of http://sharepointurl/_trust by 
+    // specifying this property.
+    config.addKey("sharepoint.sts.trustLocation", "");
+    // You can override default value of 
+    // http://sharepointurl/_layouts/Authenticate.aspx by specifying this 
+    // property.
+    config.addKey("sharepoint.sts.login", "");
+    // Set this to true when using Live authentication.
+    config.addKey("sharepoint.useLiveAuthentication", "false");
   }
 
   @Override
@@ -203,11 +227,19 @@ public class SharePointUserProfileAdaptor extends AbstractAdaptor
         config.getValue("sharepoint.password"));
     setAcl = Boolean.parseBoolean(config.getValue("profile.setacl"));
     namespace = config.getValue("adaptor.namespace");
+    String stsendpoint = config.getValue("sharepoint.sts.endpoint");
+    String stsrealm = config.getValue("sharepoint.sts.realm");
+    boolean useLiveAuthentication = Boolean.parseBoolean(
+        config.getValue("sharepoint.useLiveAuthentication"));
 
     log.log(Level.CONFIG, "virtualServer: {0}", virtualServer);
     log.log(Level.CONFIG, "Username: {0}", username);
     log.log(Level.CONFIG, "setAcl: {0}", setAcl);
     log.log(Level.CONFIG, "Namespace: {0}", namespace);
+    log.log(Level.CONFIG, "STS Endpoint: {0}", stsendpoint);
+    log.log(Level.CONFIG, "STS Realm: {0}", stsrealm);
+    log.log(Level.CONFIG, "Use Live Authentication: {0}",
+        useLiveAuthentication);
     
     mySiteHost = config.getValue("profile.mysitehost");
     log.log(Level.CONFIG, "mySiteHost: {0}", mySiteHost);
@@ -224,15 +256,26 @@ public class SharePointUserProfileAdaptor extends AbstractAdaptor
     ntlmAuthenticator = new NtlmAuthenticator(username, password);
     // Unfortunately, this is a JVM-wide modification.
     Authenticator.setDefault(ntlmAuthenticator);
-    String authenticationEndPoint 
-        =  virtualServer + "/_vti_bin/Authentication.asmx";
-    SharePointFormsAuthenticationHandler authenticationClient 
-        = new SharePointFormsAuthenticationHandler(
-            userProfileServiceFactory.newAuthentication(authenticationEndPoint),
-            username, password); 
-    FormsAuthenticationHandler authenticationHandler 
-        = new FormsAuthenticationHandler(username, password, scheduledExecutor,
-        authenticationClient);
+     
+    if (useLiveAuthentication)  {
+      SamlHandshakeManager manager = authenticationClientFactory
+          .newLiveAuthentication(virtualServer, username, password);
+      authenticationHandler = new SamlAuthenticationHandler.Builder(username,
+          password, scheduledExecutor, manager).build();     
+    } else if (!"".equals(stsendpoint) && !"".equals(stsrealm)) {
+      SamlHandshakeManager manager = authenticationClientFactory
+          .newAdfsAuthentication(virtualServer, username, password, stsendpoint,
+              stsrealm, config.getValue("sharepoint.sts.login"),
+              config.getValue("sharepoint.sts.trustLocation"));
+      authenticationHandler = new SamlAuthenticationHandler.Builder(username,
+          password, scheduledExecutor, manager).build();            
+    } else {    
+      AuthenticationSoap authenticationSoap = authenticationClientFactory
+          .newSharePointFormsAuthentication(virtualServer, username, password);
+      authenticationHandler = new SharePointFormsAuthenticationHandler
+          .Builder(username, password, scheduledExecutor, authenticationSoap)
+          .build();
+    }
     authenticationHandler.start();
     log.log(Level.FINEST, "Initializing User profile Service Client for {0}",
         virtualServer + USER_PROFILE_SERVICE_ENDPOINT);
@@ -298,15 +341,12 @@ public class SharePointUserProfileAdaptor extends AbstractAdaptor
   interface UserProfileServiceFactory {
     public UserProfileServiceWS newUserProfileService(String endpoint,
         String endpointChangeService, List<String> cookies);
-    public AuthenticationSoap newAuthentication(String endpoint);
-    
   }
 
   private static class UserProfileServiceFactoryImpl
       implements UserProfileServiceFactory {
     private final Service userProfileServiceSoap;
     private final Service userProfileChangeServiceSoap;
-    private final Service authenticationService;
 
     public UserProfileServiceFactoryImpl() {
       URL urlUserProfileService =
@@ -320,9 +360,6 @@ public class SharePointUserProfileAdaptor extends AbstractAdaptor
       QName qnameChange = new QName(XMLNS_CHANGE, "UserProfileChangeService");
       this.userProfileChangeServiceSoap = Service.create(
           urlUserProfileChangeService, qnameChange);
-      this.authenticationService = Service.create(
-          AuthenticationSoap.class.getResource("Authentication.wsdl"),
-          new QName(AUTH_XMLNS, "Authentication"));
     }
 
     @Override
@@ -363,14 +400,6 @@ public class SharePointUserProfileAdaptor extends AbstractAdaptor
       port.getRequestContext().put(MessageContext.HTTP_REQUEST_HEADERS, 
           Collections.singletonMap(
             "X-FORMS_BASED_AUTH_ACCEPTED", Collections.singletonList("f")));
-    } 
-
-    @Override
-    public AuthenticationSoap newAuthentication(String endpoint) {
-      EndpointReference endpointRef = new W3CEndpointReferenceBuilder()
-          .address(endpoint).build();
-      return 
-          authenticationService.getPort(endpointRef, AuthenticationSoap.class);      
     }
   }
 

@@ -29,7 +29,7 @@ import java.util.logging.Logger;
 /**
  * Helper class to handle forms authentication.
  */
-class FormsAuthenticationHandler {
+abstract class FormsAuthenticationHandler {
   /** SharePoint's namespace. */
   private static final String XMLNS
       = "http://schemas.microsoft.com/sharepoint/soap/";
@@ -39,40 +39,36 @@ class FormsAuthenticationHandler {
   // Default time out for forms authentication with .NET is 30 mins
   private static final long DEFAULT_COOKIE_TIMEOUT_SECONDS = 30 * 60;
 
-  private final String userName;
-  private final String password;
+  protected final String username;
+  protected final String password;
   private final ScheduledExecutorService executor;
   private final Runnable refreshRunnable = new RefreshRunnable();  
   private final List<String> authenticationCookiesList 
-      = new CopyOnWriteArrayList<String>();
-  private final AuthenticationHandler authenticationClient;
+      = new CopyOnWriteArrayList<String>();  
   private boolean isFormsAuthentication = false;
 
   @VisibleForTesting    
-  FormsAuthenticationHandler(String userName, String password,
-      ScheduledExecutorService executor,
-      AuthenticationHandler authenticationClient) {
-    if (userName == null || password == null || executor == null || 
-        authenticationClient == null) {
+  FormsAuthenticationHandler(String username, String password,
+      ScheduledExecutorService executor) {
+    if (username == null || password == null || executor == null) {
       throw new NullPointerException();
     }
-    this.userName = userName;
+    this.username = username;
     this.password = password;
-    this.executor = executor;
-    this.authenticationClient = authenticationClient;
+    this.executor = executor;   
   }
 
   public List<String> getAuthenticationCookies() {
     return Collections.unmodifiableList(authenticationCookiesList);
   }
+  // TODO : Remove isFormAuthentication.
+  abstract boolean isFormsAuthentication() throws IOException;
   
-  public boolean isFormsAuthentication() {
-    return isFormsAuthentication;
-  }
+  abstract AuthenticationResult authenticate() throws IOException;
   
   private void refreshCookies() throws IOException {
     
-    if ("".equals(userName) || "".equals(password)) {
+    if ("".equals(username) || "".equals(password)) {
       log.log(Level.FINE, 
           "Empty username / password. Using authentication mode as Windows");
        isFormsAuthentication = false;
@@ -84,7 +80,7 @@ class FormsAuthenticationHandler {
     }
 
     log.log(Level.FINE, "About to refresh authentication cookie.");
-    AuthenticationResult result = authenticationClient.authenticate();
+    AuthenticationResult result = authenticate();
     log.log(Level.FINE, "Authentication Result {0}", result.getErrorCode());
 
     String cookie = result.getCookie();
@@ -107,13 +103,13 @@ class FormsAuthenticationHandler {
  }
  
   public void start() throws IOException {
-    if ("".equals(userName) || "".equals(password)) {
+    if ("".equals(username) || "".equals(password)) {
       log.log(Level.FINE, "Empty username or password. Using windows"
           + " integrated authentication.");
        isFormsAuthentication = false;
        return;
     }
-    isFormsAuthentication = authenticationClient.isFormsAuthentication();
+    isFormsAuthentication = isFormsAuthentication();
     refreshCookies();
   }
 
@@ -129,9 +125,4 @@ class FormsAuthenticationHandler {
       }
     }
   }
-  
-  interface AuthenticationHandler {
-    AuthenticationResult authenticate() throws IOException;
-    boolean isFormsAuthentication() throws IOException;
-  }  
 }
