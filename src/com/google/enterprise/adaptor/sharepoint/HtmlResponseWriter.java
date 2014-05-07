@@ -325,7 +325,7 @@ class HtmlResponseWriter implements Closeable {
     if (label == null || "".equals(label)) {
       // Use the last part of the URL if an item doesn't have a title. The last
       // part of the URL will generally be a filename in this case.
-      String[] parts = doc.getUniqueId().split("/");
+      String[] parts = doc.getUniqueId().split("/", 0);
       label = parts[parts.length - 1];
     }
     return label;

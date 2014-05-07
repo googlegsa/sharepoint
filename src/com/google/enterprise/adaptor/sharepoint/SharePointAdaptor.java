@@ -1695,7 +1695,7 @@ public class SharePointAdaptor extends AbstractAdaptor
       if (ALTERNATIVE_VALUE_PATTERN.matcher(value).find()) {
         // This is a lookup field. We need to take alternative values only.
         // Ignore the integer part. 314;#pi;#42;#the answer
-        String[] parts = value.split(";#");
+        String[] parts = value.split(";#", 0);
         for (int i = 1; i < parts.length; i += 2) {
           if (parts[i].isEmpty()) {
             continue;
@@ -1711,7 +1711,7 @@ public class SharePointAdaptor extends AbstractAdaptor
       } else if (value.startsWith(";#") && value.endsWith(";#")) {
         // This is a multi-choice field. Values will be in the form:
         // ;#value1;#value2;#
-        for (String part : value.split(";#")) {
+        for (String part : value.split(";#", 0)) {
           if (part.isEmpty()) {
             continue;
           }
@@ -1980,7 +1980,7 @@ public class SharePointAdaptor extends AbstractAdaptor
         // This should be in the form of "1234;#site/list/path". We want to
         // extract the site/list/path. Path relative to host, even though it
         // doesn't have a leading '/'.
-        DocId folderDocId = encodeDocId("/" + rawFileDirRef.split(";#")[1]);
+        DocId folderDocId = encodeDocId("/" + rawFileDirRef.split(";#", 2)[1]);
         DocId rootFolderDocId = encodeDocId(l.rootFolder);
         // If the parent is a list, folderDocId will be same as 
         // rootFolderDocId. If inheritance chain is not 
