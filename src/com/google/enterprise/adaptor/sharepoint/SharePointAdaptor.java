@@ -266,6 +266,9 @@ public class SharePointAdaptor extends AbstractAdaptor
 
   private static final String SITE_COLLECTION_ADMIN_FRAGMENT = "admin";
 
+  private int socketTimeoutMillis;
+  private int readTimeOutMillis;
+
   /**
    * Mapping of mime-types used by SharePoint to ones that the GSA comprehends.
    */
@@ -488,6 +491,10 @@ public class SharePointAdaptor extends AbstractAdaptor
     String stsrealm = config.getValue("sharepoint.sts.realm");
     boolean useLiveAuthentication = Boolean.parseBoolean(
         config.getValue("sharepoint.useLiveAuthentication"));
+    socketTimeoutMillis = Integer.parseInt(
+        config.getValue("adaptor.docHeaderTimeoutSecs")) * 1000;
+    readTimeOutMillis = Integer.parseInt(
+        config.getValue("adaptor.docContentTimeoutSecs")) * 1000;
 
     log.log(Level.CONFIG, "VirtualServer: {0}", virtualServer);
     log.log(Level.CONFIG, "Username: {0}", username);
@@ -521,6 +528,7 @@ public class SharePointAdaptor extends AbstractAdaptor
     } else {    
       AuthenticationSoap authenticationSoap = authenticationClientFactory
           .newSharePointFormsAuthentication(virtualServer, username, password);
+      addSocketTimeoutConfiguration((BindingProvider) authenticationSoap);
       authenticationHandler = new SharePointFormsAuthenticationHandler
           .Builder(username, password, scheduledExecutor, authenticationSoap)
           .build();
@@ -968,13 +976,15 @@ public class SharePointAdaptor extends AbstractAdaptor
       String endpointPeople = spUrlToUri(site + "/_vti_bin/People.asmx")
           .toString();
       PeopleSoap peopleSoap = soapFactory.newPeople(endpointPeople);
-      // JAX-WS RT 2.1.4 doesn't handle headers correctly and always assumes the
-      // list contains precisely one entry, so we work around it here.
-      if (authenticationHandler.isFormsAuthentication()) {
-        addFormsAuthenticationCookies((BindingProvider) siteDataSoap);
-        addFormsAuthenticationCookies((BindingProvider) userGroupSoap);
-        addFormsAuthenticationCookies((BindingProvider) peopleSoap);
-      }
+
+      addFormsAuthenticationCookies((BindingProvider) siteDataSoap);
+      addFormsAuthenticationCookies((BindingProvider) userGroupSoap);
+      addFormsAuthenticationCookies((BindingProvider) peopleSoap);
+
+      addSocketTimeoutConfiguration((BindingProvider) siteDataSoap);
+      addSocketTimeoutConfiguration((BindingProvider) userGroupSoap);
+      addSocketTimeoutConfiguration((BindingProvider) peopleSoap);
+
       siteAdaptor = new SiteAdaptor(site, web, siteDataSoap, userGroupSoap,
           peopleSoap, new MemberIdMappingCallable(site),
           new SiteUserIdMappingCallable(site));
@@ -996,6 +1006,17 @@ public class SharePointAdaptor extends AbstractAdaptor
             authenticationHandler.getAuthenticationCookies()));
   }
   
+  private void addSocketTimeoutConfiguration(BindingProvider port) {
+    port.getRequestContext().put("com.sun.xml.internal.ws.connect.timeout",
+        socketTimeoutMillis);
+    port.getRequestContext().put("com.sun.xml.internal.ws.request.timeout",
+        readTimeOutMillis);
+    port.getRequestContext().put("com.sun.xml.ws.connect.timeout",
+        socketTimeoutMillis);
+    port.getRequestContext().put("com.sun.xml.ws.request.timeout",
+        readTimeOutMillis);
+  }
+
   private void disableFormsAuthentication(BindingProvider port) {
     port.getRequestContext().put(MessageContext.HTTP_REQUEST_HEADERS, 
         Collections.singletonMap("X-FORMS_BASED_AUTH_ACCEPTED", 

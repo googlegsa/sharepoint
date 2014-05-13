@@ -123,6 +123,9 @@ public class SharePointUserProfileAdaptor extends AbstractAdaptor
   public static final String GSA_PROPNAME_COLLEAGUES =
       "google_social_user_colleagues";
 
+ private static int socketTimeoutMillis;
+ private static int readTimeOutMillis;
+
   // Mapping for SharePoint user profile properties to
   // GSA Expert Search properties
   static {
@@ -232,6 +235,11 @@ public class SharePointUserProfileAdaptor extends AbstractAdaptor
     boolean useLiveAuthentication = Boolean.parseBoolean(
         config.getValue("sharepoint.useLiveAuthentication"));
 
+    socketTimeoutMillis = Integer.parseInt(
+        config.getValue("adaptor.docHeaderTimeoutSecs")) * 1000;
+    readTimeOutMillis = Integer.parseInt(
+        config.getValue("adaptor.docContentTimeoutSecs")) * 1000;
+
     log.log(Level.CONFIG, "virtualServer: {0}", virtualServer);
     log.log(Level.CONFIG, "Username: {0}", username);
     log.log(Level.CONFIG, "setAcl: {0}", setAcl);
@@ -272,6 +280,7 @@ public class SharePointUserProfileAdaptor extends AbstractAdaptor
     } else {    
       AuthenticationSoap authenticationSoap = authenticationClientFactory
           .newSharePointFormsAuthentication(virtualServer, username, password);
+      addSocketTimeoutConfiguration((BindingProvider) authenticationSoap);
       authenticationHandler = new SharePointFormsAuthenticationHandler
           .Builder(username, password, scheduledExecutor, authenticationSoap)
           .build();
@@ -319,6 +328,17 @@ public class SharePointUserProfileAdaptor extends AbstractAdaptor
         userProfileChangeToken);
     log.log(Level.FINE, "getModifiedDocIds returned change token: {0}",
         userProfileChangeToken);
+  }
+
+  private static void addSocketTimeoutConfiguration(BindingProvider port) {
+    port.getRequestContext().put("com.sun.xml.internal.ws.connect.timeout",
+        socketTimeoutMillis);
+    port.getRequestContext().put("com.sun.xml.internal.ws.request.timeout",
+        readTimeOutMillis);
+    port.getRequestContext().put("com.sun.xml.ws.connect.timeout",
+        socketTimeoutMillis);
+    port.getRequestContext().put("com.sun.xml.ws.request.timeout",
+        readTimeOutMillis);
   }
 
   private static class NtlmAuthenticator extends Authenticator {
@@ -375,14 +395,15 @@ public class SharePointUserProfileAdaptor extends AbstractAdaptor
       UserProfileChangeServiceSoap inUserProfileChangeServiceSoap 
           = userProfileChangeServiceSoap.getPort(
               endpointChangeRef, UserProfileChangeServiceSoap.class);
-      // JAX-WS RT 2.1.4 doesn't handle headers correctly and always assumes the
-      // list contains precisely one entry, so we work around it here.
-      if (!cookies.isEmpty()) {
-        addFormsAuthenticationCookies(
-            (BindingProvider) inUserProfileServiceSoap, cookies);
-        addFormsAuthenticationCookies(
-            (BindingProvider) inUserProfileChangeServiceSoap, cookies);
-      }
+   
+      addFormsAuthenticationCookies(
+          (BindingProvider) inUserProfileServiceSoap, cookies);
+      addFormsAuthenticationCookies(
+          (BindingProvider) inUserProfileChangeServiceSoap, cookies);
+      addSocketTimeoutConfiguration((BindingProvider) inUserProfileServiceSoap);
+      addSocketTimeoutConfiguration(
+          (BindingProvider) inUserProfileChangeServiceSoap);
+
       return new SharePointUserProfileServiceWS(inUserProfileServiceSoap,
           inUserProfileChangeServiceSoap);
     }

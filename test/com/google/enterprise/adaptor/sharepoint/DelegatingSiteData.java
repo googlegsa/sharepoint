@@ -25,10 +25,14 @@ import com.microsoft.schemas.sharepoint.soap.SListMetadata;
 import com.microsoft.schemas.sharepoint.soap.SSiteMetadata;
 import com.microsoft.schemas.sharepoint.soap.SWebMetadata;
 import com.microsoft.schemas.sharepoint.soap.SiteDataSoap;
+import java.util.Map;
+import javax.xml.ws.Binding;
+import javax.xml.ws.BindingProvider;
+import javax.xml.ws.EndpointReference;
 
 import javax.xml.ws.Holder;
 
-abstract class DelegatingSiteData implements SiteDataSoap {
+abstract class DelegatingSiteData implements SiteDataSoap, BindingProvider {
   protected abstract SiteDataSoap delegate();
 
   @Override
@@ -126,6 +130,31 @@ abstract class DelegatingSiteData implements SiteDataSoap {
   @Override
   public String getChangesEx(int version, String xmlInput) {
     return delegate().getChangesEx(version, xmlInput);
+  }
+
+  @Override
+  public Map<String, Object> getRequestContext() {
+   return ((BindingProvider) delegate()).getRequestContext();
+  }
+
+  @Override
+  public Map<String, Object> getResponseContext() {
+    return ((BindingProvider) delegate()).getResponseContext();
+  }
+
+  @Override
+  public Binding getBinding() {
+   return ((BindingProvider) delegate()).getBinding();
+  }
+
+  @Override
+  public EndpointReference getEndpointReference() {
+    return ((BindingProvider) delegate()).getEndpointReference();
+  }
+
+  @Override
+  public <T extends EndpointReference> T getEndpointReference(Class<T> clazz) {
+    return ((BindingProvider) delegate()).getEndpointReference(clazz);
   }
 }
 

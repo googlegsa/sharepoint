@@ -68,6 +68,9 @@ import java.util.Map;
 
 import javax.xml.parsers.DocumentBuilder;
 import javax.xml.parsers.DocumentBuilderFactory;
+import javax.xml.ws.Binding;
+import javax.xml.ws.BindingProvider;
+import javax.xml.ws.EndpointReference;
 
 import javax.xml.ws.WebServiceException;
 
@@ -666,7 +669,10 @@ public class SharePointUserProfileAdaptorTest {
     }
   }
   
-  private static class MockAuthenticationSoap implements AuthenticationSoap {
+  private static class MockAuthenticationSoap
+      implements AuthenticationSoap, BindingProvider {
+    private final Map<String, Object> requestContext 
+        = new HashMap<String, Object>();
     @Override
     public LoginResult login(String string, String string1) {
       throw new UnsupportedOperationException();
@@ -676,6 +682,32 @@ public class SharePointUserProfileAdaptorTest {
     public AuthenticationMode mode() {
       return AuthenticationMode.WINDOWS;
     }    
+
+    @Override
+    public Map<String, Object> getRequestContext() {
+      return requestContext;
+    }
+
+    @Override
+    public Map<String, Object> getResponseContext() {
+      throw new UnsupportedOperationException();
+    }
+
+    @Override
+    public Binding getBinding() {
+      throw new UnsupportedOperationException();
+    }
+
+    @Override
+    public EndpointReference getEndpointReference() {
+      throw new UnsupportedOperationException();
+    }
+
+    @Override
+    public <T extends EndpointReference> T getEndpointReference(
+        Class<T> clazz) {
+      throw new UnsupportedOperationException();
+    }
   }
   
   private static class UnsupportedAuthenticationClientFactory 

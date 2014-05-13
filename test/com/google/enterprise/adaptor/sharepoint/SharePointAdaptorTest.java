@@ -123,6 +123,7 @@ import javax.xml.ws.EndpointReference;
 
 import javax.xml.ws.Holder;
 import javax.xml.ws.WebServiceException;
+import javax.xml.ws.handler.MessageContext;
 
 /**
  * Test cases for {@link SharePointAdaptor}.
@@ -347,6 +348,57 @@ public class SharePointAdaptorTest {
     adaptor = null;
   }
   
+  @Test
+  public void testAdaptorWithSocketTimeoutConfiguration() throws Exception {
+    Map<String, Object> goldenRequestContext;
+    Map<String, Object> goldenRequestContextAuth;
+    {
+      Map<String, Object> tmp = new HashMap<String, Object>();
+      tmp.put("com.sun.xml.internal.ws.connect.timeout", 20000);
+      tmp.put("com.sun.xml.internal.ws.request.timeout", 180000);
+      tmp.put("com.sun.xml.ws.connect.timeout", 20000);
+      tmp.put("com.sun.xml.ws.request.timeout", 180000);
+      goldenRequestContextAuth 
+          = Collections.unmodifiableMap(new HashMap<String, Object>(tmp));
+      // Disabling forms authentication
+      tmp.put(MessageContext.HTTP_REQUEST_HEADERS, 
+        Collections.singletonMap("X-FORMS_BASED_AUTH_ACCEPTED",
+          Collections.singletonList("f")));
+      goldenRequestContext = Collections.unmodifiableMap(tmp);
+    }
+
+    MockSiteData siteDataSoap = new MockSiteData()
+        .register(VS_CONTENT_EXCHANGE).register(CD_CONTENT_EXCHANGE);
+    MockPeopleSoap peopleSoap = new MockPeopleSoap();
+    MockUserGroupSoap userGroupSoap = new MockUserGroupSoap(null);
+    final MockAuthenticationSoap authenticationSoap 
+        = new MockAuthenticationSoap();
+    SoapFactory siteDataFactory = MockSoapFactory.blank()
+        .endpoint(VS_ENDPOINT, siteDataSoap)
+        .endpoint("http://localhost:1/_vti_bin/People.asmx", peopleSoap)
+        .endpoint("http://localhost:1/_vti_bin/UserGroup.asmx", userGroupSoap);
+
+    adaptor = new SharePointAdaptor(siteDataFactory,
+        new UnsupportedHttpClient(), executorFactory,
+        new MockAuthenticationClientFactoryForms() {
+          @Override
+          public AuthenticationSoap newSharePointFormsAuthentication(
+              String virtualServer, String username, String password)
+              throws IOException {
+            return authenticationSoap;
+          }
+        });
+    config.overrideKey("adaptor.docHeaderTimeoutSecs", "20");    
+    adaptor.init(new MockAdaptorContext(config, pusher));
+    assertEquals(goldenRequestContext, siteDataSoap.getRequestContext());
+    assertEquals(goldenRequestContext, peopleSoap.getRequestContext());
+    assertEquals(goldenRequestContext, userGroupSoap.getRequestContext());
+    assertEquals(goldenRequestContextAuth,
+        authenticationSoap.getRequestContext());
+    adaptor.destroy();
+    adaptor = null;
+  }
+
   @Test
   public void testAdaptorInitWithAdfs() throws Exception {
     SoapFactory siteDataFactory = MockSoapFactory.blank()
@@ -2050,7 +2102,9 @@ public class SharePointAdaptorTest {
   
   private static class UnsupportedPeopleSoap extends DelegatingPeopleSoap
       implements BindingProvider {
-    private final String endpoint; 
+    private final String endpoint;
+    private final Map<String, Object> requestContext
+        = new HashMap<String, Object>();
 
     public UnsupportedPeopleSoap() {
       this(null);
@@ -2071,7 +2125,7 @@ public class SharePointAdaptorTest {
 
     @Override
     public Map<String, Object> getRequestContext() {
-       throw new UnsupportedOperationException();
+       return requestContext;
     }
 
     @Override
@@ -2156,7 +2210,9 @@ public class SharePointAdaptorTest {
 
   private static class UnsupportedUserGroupSoap
       extends DelegatingUserGroupSoap  implements BindingProvider {
-    private final String endpoint;   
+    private final String endpoint;
+    private final Map<String, Object> requestContext
+        = new HashMap<String, Object>();
 
     public UnsupportedUserGroupSoap() {
       this(null);
@@ -2177,7 +2233,7 @@ public class SharePointAdaptorTest {
 
     @Override
     public Map<String, Object> getRequestContext() {
-       throw new UnsupportedOperationException();
+       return requestContext;
     }
 
     @Override
@@ -2461,6 +2517,8 @@ public class SharePointAdaptorTest {
   
   private static class MockAuthenticationSoap extends 
       UnsupportedAuthenticationSoap {
+    private final Map<String, Object> requestContext
+        = new HashMap<String, Object>();
     @Override
     public LoginResult login(String string, String string1) {
       throw new UnsupportedOperationException();
@@ -2469,6 +2527,11 @@ public class SharePointAdaptorTest {
     @Override
     public AuthenticationMode mode() {
       return AuthenticationMode.WINDOWS;
+    }
+
+    @Override
+    public Map<String, Object> getRequestContext() {
+      return requestContext;
     }
   }
   
@@ -2492,11 +2555,37 @@ public class SharePointAdaptorTest {
         throw new UnsupportedOperationException("Endpoint: " + endpoint);
       }
     }
+
+    @Override
+    public Map<String, Object> getRequestContext() {
+      throw new UnsupportedOperationException();
+    }
+
+    @Override
+    public Map<String, Object> getResponseContext() {
+      throw new UnsupportedOperationException();
+    }
+
+    @Override
+    public Binding getBinding() {
+      throw new UnsupportedOperationException();
+    }
+
+    @Override
+    public EndpointReference getEndpointReference() {
+      throw new UnsupportedOperationException();
+    }
+
+    @Override
+    public <T extends EndpointReference> T getEndpointReference(
+        Class<T> clazz) {
+      throw new UnsupportedOperationException();
+    }
   }
 
 
   private abstract static class DelegatingAuthenticationSoap 
-      implements AuthenticationSoap {
+      implements AuthenticationSoap, BindingProvider {
     protected abstract AuthenticationSoap delegate();
 
     @Override
@@ -2508,13 +2597,41 @@ public class SharePointAdaptorTest {
     public AuthenticationMode mode() {
       return delegate().mode();
     }    
+    
+    @Override
+    public Map<String, Object> getRequestContext() {
+      return ((BindingProvider) delegate()).getRequestContext();
+    }
+
+    @Override
+    public Map<String, Object> getResponseContext() {
+      return ((BindingProvider) delegate()).getResponseContext();
+    }
+
+    @Override
+    public Binding getBinding() {
+      return ((BindingProvider) delegate()).getBinding();
+    }
+
+    @Override
+    public EndpointReference getEndpointReference() {
+      return ((BindingProvider) delegate()).getEndpointReference();
+    }
+
+    @Override
+    public <T extends EndpointReference> T getEndpointReference(
+        Class<T> clazz) {
+      return ((BindingProvider) delegate()).getEndpointReference(clazz);
+    }
   }
 
   /**
    * Throw UnsupportedOperationException for all calls.
    */
   private static class UnsupportedSiteData extends DelegatingSiteData
-      implements BindingProvider{   
+      implements BindingProvider {
+    private final Map<String, Object> requestContext
+        = new HashMap<String, Object>();
     @Override
     protected SiteDataSoap delegate() {
       throw new UnsupportedOperationException();
@@ -2522,7 +2639,7 @@ public class SharePointAdaptorTest {
 
     @Override
     public Map<String, Object> getRequestContext() {
-       throw new UnsupportedOperationException();
+       return requestContext;
     }
 
     @Override
@@ -2650,7 +2767,6 @@ public class SharePointAdaptorTest {
     private final List<ContentExchange> contentList;
     private final List<ChangesExchange> changesList;
     private final List<SiteAndWebExchange> siteAndWebList;
-    private Map<String, Object> requestContext = new HashMap<String, Object>();
 
     private MockSiteData() {
       this.urlSegmentsList = Collections.emptyList();
@@ -2745,11 +2861,6 @@ public class SharePointAdaptorTest {
         return;
       }
       fail("Could not find " + strUrl);
-    }
-    
-    @Override
-    public Map<String, Object> getRequestContext() {
-      return requestContext;
     }
 
     public static MockSiteData blank() {
