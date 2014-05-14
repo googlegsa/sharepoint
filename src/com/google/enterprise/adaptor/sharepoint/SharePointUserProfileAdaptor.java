@@ -23,9 +23,11 @@ import com.google.enterprise.adaptor.Config;
 import com.google.enterprise.adaptor.DocId;
 import com.google.enterprise.adaptor.DocIdPusher;
 import com.google.enterprise.adaptor.GroupPrincipal;
+import com.google.enterprise.adaptor.InvalidConfigurationException;
 import com.google.enterprise.adaptor.PollingIncrementalLister;
 import com.google.enterprise.adaptor.Request;
 import com.google.enterprise.adaptor.Response;
+import com.google.enterprise.adaptor.StartupException;
 import com.google.enterprise.adaptor.sharepoint.SamlAuthenticationHandler.SamlHandshakeManager;
 import com.microsoft.schemas.sharepoint.soap.authentication.AuthenticationSoap;
 
@@ -56,10 +58,12 @@ import java.io.OutputStream;
 import java.io.StringWriter;
 import java.io.UnsupportedEncodingException;
 import java.net.Authenticator;
+import java.net.ConnectException;
 import java.net.PasswordAuthentication;
 import java.net.URI;
 import java.net.URL;
 import java.net.URLEncoder;
+import java.net.UnknownHostException;
 import java.nio.charset.Charset;
 import java.rmi.RemoteException;
 import java.text.MessageFormat;
@@ -217,7 +221,7 @@ public class SharePointUserProfileAdaptor extends AbstractAdaptor
   }
 
   @Override
-  public void init(AdaptorContext context) throws IOException {
+  public void init(AdaptorContext context) throws Exception {
     context.setPollingIncrementalLister(this);
     Config config = context.getConfig();
 
@@ -265,18 +269,31 @@ public class SharePointUserProfileAdaptor extends AbstractAdaptor
     // Unfortunately, this is a JVM-wide modification.
     Authenticator.setDefault(ntlmAuthenticator);
      
+    String authenticationType;
     if (useLiveAuthentication)  {
+      if ("".equals(username) || "".equals(password)) {
+        throw new InvalidConfigurationException("Adaptor is configured to "
+            + "use Live authentication. Please specify valid username "
+            + "and password.");
+      }
       SamlHandshakeManager manager = authenticationClientFactory
           .newLiveAuthentication(virtualServer, username, password);
       authenticationHandler = new SamlAuthenticationHandler.Builder(username,
           password, scheduledExecutor, manager).build();     
+      authenticationType = "Live";
     } else if (!"".equals(stsendpoint) && !"".equals(stsrealm)) {
+      if ("".equals(username) || "".equals(password)) {
+        throw new InvalidConfigurationException("Adaptor is configured to "
+            + "use ADFS authentication. Please specify valid username "
+            + "and password.");
+      }
       SamlHandshakeManager manager = authenticationClientFactory
           .newAdfsAuthentication(virtualServer, username, password, stsendpoint,
               stsrealm, config.getValue("sharepoint.sts.login"),
               config.getValue("sharepoint.sts.trustLocation"));
       authenticationHandler = new SamlAuthenticationHandler.Builder(username,
           password, scheduledExecutor, manager).build();            
+      authenticationType = "ADFS";
     } else {    
       AuthenticationSoap authenticationSoap = authenticationClientFactory
           .newSharePointFormsAuthentication(virtualServer, username, password);
@@ -284,8 +301,33 @@ public class SharePointUserProfileAdaptor extends AbstractAdaptor
       authenticationHandler = new SharePointFormsAuthenticationHandler
           .Builder(username, password, scheduledExecutor, authenticationSoap)
           .build();
+      authenticationType = "SharePoint";
     }
-    authenticationHandler.start();
+    
+    try {
+      log.log(Level.INFO, "Using {0} authentication.", authenticationType);
+      authenticationHandler.start();      
+    } catch (IOException ex) {
+      if (ex instanceof UnknownHostException) {
+       // This may be due to  DNS issue or transiant network error.
+       // Just rethrow excption and allow adaptor to retry.
+       throw ex; 
+      }
+      
+      if (ex instanceof ConnectException) {
+        // SharePoint might be down. Just rethrow exception and allow adaptor to
+        // retry.
+        throw ex;
+      }
+      String adfsWarning = "ADFS".equals(authenticationType) 
+          ? " Also verify if stsendpoint and stsrealm is specified correctly "
+          + "and ADFS environment is available." : "";
+      String warning = String.format(
+          "Failed to start adaptor using %s authentication."
+          + " Please verify adaptor configuration for SharePoint url,"
+          + " username and password.%s", authenticationType, adfsWarning);
+      throw new StartupException(warning, ex);
+    }
     log.log(Level.FINEST, "Initializing User profile Service Client for {0}",
         virtualServer + USER_PROFILE_SERVICE_ENDPOINT);
     userProfileServiceClient = new UserProfileServiceClient(

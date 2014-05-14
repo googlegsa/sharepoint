@@ -32,6 +32,7 @@ import com.google.enterprise.adaptor.DocId;
 import com.google.enterprise.adaptor.DocIdPusher;
 import com.google.enterprise.adaptor.GroupPrincipal;
 import com.google.enterprise.adaptor.IOHelper;
+import com.google.enterprise.adaptor.InvalidConfigurationException;
 import com.google.enterprise.adaptor.Metadata;
 import com.google.enterprise.adaptor.Principal;
 import com.google.enterprise.adaptor.UserPrincipal;
@@ -102,6 +103,7 @@ import java.io.InputStream;
 import java.math.BigInteger;
 import java.net.URI;
 import java.net.URL;
+import java.net.UnknownHostException;
 import java.nio.charset.Charset;
 import java.util.ArrayList;
 import java.util.Arrays;
@@ -417,6 +419,68 @@ public class SharePointAdaptorTest {
     config.overrideKey("sharepoint.sts.realm", "urn:sharepoint:com");
     adaptor.init(new MockAdaptorContext(config, pusher));
     adaptor.destroy();
+    adaptor = null;
+  }
+  
+  @Test
+  public void testAdaptorInitAdfsUnknownHostException() throws Exception {
+    SoapFactory siteDataFactory = MockSoapFactory.blank()
+        .endpoint(VS_ENDPOINT, MockSiteData.blank()
+            .register(VS_CONTENT_EXCHANGE)
+            .register(CD_CONTENT_EXCHANGE))
+        .endpoint("http://localhost:1/_vti_bin/People.asmx",
+            new MockPeopleSoap())
+        .endpoint("http://localhost:1/_vti_bin/UserGroup.asmx",
+            new MockUserGroupSoap(null));
+    final MockSamlHandshakeManager samlManager 
+        = new MockSamlHandshakeManager("token", "cookie") {
+          @Override
+          public String requestToken() throws IOException{
+            throw new UnknownHostException("stsendpoint");
+          }
+    };
+    adaptor = new SharePointAdaptor(siteDataFactory,
+        new UnsupportedHttpClient(), executorFactory,
+        new MockAuthenticationClientFactoryAdfs() {
+          @Override
+          public SamlHandshakeManager newAdfsAuthentication(
+              String virtualServer, String username, String password,
+              String stsendpoint, String stsrelam, String login,
+              String trustlocation) throws IOException {
+            return samlManager;
+          } 
+        });
+    config.overrideKey("sharepoint.sts.endpoint", "https://stsendpoint");
+    config.overrideKey("sharepoint.sts.realm", "urn:sharepoint:com");
+    thrown.expect(IOException.class);
+    adaptor.init(new MockAdaptorContext(config, pusher));   
+    adaptor = null;
+  }
+  
+  @Test
+  public void testAdaptorInitAdfsWithBlankUsername() throws Exception {
+    adaptor = new SharePointAdaptor(initableSoapFactory,
+        new UnsupportedHttpClient(), executorFactory,
+        new MockAuthenticationClientFactoryForms());
+    config.overrideKey("sharepoint.sts.endpoint", "https://stsendpoint");
+    config.overrideKey("sharepoint.sts.realm", "urn:sharepoint:com");
+    config.overrideKey("sharepoint.usernamet", "");
+    config.overrideKey("sharepoint.password", "");
+    thrown.expect(InvalidConfigurationException.class);
+    adaptor.init(new MockAdaptorContext(config, pusher));
+    adaptor = null;
+  }
+  
+  @Test
+  public void testAdaptorInitLiveWithBlankUsername() throws Exception {
+    adaptor = new SharePointAdaptor(initableSoapFactory,
+        new UnsupportedHttpClient(), executorFactory,
+        new MockAuthenticationClientFactoryForms());
+    config.overrideKey("sharepoint.useLiveAuthentication", "true");
+    config.overrideKey("sharepoint.usernamet", "");
+    config.overrideKey("sharepoint.password", "");
+    thrown.expect(InvalidConfigurationException.class);
+    adaptor.init(new MockAdaptorContext(config, pusher));
     adaptor = null;
   }
   
@@ -3071,7 +3135,7 @@ public class SharePointAdaptorTest {
     }
     
     @Override
-    public String requestToken() {
+    public String requestToken() throws IOException {
       return token;
     }
     

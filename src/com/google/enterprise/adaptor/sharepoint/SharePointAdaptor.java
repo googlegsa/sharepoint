@@ -28,10 +28,12 @@ import com.google.enterprise.adaptor.DocIdEncoder;
 import com.google.enterprise.adaptor.DocIdPusher;
 import com.google.enterprise.adaptor.GroupPrincipal;
 import com.google.enterprise.adaptor.IOHelper;
+import com.google.enterprise.adaptor.InvalidConfigurationException;
 import com.google.enterprise.adaptor.PollingIncrementalLister;
 import com.google.enterprise.adaptor.Principal;
 import com.google.enterprise.adaptor.Request;
 import com.google.enterprise.adaptor.Response;
+import com.google.enterprise.adaptor.StartupException;
 import com.google.enterprise.adaptor.UserPrincipal;
 import com.google.enterprise.adaptor.sharepoint.RareModificationCache.CachedList;
 import com.google.enterprise.adaptor.sharepoint.RareModificationCache.CachedVirtualServer;
@@ -88,6 +90,7 @@ import org.w3c.dom.NodeList;
 import java.io.IOException;
 import java.io.InputStream;
 import java.net.Authenticator;
+import java.net.ConnectException;
 import java.net.HttpURLConnection;
 import java.net.PasswordAuthentication;
 import java.net.URI;
@@ -511,20 +514,31 @@ public class SharePointAdaptor extends AbstractAdaptor
     URL virtualServerUrl = new URL(virtualServer);
     ntlmAuthenticator.addPermitForHost(virtualServerUrl);
     scheduledExecutor = new ScheduledThreadPoolExecutor(1);
-   
-    
+    String authenticationType;
     if (useLiveAuthentication)  {
+      if ("".equals(username) || "".equals(password)) {
+        throw new InvalidConfigurationException("Adaptor is configured to "
+            + "use Live authentication. Please specify valid username "
+            + "and password.");
+      }
       SamlHandshakeManager manager = authenticationClientFactory
           .newLiveAuthentication(virtualServer, username, password);
       authenticationHandler = new SamlAuthenticationHandler.Builder(username,
           password, scheduledExecutor, manager).build();     
+      authenticationType = "Live";
     } else if (!"".equals(stsendpoint) && !"".equals(stsrealm)) {
+      if ("".equals(username) || "".equals(password)) {
+        throw new InvalidConfigurationException("Adaptor is configured to "
+            + "use ADFS authentication. Please specify valid username "
+            + "and password.");
+      }
       SamlHandshakeManager manager = authenticationClientFactory
           .newAdfsAuthentication(virtualServer, username, password, stsendpoint,
               stsrealm, config.getValue("sharepoint.sts.login"),
               config.getValue("sharepoint.sts.trustLocation"));
       authenticationHandler = new SamlAuthenticationHandler.Builder(username,
           password, scheduledExecutor, manager).build();            
+      authenticationType = "ADFS";
     } else {    
       AuthenticationSoap authenticationSoap = authenticationClientFactory
           .newSharePointFormsAuthentication(virtualServer, username, password);
@@ -532,10 +546,35 @@ public class SharePointAdaptor extends AbstractAdaptor
       authenticationHandler = new SharePointFormsAuthenticationHandler
           .Builder(username, password, scheduledExecutor, authenticationSoap)
           .build();
+      authenticationType = "SharePoint";
+    }
+    
+    try {
+      log.log(Level.INFO, "Using {0} authentication.", authenticationType);
+      authenticationHandler.start();      
+    } catch (IOException ex) {
+      if (ex instanceof UnknownHostException) {
+       // This may be due to  DNS issue or transiant network error.
+       // Just rethrow excption and allow adaptor to retry.
+       throw ex; 
+      }
+      
+      if (ex instanceof ConnectException) {
+        // SharePoint might be down. Just rethrow exception and allow adaptor to
+        // retry.
+        throw ex;
+      }
+      String adfsWarning = "ADFS".equals(authenticationType) 
+          ? " Also verify if stsendpoint and stsrealm is specified correctly "
+          + "and ADFS environment is available." : "";
+      String warning = String.format(
+          "Failed to start adaptor using %s authentication."
+          + " Please verify adaptor configuration for SharePoint url,"
+          + " username and password.%s", authenticationType, adfsWarning);
+      throw new StartupException(warning, ex);
     }
    
     try {
-      authenticationHandler.start();
       executor = executorFactory.call();
       SiteAdaptor vsAdaptor = getSiteAdaptor(virtualServer, virtualServer);
       SiteDataClient virtualServerSiteDataClient =

@@ -24,6 +24,7 @@ import com.google.enterprise.adaptor.Acl;
 import com.google.enterprise.adaptor.Config;
 import com.google.enterprise.adaptor.DocId;
 import com.google.enterprise.adaptor.GroupPrincipal;
+import com.google.enterprise.adaptor.InvalidConfigurationException;
 
 import com.google.enterprise.adaptor.sharepoint.SamlAuthenticationHandler.SamlHandshakeManager;
 import com.google.enterprise.adaptor.sharepoint.SharePointUserProfileAdaptor.UserProfileServiceClient;
@@ -48,7 +49,9 @@ import com.microsoft.webservices.sharepointportalserver.userprofileservice.Value
 
 import org.junit.Assume;
 import org.junit.Before;
+import org.junit.Rule;
 import org.junit.Test;
+import org.junit.rules.ExpectedException;
 
 import org.w3c.dom.DOMImplementation;
 
@@ -82,6 +85,8 @@ public class SharePointUserProfileAdaptorTest {
   private final Charset charset = Charset.forName("UTF-8");
   private AuthenticationClientFactory authenticationFactory 
       = new MockAuthenticationClientFactoryForms();
+  @Rule
+  public ExpectedException thrown = ExpectedException.none();
 
   @Before
   public void setup() {
@@ -124,9 +129,22 @@ public class SharePointUserProfileAdaptorTest {
     SharePointUserProfileAdaptor adaptor = new SharePointUserProfileAdaptor();
     adaptor.destroy();
   }
+  
+  @Test
+  public void testAdaptorInitWithLive() throws Exception {
+    AccumulatingDocIdPusher pusher = new AccumulatingDocIdPusher();
+    adaptor = new SharePointUserProfileAdaptor(
+        new MockUserProfileServiceFactoryImpl(null), authenticationFactory);
+    config.overrideKey("sharepoint.useLiveAuthentication", "true");
+    config.overrideKey("sharepoint.usernamet", "");
+    config.overrideKey("sharepoint.password", "");
+    thrown.expect(InvalidConfigurationException.class);
+    adaptor.init(new MockAdaptorContext(config, pusher));
+    adaptor = null;
+  }
 
   @Test
-  public void testBlankCredentialsOnWindows() throws IOException {
+  public void testBlankCredentialsOnWindows() throws Exception {
     Assume.assumeTrue(System.getProperty("os.name").contains("Windows"));
     Config adaptorConfig = new Config();
     new SharePointUserProfileAdaptor().initConfig(adaptorConfig);
@@ -143,7 +161,7 @@ public class SharePointUserProfileAdaptorTest {
   }
 
   @Test
-  public void testGetDocIds() throws IOException, InterruptedException {
+  public void testGetDocIds() throws Exception {
     MockUserProfileServiceFactoryImpl serviceFactory =
         new MockUserProfileServiceFactoryImpl(null);
     ArrayOfPropertyData profile = new ArrayOfPropertyData();
@@ -178,8 +196,7 @@ public class SharePointUserProfileAdaptorTest {
   }
 
   @Test
-  public void testGetDocIdsNoProfiles()
-      throws IOException, InterruptedException {
+  public void testGetDocIdsNoProfiles() throws Exception {
     MockUserProfileServiceFactoryImpl serviceFactory =
         new MockUserProfileServiceFactoryImpl(null);
     adaptor = new SharePointUserProfileAdaptor(serviceFactory,
@@ -315,7 +332,7 @@ public class SharePointUserProfileAdaptorTest {
   }
 
   @Test
-  public void testGetDocContentNotFound() throws IOException {
+  public void testGetDocContentNotFound() throws Exception {
     MockUserProfileServiceFactoryImpl serviceFactory =
         new MockUserProfileServiceFactoryImpl(null);
     adaptor = new SharePointUserProfileAdaptor(serviceFactory,
@@ -333,7 +350,7 @@ public class SharePointUserProfileAdaptorTest {
   }
 
   @Test
-  public void testGetDocContentInvalidDocId() throws IOException {
+  public void testGetDocContentInvalidDocId() throws Exception {
     MockUserProfileServiceFactoryImpl serviceFactory =
         new MockUserProfileServiceFactoryImpl(null);
     ArrayOfPropertyData profile = new ArrayOfPropertyData();
@@ -356,8 +373,7 @@ public class SharePointUserProfileAdaptorTest {
   }
 
   @Test
-  public void testGetModifiedDocIdsWithEmptyChangeToken()
-      throws InterruptedException, IOException {
+  public void testGetModifiedDocIdsWithEmptyChangeToken() throws Exception {
     MockUserProfileServiceFactoryImpl serviceFactory =
         new MockUserProfileServiceFactoryImpl(
             "change token on mock repository");
@@ -374,8 +390,7 @@ public class SharePointUserProfileAdaptorTest {
   }
 
   @Test
-  public void testGetModifiedDocIdsWithNoChange()
-      throws InterruptedException, IOException {
+  public void testGetModifiedDocIdsWithNoChange() throws Exception {
     MockUserProfileServiceFactoryImpl serviceFactory =
         new MockUserProfileServiceFactoryImpl(
             "same current token");
@@ -392,8 +407,7 @@ public class SharePointUserProfileAdaptorTest {
   }
 
   @Test
-  public void testGetModifiedDocIdsDiffrentTokenNoChange()
-      throws InterruptedException, IOException {
+  public void testGetModifiedDocIdsDiffrentTokenNoChange() throws Exception {
     MockUserProfileServiceFactoryImpl serviceFactory =
         new MockUserProfileServiceFactoryImpl(
             "new token");
@@ -410,8 +424,7 @@ public class SharePointUserProfileAdaptorTest {
   }
 
   @Test
-  public void testGetModifiedDocIdsWithChange()
-      throws InterruptedException, IOException {
+  public void testGetModifiedDocIdsWithChange() throws Exception {
     MockUserProfileServiceFactoryImpl serviceFactory =
         new MockUserProfileServiceFactoryImpl(
             "new token");
@@ -448,8 +461,7 @@ public class SharePointUserProfileAdaptorTest {
   }
 
   @Test
-  public void testGetModifiedDocIdsInvalidToken()
-      throws InterruptedException, IOException {
+  public void testGetModifiedDocIdsInvalidToken()throws Exception {
     MockUserProfileServiceFactoryImpl serviceFactory =
         new MockUserProfileServiceFactoryImpl(
             "sp token");
