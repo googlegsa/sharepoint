@@ -121,6 +121,23 @@ java.util.logging.ConsoleHandler.formatter=com.google.enterprise.adaptor.CustomF
   <dd>
   Namespace used for ACLs sent to GSA.  Defaults to "Default".
   </dd>
+  <dt>
+  <code>adaptor.docHeaderTimeoutSecs</code>
+  </dt>
+  <dd>
+  Number of seconds adaptor has to start sending content before it is 
+  interrupted. Defaults to 30 seconds. Also used as connection timeout value for
+  establishing connection with SharePoint server for making web service calls.
+  </dd>
+  <dt>
+  <code>adaptor.docContentTimeoutSecs</code>
+  </dt>
+  <dd>
+  Number of seconds adaptor has to complete sending content before it is 
+  interrupted. Timing starts when sending content starts.
+  Defaults to 180 seconds. Also used as request timeout value while making
+  SharePoint web service call to complete a particular web service call.
+  </dd>
 </dl>
 
 <br>
@@ -257,6 +274,23 @@ java.util.logging.ConsoleHandler.formatter=com.google.enterprise.adaptor.CustomF
   </dt>
   <dd>
   Namespace used for ACLs sent to GSA.  Defaults to "Default".
+  </dd>
+  <dt>
+  <code>adaptor.docHeaderTimeoutSecs</code>
+  </dt>
+  <dd>
+  Number of seconds adaptor has to start sending content before it is 
+  interrupted. Defaults to 30 seconds. Also used as connection timeout value for
+  establishing connection with SharePoint server for making web service calls.
+  </dd>
+  <dt>
+  <code>adaptor.docContentTimeoutSecs</code>
+  </dt>
+  <dd>
+  Number of seconds adaptor has to complete sending content before it is 
+  interrupted. Timing starts when sending content starts.
+  Defaults to 180 seconds. Also used as request timeout value while making
+  SharePoint web service call to complete a particular web service call.
   </dd>
 </dl>
 </body>
