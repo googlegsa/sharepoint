@@ -2403,6 +2403,21 @@ public class SharePointAdaptor extends AbstractAdaptor
       // Forms authentication user  
       } else if (loginName.startsWith("i:0#.f|")) {
         return loginName.substring(7).replace("|", ":");
+      // Identity claims for Email (05) or UPN (0e) for trusted user claim
+      } else if (loginName.startsWith("i:05.t|") 
+          || loginName.startsWith("i:0e.t|")) {
+        String[] parts = loginName.split(Pattern.quote("|"), 3);
+        if (parts.length == 3) {
+          return parts[2];
+        }
+      // Non identity claims for email (05) or UPN (0e) or Role (0-)
+      } else if (loginName.startsWith("c:05.t|") 
+          || loginName.startsWith("c:0e.t|") 
+          || loginName.startsWith("c:0-.t|")) {
+        String[] parts = loginName.split(Pattern.quote("|"), 3);
+        if (parts.length == 3) {
+          return parts[2];
+        }
       }
       log.log(Level.WARNING, "Unsupported claims value {0}", loginName);
       return null;

@@ -697,7 +697,17 @@ public class SharePointAdaptorTest {
         + "BinaryIdentifier=\"c:0+.w|s-1-5-21-3993744865-3521423997"
         + "-1479072767-513\" Sid=\"\" BinaryIdentifierType=\"UserKey\" "
         + "GrantMask=\"4611686224789442657\" "
-        + "DenyMask=\"0\" /></Policies>";
+        + "DenyMask=\"0\" />"
+        + "<PolicyUser "
+        + "LoginName=\"i:0e.t|adfsv2|spuat.adaptor@gsa-connectors.com\" "
+        + "BinaryIdentifier=\"i:0e.t|adfsv2|spuat.adaptor@gsa-connectors.com\" "
+        + "Sid=\"\" BinaryIdentifierType=\"UserKey\" "
+        + "GrantMask=\"4611686224789442657\" DenyMask=\"0\" />"
+        + "<PolicyUser "
+        + "LoginName=\"c:0-.t|adfsv2|grouplevel1@gsa-connectors.com\" "
+        + "BinaryIdentifier=\"c:0-.t|adfsv2|grouplevel1@gsa-connectors.com\" "
+        + "Sid=\"\" BinaryIdentifierType=\"UserKey\" "
+        + "GrantMask=\"4611686224789442657\" DenyMask=\"0\" /></Policies>";
     MockPeopleSoap mockPeople = new MockPeopleSoap();
     mockPeople.addToResult("i:0#.w|GSA-CONNECTORS\\Administrator",
         "Administrator", SPPrincipalType.USER);
@@ -709,6 +719,10 @@ public class SharePointAdaptorTest {
     mockPeople.addToResult("GDC-PSL\\spuser1", "spuser1", SPPrincipalType.USER);
     mockPeople.addToResult("GDC-PSL\\Administrator", "dministrator", 
         SPPrincipalType.USER);
+    mockPeople.addToResult("i:0e.t|adfsv2|spuat.adaptor@gsa-connectors.com",
+        "spuat.adaptor@gsa-connectors.com", SPPrincipalType.USER);
+    mockPeople.addToResult("c:0-.t|adfsv2|grouplevel1@gsa-connectors.com",
+        "grouplevel1@gsa-connectors.com", SPPrincipalType.SECURITY_GROUP);
     
     SoapFactory siteDataFactory = MockSoapFactory.blank()
         .endpoint(VS_ENDPOINT, MockSiteData.blank()
@@ -729,9 +743,13 @@ public class SharePointAdaptorTest {
         .setInheritanceType(Acl.InheritanceType.PARENT_OVERRIDES)
         .setPermitUsers(Arrays.asList(GDC_PSL_ADMINISTRATOR, GDC_PSL_SPUSER1,
             NT_AUTHORITY_LOCAL_SERVICE, new UserPrincipal(
-                "GSA-CONNECTORS\\Administrator", DEFAULT_NAMESPACE)))
+                "GSA-CONNECTORS\\Administrator", DEFAULT_NAMESPACE),
+            new UserPrincipal("spuat.adaptor@gsa-connectors.com",
+                DEFAULT_NAMESPACE)))
         .setPermitGroups(Arrays.asList(new GroupPrincipal(
-            "GSA-CONNECTORS\\Domain Users", DEFAULT_NAMESPACE)))
+            "GSA-CONNECTORS\\Domain Users", DEFAULT_NAMESPACE),
+            new GroupPrincipal("grouplevel1@gsa-connectors.com",
+                DEFAULT_NAMESPACE)))
         .build(),
         response.getAcl());
     assertNull(response.getDisplayUrl());
