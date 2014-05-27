@@ -60,6 +60,21 @@ sharepoint.server=<b>http://yoursharepoint.example.com/</b></pre>
   options to <code>adaptor-config.properties</code>:
   <pre>sharepoint.username=<b>YOURDOMAIN\\AdaptorUser</b>
 sharepoint.password=<b>uS3R_passWoRD</b></pre>
+  
+  <li>If the adaptor needs to use <em>Live Authentication</em> to connect 
+  to SharePoint, then add these additional configuration options 
+  to <code>adaptor-config.properties</code>:
+  <pre>sharepoint.username=<b>AdaptorUser Live Authentication Id</b>
+sharepoint.password=<b>uS3R_passWoRD</b>
+sharepoint.useLiveAuthentication=<b>true</b></pre>
+  
+  <li>If the adaptor needs to use <em>ADFS Authentication</em> to connect 
+  to SharePoint, then add these additional configuration options 
+  to <code>adaptor-config.properties</code>:
+  <pre>sharepoint.username=<b>AdaptorUser@yourdomain.com</b>
+sharepoint.password=<b>uS3R_passWoRD</b>
+sharepoint.sts.endpoint=<b>https://adfs.exaple.com/adfs/services/trust/2005/usernamemixed
+</b>sharepoint.sts.realm=<b>urn:myserver:sharepoint</b> or <b>https://yoursharepoint.example.com/_trust</b></pre>
 
   <li>Create a folder named <code>logs</code> in the same directory.
 
@@ -214,6 +229,21 @@ sharepoint.server=<b>http://yoursharepoint.example.com/</b></pre>
   options to <code>adaptor-config.properties</code>:
   <pre>sharepoint.username=<b>YOURDOMAIN\\AdaptorUser</b>
 sharepoint.password=<b>uS3R_passWoRD</b></pre>
+  
+  <li>If the adaptor needs to use <em>Live Authentication</em> to connect 
+  to SharePoint, then add these additional configuration options 
+  to <code>adaptor-config.properties</code>:
+  <pre>sharepoint.username=<b>AdaptorUser Live Authentication Id</b>
+sharepoint.password=<b>uS3R_passWoRD</b>
+sharepoint.useLiveAuthentication=<b>true</b></pre>
+  
+  <li>If the adaptor needs to use <em>ADFS Authentication</em> to connect 
+  to SharePoint, then add these additional configuration options 
+  to <code>adaptor-config.properties</code>:
+  <pre>sharepoint.username=<b>AdaptorUser@yourdomain.com</b>
+sharepoint.password=<b>uS3R_passWoRD</b>
+sharepoint.sts.endpoint=<b>https://adfs.exaple.com/adfs/services/trust/2005/usernamemixed
+</b>sharepoint.sts.realm=<b>urn:myserver:sharepoint</b> or <b>https://yoursharepoint.example.com/_trust</b></pre>
 
   <li>Create a folder named <code>logs</code> in the same directory.
 
