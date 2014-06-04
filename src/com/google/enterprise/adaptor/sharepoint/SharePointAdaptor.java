@@ -2338,12 +2338,20 @@ public class SharePointAdaptor extends AbstractAdaptor
         log.exiting("SiteAdaptor", "getAttachmentDocContent", true);
         return true;
       }
-      // TODO(ejona): Figure out a way to give a Not Found if the itemId is
-      // wrong. getContentItem() will throw an exception if the itemId does not
-      // exist.
+
       ItemData itemData = siteDataClient.getContentItem(listId, itemId);
       Xml xml = itemData.getXml();
       Element data = getFirstChildWithName(xml, DATA_ELEMENT);
+      String itemCount = data.getAttribute("ItemCount");
+      if ("0".equals(itemCount)) {
+        log.fine("Could not get parent list item as ItemCount is 0.");
+        log.exiting("SiteAdaptor", "getAttachmentDocContent", false);
+        // Returing false here instead of returing 404 to avoid wrongly
+        // identifying file documents as attachments when DocumentLibrary has
+        // folder name Attachments. Returing false here would allow code
+        // to see if this document was a regular file in DocumentLibrary.
+        return false;
+      }
       Element row = getChildrenWithName(data, ROW_ELEMENT).get(0);
       String scopeId
           = row.getAttribute(OWS_SCOPEID_ATTRIBUTE).split(";#", 2)[1];

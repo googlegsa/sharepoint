@@ -1207,6 +1207,54 @@ public class SharePointAdaptorTest {
         response.getDisplayUrl());
     assertEquals(new Date(1335910481000L), response.getLastModified());
   }
+  
+  @Test
+  public void testGetDocContentAttachmentDeletedParent() throws Exception {
+    SiteDataSoap siteData = MockSiteData.blank()
+        .register(SITES_SITECOLLECTION_S_CONTENT_EXCHANGE)
+        .register(SITES_SITECOLLECTION_LISTS_CUSTOMLIST_URLSEG_EXCHANGE)
+        .register(SITES_SITECOLLECTION_LISTS_CUSTOMLIST_L_CONTENT_EXCHANGE)
+        .register(SITES_SITECOLLECTION_LISTS_CUSTOMLIST_2_LI_CONTENT_EXCHANGE
+            .replaceInContent("data ItemCount=\"1\"", "data ItemCount=\"0\""))
+        .register(new URLSegmentsExchange(
+            "http://localhost:1/sites/SiteCollection/Lists/Custom List"
+                + "/Attachments/2/1046000.pdf", false, null, null, null, null));
+
+    final String site = "http://localhost:1/sites/SiteCollection";
+    final String attachmentId = site 
+        + "/Lists/Custom List/Attachments/2/1046000.pdf";
+    adaptor = new SharePointAdaptor(initableSoapFactory,
+        new HttpClient() {
+      @Override
+      public FileInfo issueGetRequest(URL url,
+          List<String> authenticationCookies) {
+        throw new UnsupportedOperationException();
+      }
+
+      @Override
+      public String getRedirectLocation(URL url,
+          List<String> authenticationCookies) throws IOException {
+        assertEquals(
+            "http://localhost:1/sites/SiteCollection/Lists/Custom%20List",
+            url.toString());
+
+        return "http://localhost:1/sites/SiteCollection/Lists/Custom List"
+            + "/AllItems.aspx";
+      }
+    }, executorFactory, new MockAuthenticationClientFactoryForms());
+    adaptor.init(new MockAdaptorContext(config, pusher));
+    ByteArrayOutputStream baos = new ByteArrayOutputStream();
+    GetContentsRequest request = new GetContentsRequest(
+        new DocId(attachmentId));
+    GetContentsResponse response = new GetContentsResponse(baos);
+    adaptor.new SiteAdaptor("http://localhost:1/sites/SiteCollection",
+          "http://localhost:1/sites/SiteCollection", siteData,
+          new UnsupportedUserGroupSoap(), new UnsupportedPeopleSoap(),
+          new UnsupportedCallable<MemberIdMapping>(),
+          new UnsupportedCallable<MemberIdMapping>())
+        .getDocContent(request, response);
+    assertTrue(response.isNotFound());
+  }
 
   @Test
   public void testGetDocContentAttachmentSpecialMimeType() throws Exception {
