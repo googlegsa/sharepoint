@@ -1452,7 +1452,7 @@ public class SharePointAdaptorTest {
     assertEquals(URI.create("http://localhost:1/sites/SiteCollection/Lists/"
           + "Custom%20List/DispForm.aspx?ID=2"),
         response.getDisplayUrl());
-    assertEquals(new Date(1335910446000L), response.getLastModified());
+    assertEquals(new Date(1336166672000L), response.getLastModified());
   }
 
   @Test

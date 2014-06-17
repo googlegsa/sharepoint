@@ -200,8 +200,8 @@ public class SharePointAdaptor extends AbstractAdaptor
   /** Provides the number of attachments the list item has. */
   private static final String OWS_ATTACHMENTS_ATTRIBUTE = "ows_Attachments";
   /** The last time metadata or content was modified. */
-  private static final String OWS_LAST_MODIFIED_ATTRIBUTE
-      = "ows_Last_x0020_Modified";
+  private static final String OWS_MODIFIED_ATTRIBUTE
+      = "ows_Modified";
   /**
    * Matches a SP-encoded value that contains one or more values. See {@link
    * SiteAdaptor.addMetadata}.
@@ -2007,12 +2007,10 @@ public class SharePointAdaptor extends AbstractAdaptor
       Element data = getFirstChildWithName(xml, DATA_ELEMENT);
       Element row = getChildrenWithName(data, ROW_ELEMENT).get(0);
 
-      String modifiedString = row.getAttribute(OWS_LAST_MODIFIED_ATTRIBUTE);
+      String modifiedString = row.getAttribute(OWS_MODIFIED_ATTRIBUTE);
       if (modifiedString == null) {
         log.log(Level.FINE, "No last modified information for list item");
       } else {
-        // This should be in the form of "1234;#DATE".
-        modifiedString = modifiedString.split(";#", 2)[1];
         try {
           response.setLastModified(
               modifiedDateFormat.get().parse(modifiedString));
