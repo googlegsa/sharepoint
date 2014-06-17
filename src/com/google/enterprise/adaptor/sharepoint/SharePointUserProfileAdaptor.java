@@ -60,6 +60,7 @@ import java.io.UnsupportedEncodingException;
 import java.net.Authenticator;
 import java.net.ConnectException;
 import java.net.PasswordAuthentication;
+import java.net.SocketTimeoutException;
 import java.net.URI;
 import java.net.URL;
 import java.net.URLEncoder;
@@ -307,26 +308,33 @@ public class SharePointUserProfileAdaptor extends AbstractAdaptor
     try {
       log.log(Level.INFO, "Using {0} authentication.", authenticationType);
       authenticationHandler.start();      
-    } catch (IOException ex) {
-      if (ex instanceof UnknownHostException) {
-       // This may be due to  DNS issue or transiant network error.
-       // Just rethrow excption and allow adaptor to retry.
-       throw ex; 
+    } catch (WebServiceException ex) {
+      if (ex.getCause() instanceof UnknownHostException) {
+        // This may be due to  DNS issue or transiant network error.
+        // Just rethrow excption and allow adaptor to retry.
+        throw new IOException(String.format(
+            "Cannot find SharePoint server \"%s\" -- please make sure it is "
+                + "specified properly.", virtualServer), ex);
       }
-      
-      if (ex instanceof ConnectException) {
+      if (ex.getCause() instanceof ConnectException 
+          || ex.getCause() instanceof SocketTimeoutException ) {
         // SharePoint might be down. Just rethrow exception and allow adaptor to
-        // retry.
-        throw ex;
+        // retry. We get ConnectException when IIS / web site is down and 
+        // SocketTimeOutException when SharePoint server does not respond in
+        // timely manner.
+        throw new IOException(String.format(
+            "Unable to connect to SharePoint server \"%s\" -- please make "
+                + "sure it is specified properly and is available.",
+            virtualServer), ex);
       }
       String adfsWarning = "ADFS".equals(authenticationType) 
           ? " Also verify if stsendpoint and stsrealm is specified correctly "
           + "and ADFS environment is available." : "";
       String warning = String.format(
-          "Failed to start adaptor using %s authentication."
+          "Failed to initialize adaptor using %s authentication."
           + " Please verify adaptor configuration for SharePoint url,"
           + " username and password.%s", authenticationType, adfsWarning);
-      throw new StartupException(warning, ex);
+      throw new IOException(warning, ex);
     }
     log.log(Level.FINEST, "Initializing User profile Service Client for {0}",
         virtualServer + USER_PROFILE_SERVICE_ENDPOINT);
