@@ -44,6 +44,7 @@ import com.microsoft.schemas.sharepoint.soap.ItemData;
 import com.microsoft.schemas.sharepoint.soap.ObjectType;
 import com.microsoft.schemas.sharepoint.soap.SPContentDatabase;
 import com.microsoft.schemas.sharepoint.soap.SiteDataSoap;
+import com.microsoft.schemas.sharepoint.soap.VirtualServer;
 import com.microsoft.schemas.sharepoint.soap.authentication.AuthenticationMode;
 import com.microsoft.schemas.sharepoint.soap.authentication.AuthenticationSoap;
 import com.microsoft.schemas.sharepoint.soap.authentication.LoginResult;
@@ -422,6 +423,21 @@ public class SharePointAdaptorTest {
     adaptor = null;
   }
   
+  @Test
+  public void testCheckFullReadPermissionForAdaptorUser() throws Exception {
+    MockSiteData siteDataSoap = new MockSiteData()
+        .register(VS_CONTENT_EXCHANGE).register(CD_CONTENT_EXCHANGE);
+    VirtualServer vs = new SiteDataClient(siteDataSoap, true)
+        .getContentVirtualServer();
+
+    assertEquals(1, SharePointAdaptor.checkFullReadPermissionForAdaptorUser(vs,
+        "GDC-PSL\\spuser1"));
+    assertEquals(0, SharePointAdaptor.checkFullReadPermissionForAdaptorUser(vs,
+        "GDC-PSL\\administrator"));
+    assertEquals(-1, SharePointAdaptor.checkFullReadPermissionForAdaptorUser(vs,
+        "Some Fake User"));
+  }
+
   @Test
   public void testAdaptorInitAdfsUnknownHostException() throws Exception {
     SoapFactory siteDataFactory = MockSoapFactory.blank()

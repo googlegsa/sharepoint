@@ -208,27 +208,21 @@ public class SharePointAdaptor extends AbstractAdaptor
    */
   private static final Pattern ALTERNATIVE_VALUE_PATTERN
       = Pattern.compile("^\\d+;#");
-  /**
-   * As defined at http://msdn.microsoft.com/en-us/library/ee394878.aspx .
-   */
-  private static final long VIEW_LIST_ITEMS_MASK = 0x0000000000000001;
-  /**
-   * As defined at http://msdn.microsoft.com/en-us/library/ee394878.aspx .
-   */
-  private static final long OPEN_MASK = 0x0000000000010000;
-  /**
-   * As defined at http://msdn.microsoft.com/en-us/library/ee394878.aspx .
-   */
-  private static final long VIEW_PAGES_MASK = 0x0000000000020000;
-  /**
-   * As defined at http://msdn.microsoft.com/en-us/library/ee394878.aspx .
-   */
-  private static final long MANAGE_LIST_MASK = 0x0000000000000800;
 
-  static final long LIST_ITEM_MASK
-      = OPEN_MASK | VIEW_PAGES_MASK | VIEW_LIST_ITEMS_MASK;
+  static final long LIST_ITEM_MASK = SPBasePermissions.OPEN 
+      | SPBasePermissions.VIEWPAGES | SPBasePermissions.VIEWLISTITEMS;
+
   private static final long READ_SECURITY_LIST_ITEM_MASK
-      = OPEN_MASK | VIEW_PAGES_MASK | VIEW_LIST_ITEMS_MASK | MANAGE_LIST_MASK;
+      = SPBasePermissions.OPEN | SPBasePermissions.VIEWPAGES 
+      | SPBasePermissions.VIEWLISTITEMS | SPBasePermissions.MANAGELISTS;
+  
+  private static final long FULL_READ_PERMISSION_MASK = SPBasePermissions.OPEN
+      | SPBasePermissions.VIEWLISTITEMS | SPBasePermissions.OPENITEMS
+      | SPBasePermissions.VIEWVERSIONS | SPBasePermissions.VIEWPAGES
+      | SPBasePermissions.VIEWUSAGEDATA | SPBasePermissions.BROWSEDIRECTORIES
+      | SPBasePermissions.VIEWFORMPAGES | SPBasePermissions.ENUMERATEPERMISSIONS
+      | SPBasePermissions.BROWSEUSERINFO | SPBasePermissions.USEREMOTEAPIS
+      | SPBasePermissions.USECLIENTINTEGRATION;
 
   private static final int LIST_READ_SECURITY_ENABLED = 2;
 
@@ -593,6 +587,10 @@ public class SharePointAdaptor extends AbstractAdaptor
 
       // Test out configuration.
       VirtualServer vs = virtualServerSiteDataClient.getContentVirtualServer();
+
+      // Check Full Read permission for Adaptor User on SharePoint
+      checkFullReadPermissionForAdaptorUser(vs, username);
+
       String version = vs.getMetadata().getVersion();
       log.log(Level.INFO, "SharePoint Version : {0}", version);
       // Version is missing for SP 2007 (but its version is 12).
@@ -662,6 +660,81 @@ public class SharePointAdaptor extends AbstractAdaptor
     rareModCache = null;
     Authenticator.setDefault(null);
     ntlmAuthenticator = null;
+  }
+  /**
+   * Method to check full read permission for adaptor user on SharePoint.
+   * Returns -1 if adaptor user is not available in web application policy.
+   * Returns 0 if adaptor user is having other than Full Read permission
+   * Returns 1 if adaptor user is having exact Full Read permission.
+   */
+  @VisibleForTesting  
+  static int checkFullReadPermissionForAdaptorUser(VirtualServer vs,
+      String username) {
+    String adaptorUser = getAdaptorUser(username);
+    if (adaptorUser == null) {
+      log.log(Level.WARNING, "Unable to get adaptor user name");
+      return -1;
+    }
+    PolicyUser p = getPolicyUserForAdatorUser(vs, adaptorUser);
+    if (p == null) {
+      log.log(Level.INFO, "Adaptor user [{0}] not available in web "
+          + "application policy to verify permissions.", adaptorUser);
+      return -1;
+    }
+    if (isOtherThanFullReadForPolicyUser( p.getGrantMask().longValue())) {
+      log.log(Level.WARNING, "Adaptor user [{0}] is not having exact full "
+          + "read permission on SharePoint. Having excess or lesser "
+          + "permissions on SharePoint for adaptor user might affect adaptor "
+          + "functionality.", adaptorUser);
+      return 0;      
+    } else {
+      log.log(Level.FINE, "Adaptor user [{0}] is having full read "
+          + "permissions on SharePoint.", adaptorUser);
+      return 1;
+    }
+  }
+
+  private static PolicyUser getPolicyUserForAdatorUser(VirtualServer vs,
+      String adaptorUser) {
+    if (adaptorUser == null) {
+      return null;
+    }
+    for(PolicyUser p : vs.getPolicies().getPolicyUser()) {
+      String policyUser = decodeClaim(
+          p.getLoginName(), p.getLoginName(), false);
+      if (policyUser == null) {
+        // Un-supported claim type
+        continue;
+      }
+      // parse out authentication provider for forms authenticated user
+      policyUser = policyUser.substring(policyUser.indexOf(":") + 1);
+      if (adaptorUser.equalsIgnoreCase(policyUser)) {
+        return p;
+      }
+    }
+    return null;
+  }
+
+  private static boolean isOtherThanFullReadForPolicyUser(long permissionMask) {
+    return (FULL_READ_PERMISSION_MASK != permissionMask);
+  }
+
+  @VisibleForTesting
+  static String getAdaptorUser(String username) {
+    if (!"".equals(username)) {
+      return username;
+    }
+
+    // USERNAME and USERDOMAIN environment variables are applicable for 
+    // Windows only. On non windows adaptor machine user name will 
+    // not be empty.
+    // Using Ssytem.getenv instead on System.getProperty("user.name") because
+    // System.getProperty("user.name") returns username without domain.
+    if (System.getenv("USERDOMAIN") == null 
+        || System.getenv("USERNAME") == null) {
+      return null;
+    }
+    return  System.getenv("USERDOMAIN") + "\\" + System.getenv("USERNAME");
   }
 
   private synchronized void shutdownExecutor(ExecutorService executor) {
@@ -1170,6 +1243,49 @@ public class SharePointAdaptor extends AbstractAdaptor
     }
     m.appendTail(sb);
     return sb.toString();
+  }
+
+  @VisibleForTesting
+  static String decodeClaim(String loginName, String name
+      , boolean isDomainGroup) {
+    if (!loginName.startsWith(IDENTITY_CLAIMS_PREFIX)
+        && !loginName.startsWith(OTHER_CLAIMS_PREFIX)) {
+      return loginName;
+    }
+    // AD User
+    if (loginName.startsWith("i:0#.w|")) {
+      return loginName.substring(7);
+    // AD Group
+    } else if (loginName.startsWith("c:0+.w|")) {
+      return name;
+    } else if (loginName.equals("c:0(.s|true")) {
+      return "Everyone";
+    } else if (loginName.equals("c:0!.s|windows")) {
+      return "NT AUTHORITY\\authenticated users";
+    // Forms authentication role  
+    } else if (loginName.startsWith("c:0-.f|")) {
+      return loginName.substring(7).replace("|", ":");
+    // Forms authentication user  
+    } else if (loginName.startsWith("i:0#.f|")) {
+      return loginName.substring(7).replace("|", ":");
+    // Identity claims for Email (05) or UPN (0e) for trusted user claim
+    } else if (loginName.startsWith("i:05.t|") 
+        || loginName.startsWith("i:0e.t|")) {
+      String[] parts = loginName.split(Pattern.quote("|"), 3);
+      if (parts.length == 3) {
+        return parts[2];
+      }
+    // Non identity claims for email (05) or UPN (0e) or Role (0-)
+    } else if (loginName.startsWith("c:05.t|") 
+        || loginName.startsWith("c:0e.t|") 
+        || loginName.startsWith("c:0-.t|")) {
+      String[] parts = loginName.split(Pattern.quote("|"), 3);
+      if (parts.length == 3) {
+        return parts[2];
+      }
+    }
+    log.log(Level.WARNING, "Unsupported claims value {0}", loginName);
+    return null;
   }
 
   @VisibleForTesting
@@ -1865,7 +1981,7 @@ public class SharePointAdaptor extends AbstractAdaptor
     }
 
     private boolean isAllowAnonymousPeekForWeb(CachedWeb w) {
-      return isPermitted(w.anonymousPermMask, OPEN_MASK);
+      return isPermitted(w.anonymousPermMask, SPBasePermissions.OPEN);
     }
 
     private boolean isAllowAnonymousReadForWeb(CachedWeb w) {
@@ -1881,7 +1997,7 @@ public class SharePointAdaptor extends AbstractAdaptor
           = (l.readSecurity != LIST_READ_SECURITY_ENABLED)
           && (l.allowAnonymousAccess == TrueFalseType.TRUE)
           && (l.anonymousViewListItems == TrueFalseType.TRUE)
-          && isPermitted(l.anonymousPermMask, VIEW_LIST_ITEMS_MASK);
+          && isPermitted(l.anonymousPermMask, SPBasePermissions.VIEWLISTITEMS);
       return allowAnonymousRead;
     }
 
@@ -2396,48 +2512,6 @@ public class SharePointAdaptor extends AbstractAdaptor
       return true;
     }
 
-    private String decodeClaim(String loginName, String name
-        , boolean isDomainGroup) {
-      if (!loginName.startsWith(IDENTITY_CLAIMS_PREFIX)
-          && !loginName.startsWith(OTHER_CLAIMS_PREFIX)) {
-        return loginName;
-      }
-      // AD User
-      if (loginName.startsWith("i:0#.w|")) {
-        return loginName.substring(7);
-      // AD Group
-      } else if (loginName.startsWith("c:0+.w|")) {
-        return name;
-      } else if (loginName.equals("c:0(.s|true")) {
-        return "Everyone";
-      } else if (loginName.equals("c:0!.s|windows")) {
-        return "NT AUTHORITY\\authenticated users";
-      // Forms authentication role  
-      } else if (loginName.startsWith("c:0-.f|")) {
-        return loginName.substring(7).replace("|", ":");
-      // Forms authentication user  
-      } else if (loginName.startsWith("i:0#.f|")) {
-        return loginName.substring(7).replace("|", ":");
-      // Identity claims for Email (05) or UPN (0e) for trusted user claim
-      } else if (loginName.startsWith("i:05.t|") 
-          || loginName.startsWith("i:0e.t|")) {
-        String[] parts = loginName.split(Pattern.quote("|"), 3);
-        if (parts.length == 3) {
-          return parts[2];
-        }
-      // Non identity claims for email (05) or UPN (0e) or Role (0-)
-      } else if (loginName.startsWith("c:05.t|") 
-          || loginName.startsWith("c:0e.t|") 
-          || loginName.startsWith("c:0-.t|")) {
-        String[] parts = loginName.split(Pattern.quote("|"), 3);
-        if (parts.length == 3) {
-          return parts[2];
-        }
-      }
-      log.log(Level.WARNING, "Unsupported claims value {0}", loginName);
-      return null;
-    }
-
     private Map<String, PrincipalInfo> resolvePrincipals(
         List<String> principalsToResolve) {
       Map<String, PrincipalInfo> resolved
@@ -2892,6 +2966,47 @@ public class SharePointAdaptor extends AbstractAdaptor
         return super.getPasswordAuthentication();
       }
     }
+  }
+
+  /**
+   * As defined at http://msdn.microsoft.com/en-us/library/ee394878.aspx .
+   */
+  private static class SPBasePermissions {
+    public static final long EMPTYMASK= 0x0000000000000000;
+    public static final long VIEWLISTITEMS= 0x0000000000000001;
+    public static final long ADDLISTITEMS= 0x0000000000000002;
+    public static final long EDITLISTITEMS= 0x0000000000000004;
+    public static final long DELETELISTITEMS= 0x0000000000000008;
+    public static final long APPROVEITEMS= 0x0000000000000010;
+    public static final long OPENITEMS= 0x0000000000000020;
+    public static final long VIEWVERSIONS= 0x0000000000000040;
+    public static final long DELETEVERSIONS= 0x0000000000000080;
+    public static final long CANCELCHECKOUT= 0x0000000000000100;
+    public static final long MANAGEPERSONALVIEWS= 0x0000000000000200;
+    public static final long MANAGELISTS= 0x0000000000000800;
+    public static final long VIEWFORMPAGES= 0x0000000000001000;
+    public static final long OPEN= 0x0000000000010000;
+    public static final long VIEWPAGES= 0x0000000000020000;
+    public static final long ADDANDCUSTOMIZEPAGES= 0x0000000000040000;
+    public static final long APPLYTHEMEANDBORDER= 0x0000000000080000;
+    public static final long APPLYSTYLESHEETS= 0x0000000000100000;
+    public static final long VIEWUSAGEDATA= 0x0000000000200000;
+    public static final long CREATESSCSITE= 0x0000000000400000;
+    public static final long MANAGESUBWEBS= 0x0000000000800000;
+    public static final long CREATEGROUPS= 0x0000000001000000;
+    public static final long MANAGEPERMISSIONS= 0x0000000002000000;
+    public static final long BROWSEDIRECTORIES= 0x0000000004000000;
+    public static final long BROWSEUSERINFO= 0x0000000008000000;
+    public static final long ADDDELPRIVATEWEBPARTS= 0x0000000010000000;
+    public static final long UPDATEPERSONALWEBPARTS= 0x0000000020000000;
+    public static final long MANAGEWEB= 0x0000000040000000;
+    public static final long USECLIENTINTEGRATION= 0x0000001000000000L;
+    public static final long USEREMOTEAPIS= 0x0000002000000000L;
+    public static final long MANAGEALERTS= 0x0000004000000000L;
+    public static final long CREATEALERTS= 0x0000008000000000L;
+    public static final long EDITMYUSERINFO= 0x0000010000000000L;
+    public static final long ENUMERATEPERMISSIONS= 0x4000000000000000L;
+    public static final long FULLMASK= 0x7FFFFFFFFFFFFFFFL;
   }
 
   private class MemberIdMappingCallable implements Callable<MemberIdMapping> {
