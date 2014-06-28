@@ -153,6 +153,24 @@ java.util.logging.ConsoleHandler.formatter=com.google.enterprise.adaptor.CustomF
   Defaults to 180 seconds. Also used as request timeout value while making
   SharePoint web service call to complete a particular web service call.
   </dd>
+
+  <dt>
+  <code>server.port</code>
+  </dt>
+  <dd>
+  Port from which documents are served.  GSA crawls this port.
+  Each instance of an adaptor on same machine requires a unique port.
+  Defaults to 5678.
+  </dd>
+
+  <dt>
+  <code>adaptor.incrementalPollPeriodSecs</code>
+  </dt>
+  <dd>
+  Schedule for getting recent updates.  Defaults to 900 seconds which is 15 minutes.
+  </dd>
+  <br>
+
 </dl>
 
 <br>
@@ -322,5 +340,16 @@ java.util.logging.ConsoleHandler.formatter=com.google.enterprise.adaptor.CustomF
   Defaults to 180 seconds. Also used as request timeout value while making
   SharePoint web service call to complete a particular web service call.
   </dd>
+
+  <dt>
+  <code>server.port</code>
+  </dt>
+  <dd>
+  Port from which documents are served.  GSA crawls this port.
+  Each instance of an adaptor on same machine requires a unique port.
+  Defaults to 5678.
+  </dd>
+  <br>
+
 </dl>
 </body>
