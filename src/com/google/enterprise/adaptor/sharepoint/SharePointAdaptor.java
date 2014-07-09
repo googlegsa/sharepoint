@@ -367,11 +367,6 @@ public class SharePointAdaptor extends AbstractAdaptor
    */
   private boolean isSp2007;
   private NtlmAuthenticator ntlmAuthenticator;
-  /**
-   * Lock for refreshing MemberIdMapping. We use a unique lock because it is
-   * held while waiting on I/O.
-   */
-  private final Object refreshMemberIdMappingLock = new Object();
   
   private FormsAuthenticationHandler authenticationHandler;
   private static final TimeZone gmt = TimeZone.getTimeZone("GMT");
@@ -1304,6 +1299,18 @@ public class SharePointAdaptor extends AbstractAdaptor
     private final Callable<MemberIdMapping> memberIdMappingCallable;
     private final Callable<MemberIdMapping> siteUserIdMappingCallable;
 
+    /**
+     * Lock for refreshing MemberIdMapping. We use a unique lock because it is
+     * held while waiting on I/O.
+     */
+    private final Object refreshMemberIdMappingLock = new Object();
+
+    /**
+     * Lock for refreshing SiteUserMapping. We use a unique lock because it is
+     * held while waiting on I/O.
+     */
+    private final Object refreshSiteUserMappingLock = new Object();
+
     public SiteAdaptor(String site, String web, SiteDataSoap siteDataSoap,
         UserGroupSoap userGroupSoap, PeopleSoap people,
         Callable<MemberIdMapping> memberIdMappingCallable,
@@ -1359,6 +1366,27 @@ public class SharePointAdaptor extends AbstractAdaptor
         memberIdsCache.invalidate(siteUrl);
       }
       return getMemberIdMapping();
+    }
+
+    /**
+     * Provide a more recent SiteUserMapping than {@code mapping}, because the
+     * mapping is known to be out-of-date.
+     */
+    private MemberIdMapping refreshSiteUserMapping(MemberIdMapping mapping)
+        throws IOException {
+      // Synchronize callers to prevent a rush of invalidations due to multiple
+      // callers noticing that the map was out of date at the same time.
+      synchronized (refreshSiteUserMappingLock) {
+        // NOTE: This may block on I/O, so we must be wary of what locks are
+        // held.
+        MemberIdMapping maybeNewMapping = getSiteUserMapping();
+        if (mapping != maybeNewMapping) {
+          // The map has already been refreshed.
+          return maybeNewMapping;
+        }
+        siteUserCache.invalidate(siteUrl);
+      }
+      return getSiteUserMapping();
     }
 
      private MemberIdMapping getSiteUserMapping() throws IOException {
@@ -1924,7 +1952,9 @@ public class SharePointAdaptor extends AbstractAdaptor
         final long necessaryPermissionMask) throws IOException {
       List<Principal> permits = new LinkedList<Principal>();
       MemberIdMapping mapping = getMemberIdMapping();
-      MemberIdMapping newMapping = null;
+      boolean memberIdMappingRefreshed = false;
+      MemberIdMapping siteUserMapping = null;
+      boolean siteUserMappingRefreshed = false;
       for (Permission permission : permissions) {
         // Although it is named "mask", this is really a bit-field of
         // permissions.
@@ -1935,13 +1965,31 @@ public class SharePointAdaptor extends AbstractAdaptor
         Integer id = permission.getMemberid();
         Principal principal = mapping.getPrincipal(id);
         if (principal == null) {
-          if (newMapping == null) {
-            newMapping = refreshMemberIdMapping(mapping);
-          }
-          principal = newMapping.getPrincipal(id);
+          log.log(Level.FINE, "Member id {0} is not available in memberid"
+              + " mapping for Web [{1}] under Site Collection [{2}].",
+              new Object[] {id, webUrl, siteUrl});
+          if (siteUserMapping == null) {
+            siteUserMapping = getSiteUserMapping();
+          }          
+          principal = siteUserMapping.getPrincipal(id);
         }
+        if (principal == null && !memberIdMappingRefreshed) {
+          // Try to refresh member id mapping and check again.
+          mapping = refreshMemberIdMapping(mapping);
+          memberIdMappingRefreshed = true;
+          principal = mapping.getPrincipal(id);
+        }        
+        if (principal == null && !siteUserMappingRefreshed) {
+          // Try to refresh site user mapping and check again.
+          siteUserMapping = refreshSiteUserMapping(siteUserMapping);
+          siteUserMappingRefreshed = true;
+          principal = siteUserMapping.getPrincipal(id);
+        }
+
         if (principal == null) {
-          log.log(Level.WARNING, "Could not resolve member id {0}", id);
+          log.log(Level.WARNING, "Could not resolve member id {0} for Web "
+              + "[{1}] under Site Collection [{2}].", 
+              new Object[] {id, webUrl, siteUrl});
           continue;
         }
         permits.add(principal);

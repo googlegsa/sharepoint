@@ -836,6 +836,74 @@ public class SharePointAdaptorTest {
     assertEquals(URI.create("http://localhost:1/sites/SiteCollection"),
         response.getDisplayUrl());
   }
+  
+  @Test
+  public void testGetDocContentSubSiteUniquePermissions() throws Exception {
+    String subSiteUrl = "http://localhost:1/sites/SiteCollection/SubSite";
+    Users users = new Users();
+    users.getUser().add(createUserGroupUser(1, "GDC-PSL\\administrator",
+        "S-1-5-21-7369146", "Administrator", "admin@domain.com", false, true));
+    users.getUser().add(createUserGroupUser(7, "GDC-PSL\\User1",
+        "S-1-5-21-736911", "User1", "User1@domain.com", false, false));
+    users.getUser().add(createUserGroupUser(500, "GDC-PSL\\User500",
+        "S-1-5-21-7369500", "User500", "User11@domain.com", false, false));
+    users.getUser().add(createUserGroupUser(1073741823, "System.Account",
+        "S-1-5-21-7369343", "System Account", "System.Account@domain.com",
+        false, true));
+
+    MockUserGroupSoap mockUserGroupSoap = new MockUserGroupSoap(users);
+    SoapFactory siteDataFactory = MockSoapFactory.blank()
+        .endpoint(VS_ENDPOINT, MockSiteData.blank()
+            .register(VS_CONTENT_EXCHANGE)
+            .register(CD_CONTENT_EXCHANGE)
+            .register(SITES_SITECOLLECTION_SAW_EXCHANGE)
+            .register(new SiteAndWebExchange(subSiteUrl, 0,
+                "http://localhost:1/sites/SiteCollection", subSiteUrl)))
+        .endpoint(SITES_SITECOLLECTION_ENDPOINT, MockSiteData.blank()
+            .register(SITES_SITECOLLECTION_URLSEG_EXCHANGE)
+            .register(SITES_SITECOLLECTION_S_CONTENT_EXCHANGE)
+            .register(SITES_SITECOLLECTION_SC_CONTENT_EXCHANGE))
+        .endpoint(subSiteUrl + "/_vti_bin/SiteData.asmx", MockSiteData.blank()
+                .register(new URLSegmentsExchange(
+                    subSiteUrl, true, "WebId", null, null, null))
+                .register(SITES_SITECOLLECTION_S_CONTENT_EXCHANGE
+                    .replaceInContent("/SiteCollection",
+                        "/SiteCollection/SubSite")
+                    .replaceInContent(
+                        "ScopeID=\"{01abac8c-66c8-4fed-829c-8dd02bbf40dd}\"",
+                        "ScopeID=\"{O7ac581ea-fdd1-4b0d-a5de-fc1b69e57a8d}\"")
+                    .replaceInContent(
+                        "<permission memberid='4' mask='756052856929' />",
+                        "<permission memberid='4' mask='0' />")
+                    .replaceInContent("</permissions>",
+                        "<permission memberid='500' mask='756052856929' />"
+                            + "</permissions>"))
+                .register(SITES_SITECOLLECTION_SC_CONTENT_EXCHANGE))
+        .endpoint("http://localhost:1/sites/SiteCollection/"
+            + "_vti_bin/UserGroup.asmx", mockUserGroupSoap);
+
+    adaptor = new SharePointAdaptor(siteDataFactory,
+        new UnsupportedHttpClient(), executorFactory,
+        new MockAuthenticationClientFactoryForms());
+    adaptor.init(new MockAdaptorContext(config, pusher));
+    ByteArrayOutputStream baos = new ByteArrayOutputStream();
+    GetContentsRequest request = new GetContentsRequest(
+        new DocId("http://localhost:1/sites/SiteCollection/SubSite"));
+    GetContentsResponse response = new GetContentsResponse(baos);
+    adaptor.getDocContent(request, response);
+   
+    assertEquals(new Acl.Builder()
+        .setEverythingCaseInsensitive()
+        .setInheritFrom(new DocId("http://localhost:1/sites/SiteCollection"),
+          "admin")
+        .setInheritanceType(Acl.InheritanceType.PARENT_OVERRIDES)
+        .setPermitGroups(Arrays.asList(
+            SITES_SITECOLLECTION_MEMBERS,
+            SITES_SITECOLLECTION_OWNERS))
+        .setPermitUsers(Arrays.asList(GDC_PSL_SPUSER1, 
+            new UserPrincipal("GDC-PSL\\User500", DEFAULT_NAMESPACE))).build(),
+        response.getAcl());
+  }
 
   @Test
   public void testGetDocContentSiteCollectionWithAdGroup() throws Exception {
@@ -931,12 +999,16 @@ public class SharePointAdaptorTest {
   public void testGetDocContentSiteCollectionWithOutOfDateMemberCache()
       throws Exception {
     ReferenceSiteData siteData = new ReferenceSiteData();
+    Users users = new Users();
+    MockUserGroupSoap mockUserGroupSoap = new MockUserGroupSoap(users);
     SoapFactory siteDataFactory = MockSoapFactory.blank()
         .endpoint(VS_ENDPOINT, MockSiteData.blank()
             .register(VS_CONTENT_EXCHANGE)
             .register(CD_CONTENT_EXCHANGE)
             .register(SITES_SITECOLLECTION_SAW_EXCHANGE))
-        .endpoint(SITES_SITECOLLECTION_ENDPOINT, siteData);
+        .endpoint(SITES_SITECOLLECTION_ENDPOINT, siteData)
+        .endpoint("http://localhost:1/sites/SiteCollection/"
+            + "_vti_bin/UserGroup.asmx", mockUserGroupSoap);
     SiteDataSoap siteDataState1 = MockSiteData.blank()
             .register(SITES_SITECOLLECTION_URLSEG_EXCHANGE)
             .register(SITES_SITECOLLECTION_S_CONTENT_EXCHANGE)
