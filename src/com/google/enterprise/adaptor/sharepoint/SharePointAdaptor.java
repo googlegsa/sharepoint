@@ -602,8 +602,8 @@ public class SharePointAdaptor extends AbstractAdaptor
           cd = virtualServerSiteDataClient.getContentContentDatabase(
               cdcd.getID(), true);
         } catch (IOException ex) {
-          log.log(Level.WARNING, "Failed to get sites for database {0}",
-              cdcd.getID());
+          log.log(Level.WARNING, "Failed to get sites for database: " 
+              + cdcd.getID(), ex);
           continue;
         }
         if (cd.getSites() == null) {
@@ -794,8 +794,8 @@ public class SharePointAdaptor extends AbstractAdaptor
       try {
         cd = vsClient.getContentContentDatabase(cdcd.getID(), true);
       } catch (IOException ex) {
-        log.log(Level.WARNING, "Failed to get local groups for database {0}",
-            cdcd.getID());
+        log.log(Level.WARNING, "Failed to get content database: " 
+            + cdcd.getID(), ex);
         continue;
       }
       if (cd.getSites() == null) {
@@ -810,8 +810,8 @@ public class SharePointAdaptor extends AbstractAdaptor
         try {
           site = siteAdaptor.getSiteDataClient().getContentSite();
         } catch (IOException ex) {
-          log.log(Level.WARNING, "Failed to get local groups for site {0}",
-              siteString);
+          log.log(Level.WARNING, "Failed to get local groups for site: "
+              + siteString, ex);
           continue;
         }
         Map<GroupPrincipal, Collection<Principal>> siteDefs
@@ -956,8 +956,8 @@ public class SharePointAdaptor extends AbstractAdaptor
           site = getSiteAdaptor(siteUrl, siteUrl).getSiteDataClient()
               .getContentSite();
         } catch (IOException ex) {
-          log.log(Level.WARNING, "Failed to get local groups for site {0}",
-              siteUrl);
+          log.log(Level.WARNING, "Failed to get local groups for site: "
+              + siteUrl, ex);
           continue;
         }
         groupDefs.putAll(siteAdaptor.computeMembersForGroups(site.getGroups()));
