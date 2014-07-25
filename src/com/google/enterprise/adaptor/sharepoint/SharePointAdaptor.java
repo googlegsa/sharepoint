@@ -593,6 +593,7 @@ public class SharePointAdaptor extends AbstractAdaptor
       isSp2007 = (version == null);
       log.log(Level.FINE, "isSP2007 : {0}", isSp2007);
       
+      boolean urlAvailableInAlternateAccessMapping = false;
       // Loop through all host-named site collections and add them to
       // whitelist for authenticator.
       for (ContentDatabases.ContentDatabase cdcd : 
@@ -612,8 +613,20 @@ public class SharePointAdaptor extends AbstractAdaptor
         for (Sites.Site siteListing : cd.getSites().getSite()) {
           String siteString
               = vsAdaptor.encodeDocId(siteListing.getURL()).getUniqueId();
+          if (virtualServer.equalsIgnoreCase(siteString)) {
+            urlAvailableInAlternateAccessMapping = true;
+          }
           ntlmAuthenticator.addPermitForHost(spUrlToUri(siteString).toURL());
         }
+      }
+      if (!urlAvailableInAlternateAccessMapping) {
+        log.log(Level.WARNING, "Virtual Server URL {0} is not availble in "
+            + "SharePoint Alternate Access Mapping as Public URL. "
+            + "Due to this mismatch some of the adaptor functionality might "
+            + "not work as expected. Also include / exclude patterns "
+            + "configured on GSA as per Virtual server URL might not "
+            + "work as expected. Please make sure that adaptor is configured "
+            + "to use Public URL instead on internal URL.", virtualServer);
       }
     } catch (WebServiceIOException ex) {
       String warning;
