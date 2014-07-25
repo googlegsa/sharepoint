@@ -34,6 +34,7 @@ import org.xml.sax.SAXException;
 import java.io.IOException;
 import java.io.StringReader;
 import java.util.logging.Logger;
+import java.util.regex.Pattern;
 
 import javax.xml.XMLConstants;
 import javax.xml.bind.JAXBContext;
@@ -68,6 +69,22 @@ class SiteDataClient {
    * expectations.
    */
   private static final Schema schema;
+
+  // Unused character range 1 : &#00; - &#08;
+  private static final String UNUSED_CHAR_RANGE1 = "(0[0-8])";
+  // Unused character range 2 : &#11; - &#12;
+  private static final String UNUSED_CHAR_RANGE2 = "(1[12])";
+  // Unused character range 3 : &#14; - &#31;
+  private static final String UNUSED_CHAR_RANGE3 = "(1[4-9]|2[0-9]|3[01])";
+  // Unused character range 4 : &#127; - &#159;
+  private static final String UNUSED_CHAR_RANGE4 = "(1(2[7-9]|[3-5][0-9]))";
+
+  /**
+   * Pattern to match unused character code ranges causing XML parsing to fail.
+   */
+  private static final Pattern BINARY_UNUSED_CHAR_PATTERN 
+      = Pattern.compile("&#(" + UNUSED_CHAR_RANGE1 + "|" + UNUSED_CHAR_RANGE2 
+          + "|" + UNUSED_CHAR_RANGE3 + "|" + UNUSED_CHAR_RANGE4 + ");");
 
   static {
     try {
@@ -292,12 +309,13 @@ class SiteDataClient {
   @VisibleForTesting
   <T> T jaxbParse(String xml, Class<T> klass)
       throws XmlProcessingException {
-    if (xml.contains("&#31;")) {
-      // Unit separator is sometimes present in ows_MetaInfo of the response
-      // XML, but it prevents the XML from being parsed. Since we don't actually
-      // care about MetaInfo we strip it out.
-      xml = xml.replace("&#31;", "");
-    }
+
+    // Unsupported character codes such as Unit separator &#31; sometimes 
+    // present in response XML, but it prevents the XML from being parsed. 
+    // Since GSA can not handle these characters we strip it out.
+
+    xml = BINARY_UNUSED_CHAR_PATTERN.matcher(xml).replaceAll("");
+
     Source source = new StreamSource(new StringReader(xml));
     try {
       Unmarshaller unmarshaller = jaxbContext.createUnmarshaller();

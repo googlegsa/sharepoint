@@ -2216,6 +2216,35 @@ public class SharePointAdaptorTest {
   }
 
   @Test
+  public void testUnusedCharCodeStripping() throws Exception {
+    SiteDataClient client = new SiteDataClient(
+        new UnsupportedSiteData(), true);
+    String xml = loadTestString("sites-SiteCollection-Lists-CustomList-1-f.xml")
+        .replace("<Folder>",
+            "<Folder xmlns='http://schemas.microsoft.com/sharepoint/soap/'>")
+        .replace("MetaInfo='2;#'", "MetaInfo='2;#&#00;'");
+    assertNotNull(client.jaxbParse(xml, ItemData.class));
+    
+    xml = loadTestString("sites-SiteCollection-Lists-CustomList-1-f.xml")
+        .replace("<Folder>",
+            "<Folder xmlns='http://schemas.microsoft.com/sharepoint/soap/'>")
+        .replace("MetaInfo='2;#'", "MetaInfo='2;#&#11;'");
+    assertNotNull(client.jaxbParse(xml, ItemData.class));
+    
+    xml = loadTestString("sites-SiteCollection-Lists-CustomList-1-f.xml")
+        .replace("<Folder>",
+            "<Folder xmlns='http://schemas.microsoft.com/sharepoint/soap/'>")
+        .replace("MetaInfo='2;#'", "MetaInfo='2;#&#21;'");
+    assertNotNull(client.jaxbParse(xml, ItemData.class));
+    
+    xml = loadTestString("sites-SiteCollection-Lists-CustomList-1-f.xml")
+        .replace("<Folder>",
+            "<Folder xmlns='http://schemas.microsoft.com/sharepoint/soap/'>")
+        .replace("MetaInfo='2;#'", "MetaInfo='2;#&#128;'");
+    assertNotNull(client.jaxbParse(xml, ItemData.class));
+  }
+
+  @Test
   public void testParseUnknownXml() throws Exception {
     SiteDataClient client = new SiteDataClient(
         new UnsupportedSiteData(), true);
