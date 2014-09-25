@@ -401,6 +401,63 @@ public class SharePointAdaptorTest {
     adaptor.destroy();
     adaptor = null;
   }
+  
+  @Test
+  public void testAdaptorWithUserAgentConfiguration() throws Exception {
+    Map<String, Object> goldenRequestContext;
+    Map<String, Object> goldenRequestContextAuth;
+    {
+      Map<String, Object> tmp = new HashMap<String, Object>();
+      tmp.put("com.sun.xml.internal.ws.connect.timeout", 30000);
+      tmp.put("com.sun.xml.internal.ws.request.timeout", 180000);
+      tmp.put("com.sun.xml.ws.connect.timeout", 30000);
+      tmp.put("com.sun.xml.ws.request.timeout", 180000);
+      tmp.put(MessageContext.HTTP_REQUEST_HEADERS, Collections.singletonMap(
+          "User-Agent", Collections.singletonList("GSASharePointAdaptor")));
+      goldenRequestContextAuth 
+          = Collections.unmodifiableMap(new HashMap<String, Object>(tmp));
+      // Disabling forms authentication and add user agent
+      Map<String, List<String>> headers = new HashMap<String, List<String>>();
+      headers.put("X-FORMS_BASED_AUTH_ACCEPTED",
+          Collections.singletonList("f"));
+      headers.put("User-Agent",
+          Collections.singletonList("GSASharePointAdaptor"));
+      tmp.put(MessageContext.HTTP_REQUEST_HEADERS,
+          Collections.unmodifiableMap(headers));
+      goldenRequestContext = Collections.unmodifiableMap(tmp);
+    }
+
+    MockSiteData siteDataSoap = new MockSiteData()
+        .register(VS_CONTENT_EXCHANGE).register(CD_CONTENT_EXCHANGE);
+    MockPeopleSoap peopleSoap = new MockPeopleSoap();
+    MockUserGroupSoap userGroupSoap = new MockUserGroupSoap(null);
+    final MockAuthenticationSoap authenticationSoap 
+        = new MockAuthenticationSoap();
+    SoapFactory siteDataFactory = MockSoapFactory.blank()
+        .endpoint(VS_ENDPOINT, siteDataSoap)
+        .endpoint("http://localhost:1/_vti_bin/People.asmx", peopleSoap)
+        .endpoint("http://localhost:1/_vti_bin/UserGroup.asmx", userGroupSoap);
+
+    adaptor = new SharePointAdaptor(siteDataFactory,
+        new UnsupportedHttpClient(), executorFactory,
+        new MockAuthenticationClientFactoryForms() {
+          @Override
+          public AuthenticationSoap newSharePointFormsAuthentication(
+              String virtualServer, String username, String password)
+              throws IOException {
+            return authenticationSoap;
+          }
+        });    
+    config.overrideKey("adaptor.userAgent", "GSASharePointAdaptor");
+    adaptor.init(new MockAdaptorContext(config, pusher));
+    assertEquals(goldenRequestContext, siteDataSoap.getRequestContext());
+    assertEquals(goldenRequestContext, peopleSoap.getRequestContext());
+    assertEquals(goldenRequestContext, userGroupSoap.getRequestContext());
+    assertEquals(goldenRequestContextAuth,
+        authenticationSoap.getRequestContext());
+    adaptor.destroy();
+    adaptor = null;
+  }
 
   @Test
   public void testAdaptorInitWithAdfs() throws Exception {
@@ -1245,7 +1302,7 @@ public class SharePointAdaptorTest {
         new HttpClient() {
       @Override
       public FileInfo issueGetRequest(URL url,
-          List<String> authenticationCookies) {
+          List<String> authenticationCookies, String adaptorUserAgent) {
         assertEquals(
           "http://localhost:1/sites/SiteCollection/Lists/Custom%20List/"
             + "Attachments/2/1046000.pdf",
@@ -1260,7 +1317,8 @@ public class SharePointAdaptorTest {
 
       @Override
       public String getRedirectLocation(URL url,
-          List<String> authenticationCookies) throws IOException {
+          List<String> authenticationCookies, String adaptorUserAgent)
+          throws IOException {
         assertEquals(
             "http://localhost:1/sites/SiteCollection/Lists/Custom%20List",
             url.toString());
@@ -1315,13 +1373,14 @@ public class SharePointAdaptorTest {
         new HttpClient() {
       @Override
       public FileInfo issueGetRequest(URL url,
-          List<String> authenticationCookies) {
+          List<String> authenticationCookies, String adaptorUserAgent) {
         throw new UnsupportedOperationException();
       }
 
       @Override
       public String getRedirectLocation(URL url,
-          List<String> authenticationCookies) throws IOException {
+          List<String> authenticationCookies, String adaptorUserAgent)
+          throws IOException {
         assertEquals(
             "http://localhost:1/sites/SiteCollection/Lists/Custom%20List",
             url.toString());
@@ -1359,7 +1418,7 @@ public class SharePointAdaptorTest {
         new HttpClient() {
       @Override
       public FileInfo issueGetRequest(URL url,
-          List<String> authenticationCookies) {
+          List<String> authenticationCookies, String adaptorUserAgent) {
         InputStream contents = new ByteArrayInputStream(new byte[0]);
         List<String> headers = Arrays.asList(
             "Content-Type", "application/vnd.ms-excel.12");
@@ -1368,7 +1427,8 @@ public class SharePointAdaptorTest {
 
       @Override
       public String getRedirectLocation(URL url,
-          List<String> authenticationCookies) throws IOException {
+          List<String> authenticationCookies, String adaptorUserAgent)
+          throws IOException {
         assertEquals(
             "http://localhost:1/sites/SiteCollection/Lists/Custom%20List",
             url.toString());
@@ -2315,13 +2375,14 @@ public class SharePointAdaptorTest {
   private static class UnsupportedHttpClient implements HttpClient {
     @Override
     public FileInfo issueGetRequest(URL url,
-        List<String> authenticationCookies) {
+        List<String> authenticationCookies, String adaptorUserAgent) {
       throw new UnsupportedOperationException();
     }
 
     @Override
     public String getRedirectLocation(URL url,
-        List<String> authenticationCookies) throws IOException {
+        List<String> authenticationCookies, String adaptorUserAgent)
+        throws IOException {
       throw new UnsupportedOperationException();
     }
   }

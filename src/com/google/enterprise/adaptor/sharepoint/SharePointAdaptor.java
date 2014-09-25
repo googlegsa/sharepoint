@@ -358,6 +358,8 @@ public class SharePointAdaptor extends AbstractAdaptor
   private int feedMaxUrls;
   private long maxIndexableSize;
   
+  private String adaptorUserAgent;
+  
   private ScheduledThreadPoolExecutor scheduledExecutor;
   private String defaultNamespace;
   /** Authenticator instance that authenticates with SP. */
@@ -461,6 +463,9 @@ public class SharePointAdaptor extends AbstractAdaptor
     config.addKey("sharepoint.sts.login", "");
     // Set this to true when using Live authentication.
     config.addKey("sharepoint.useLiveAuthentication", "false");
+    // Set this to specific user-agent value to be used by adaptor while making
+    // request to SharePoint
+    config.addKey("adaptor.userAgent", "");
   }
 
   @Override
@@ -489,7 +494,7 @@ public class SharePointAdaptor extends AbstractAdaptor
         config.getValue("adaptor.docHeaderTimeoutSecs")) * 1000;
     readTimeOutMillis = Integer.parseInt(
         config.getValue("adaptor.docContentTimeoutSecs")) * 1000;
-
+    adaptorUserAgent = config.getValue("adaptor.userAgent").trim();
     log.log(Level.CONFIG, "VirtualServer: {0}", virtualServer);
     log.log(Level.CONFIG, "Username: {0}", username);
     log.log(Level.CONFIG, "Password: {0}", password);
@@ -498,6 +503,8 @@ public class SharePointAdaptor extends AbstractAdaptor
     log.log(Level.CONFIG, "STS Realm: {0}", stsrealm);
     log.log(Level.CONFIG, "Use Live Authentication: {0}",
         useLiveAuthentication);
+    log.log(Level.CONFIG, "Adaptor user agent: {0}",
+        adaptorUserAgent);
 
     ntlmAuthenticator = new NtlmAuthenticator(username, password);
     // Unfortunately, this is a JVM-wide modification.
@@ -533,6 +540,11 @@ public class SharePointAdaptor extends AbstractAdaptor
     } else {    
       AuthenticationSoap authenticationSoap = authenticationClientFactory
           .newSharePointFormsAuthentication(virtualServer, username, password);
+      if (!"".equals(adaptorUserAgent)) {
+        ((BindingProvider) authenticationSoap).getRequestContext().put(
+            MessageContext.HTTP_REQUEST_HEADERS, Collections.singletonMap(
+                "User-Agent", Collections.singletonList(adaptorUserAgent)));
+      }
       addSocketTimeoutConfiguration((BindingProvider) authenticationSoap);
       authenticationHandler = new SharePointFormsAuthenticationHandler
           .Builder(username, password, scheduledExecutor, authenticationSoap)
@@ -1106,9 +1118,9 @@ public class SharePointAdaptor extends AbstractAdaptor
           .toString();
       PeopleSoap peopleSoap = soapFactory.newPeople(endpointPeople);
 
-      addFormsAuthenticationCookies((BindingProvider) siteDataSoap);
-      addFormsAuthenticationCookies((BindingProvider) userGroupSoap);
-      addFormsAuthenticationCookies((BindingProvider) peopleSoap);
+      addRequestHeaders((BindingProvider) siteDataSoap);
+      addRequestHeaders((BindingProvider) userGroupSoap);
+      addRequestHeaders((BindingProvider) peopleSoap);
 
       addSocketTimeoutConfiguration((BindingProvider) siteDataSoap);
       addSocketTimeoutConfiguration((BindingProvider) userGroupSoap);
@@ -1123,16 +1135,28 @@ public class SharePointAdaptor extends AbstractAdaptor
     return siteAdaptor;
   }
   
-  private void addFormsAuthenticationCookies(BindingProvider port) {
+  private void addRequestHeaders(BindingProvider port) {
+    Map<String, List<String>> headers = new HashMap<String, List<String>>();
+    // Add forms authentication cookies or disable forms authentication
     if (authenticationHandler.getAuthenticationCookies().isEmpty()) {
-      // JAX-WS RT 2.1.4 doesn't handle headers correctly and always assumes the
-      // list contains precisely one entry, so we work around it here.
-      disableFormsAuthentication(port);    
-      return;
+      // To access a SharePoint site that uses multiple authentication 
+      // providers by using a set of Windows credentials, need to add
+      // "X-FORMS_BASED_AUTH_ACCEPTED" request header to web service request 
+      // and set its value to "f"
+      // http://msdn.microsoft.com/en-us/library/hh124553(v=office.14).aspx
+      headers.put("X-FORMS_BASED_AUTH_ACCEPTED",
+          Collections.singletonList("f"));
+    } else {
+      headers.put("Cookie", authenticationHandler.getAuthenticationCookies()); 
     }
-    port.getRequestContext().put(MessageContext.HTTP_REQUEST_HEADERS,
-        Collections.singletonMap("Cookie", 
-            authenticationHandler.getAuthenticationCookies()));
+    
+    // Set User-Agent value
+    if (!"".equals(adaptorUserAgent)) {
+      headers.put("User-Agent", Collections.singletonList(adaptorUserAgent));
+    }
+    
+    // Set request headers
+    port.getRequestContext().put(MessageContext.HTTP_REQUEST_HEADERS, headers);    
   }
   
   private void addSocketTimeoutConfiguration(BindingProvider port) {
@@ -1144,13 +1168,7 @@ public class SharePointAdaptor extends AbstractAdaptor
         socketTimeoutMillis);
     port.getRequestContext().put("com.sun.xml.ws.request.timeout",
         readTimeOutMillis);
-  }
-
-  private void disableFormsAuthentication(BindingProvider port) {
-    port.getRequestContext().put(MessageContext.HTTP_REQUEST_HEADERS, 
-        Collections.singletonMap("X-FORMS_BASED_AUTH_ACCEPTED", 
-          Collections.singletonList("f")));
-  }
+  }  
 
   static URI spUrlToUri(String url) throws IOException {
     // Because SP is silly, the path of the URI is unencoded, but the rest of
@@ -2130,7 +2148,7 @@ public class SharePointAdaptor extends AbstractAdaptor
           new Object[] {request, response});
       URI displayUrl = docIdToUri(request.getDocId());
       FileInfo fi = httpClient.issueGetRequest(displayUrl.toURL(),
-          authenticationHandler.getAuthenticationCookies());
+          authenticationHandler.getAuthenticationCookies(), adaptorUserAgent);
       if (fi == null) {
         response.respondNotFound();
         return;
@@ -2466,7 +2484,7 @@ public class SharePointAdaptor extends AbstractAdaptor
       }
       String listRedirectLocation = httpClient.getRedirectLocation(
           spUrlToUri(listBase).toURL(),
-          authenticationHandler.getAuthenticationCookies());
+          authenticationHandler.getAuthenticationCookies(), adaptorUserAgent);
       // if listRedirectLocation is null, use listBase as list url. This is
       // possible if list has no views defined.
       // if listRedirectLocation is not null, it should begin with listBase
@@ -2828,17 +2846,18 @@ public class SharePointAdaptor extends AbstractAdaptor
      *
      * @return {@code null} if not found, {@code FileInfo} instance otherwise
      */
-    public FileInfo issueGetRequest(URL url, List<String> authenticationCookies)
-        throws IOException;
+    public FileInfo issueGetRequest(URL url, List<String> authenticationCookies,
+        String adaptorUserAgent) throws IOException;
     
     public String getRedirectLocation(URL url,
-        List<String> authenticationCookies) throws IOException;
+        List<String> authenticationCookies, String adaptorUserAgent)
+        throws IOException;
   }
 
   static class HttpClientImpl implements HttpClient {
     @Override
-    public FileInfo issueGetRequest(URL url, List<String> authenticationCookies)
-        throws IOException {
+    public FileInfo issueGetRequest(URL url, List<String> authenticationCookies,
+        String adaptorUserAgent) throws IOException {
       // Handle Unicode. Java does not properly encode the GET.
       try {
         url = new URL(url.toURI().toASCIIString());
@@ -2853,6 +2872,9 @@ public class SharePointAdaptor extends AbstractAdaptor
         for (String cookie : authenticationCookies) {
           conn.addRequestProperty("Cookie", cookie);
         }
+      }
+      if (!"".equals(adaptorUserAgent)) {
+        conn.addRequestProperty("User-Agent", adaptorUserAgent);
       }
       conn.setDoInput(true);
       conn.setDoOutput(false);
@@ -2898,7 +2920,8 @@ public class SharePointAdaptor extends AbstractAdaptor
 
     @Override
     public String getRedirectLocation(URL url,
-        List<String> authenticationCookies) throws IOException {
+        List<String> authenticationCookies, String adaptorUserAgent)
+        throws IOException {
 
       // Handle Unicode. Java does not properly encode the GET.
       try {
@@ -2914,6 +2937,9 @@ public class SharePointAdaptor extends AbstractAdaptor
           for (String cookie : authenticationCookies) {
             conn.addRequestProperty("Cookie", cookie);
           }
+        }
+        if (!"".equals(adaptorUserAgent)) {
+          conn.addRequestProperty("User-Agent", adaptorUserAgent);
         }
         conn.setDoInput(true);
         conn.setDoOutput(false);

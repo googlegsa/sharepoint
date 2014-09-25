@@ -665,7 +665,8 @@ public class SharePointUserProfileAdaptorTest {
     }
     @Override
     public UserProfileServiceWS newUserProfileService(String endpoint,
-        String endpointChangeService, List<String> cookies) {
+        String endpointChangeService,
+        Map<String, List<String>> requestHeaders) {
       return proxy;
     }
 

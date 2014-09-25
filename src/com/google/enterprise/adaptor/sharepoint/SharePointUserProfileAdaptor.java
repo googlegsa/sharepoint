@@ -159,7 +159,8 @@ public class SharePointUserProfileAdaptor extends AbstractAdaptor
   private ScheduledThreadPoolExecutor scheduledExecutor 
       = new ScheduledThreadPoolExecutor(1);
 
-  private FormsAuthenticationHandler authenticationHandler;
+  private FormsAuthenticationHandler authenticationHandler;  
+  private String adaptorUserAgent;
 
   public static void main(String[] args) {
     AbstractAdaptor.main(new SharePointUserProfileAdaptor(), args);
@@ -219,6 +220,9 @@ public class SharePointUserProfileAdaptor extends AbstractAdaptor
     config.addKey("sharepoint.sts.login", "");
     // Set this to true when using Live authentication.
     config.addKey("sharepoint.useLiveAuthentication", "false");
+    // Set this to specific user-agent value to be used by adaptor while making
+    // request to SharePoint
+    config.addKey("adaptor.userAgent", "");
   }
 
   @Override
@@ -239,6 +243,7 @@ public class SharePointUserProfileAdaptor extends AbstractAdaptor
     String stsrealm = config.getValue("sharepoint.sts.realm");
     boolean useLiveAuthentication = Boolean.parseBoolean(
         config.getValue("sharepoint.useLiveAuthentication"));
+    adaptorUserAgent = config.getValue("adaptor.userAgent").trim();
 
     socketTimeoutMillis = Integer.parseInt(
         config.getValue("adaptor.docHeaderTimeoutSecs")) * 1000;
@@ -253,6 +258,8 @@ public class SharePointUserProfileAdaptor extends AbstractAdaptor
     log.log(Level.CONFIG, "STS Realm: {0}", stsrealm);
     log.log(Level.CONFIG, "Use Live Authentication: {0}",
         useLiveAuthentication);
+    log.log(Level.CONFIG, "Adaptor user agent: {0}",
+        adaptorUserAgent);
     
     mySiteHost = config.getValue("profile.mysitehost");
     log.log(Level.CONFIG, "mySiteHost: {0}", mySiteHost);
@@ -298,6 +305,11 @@ public class SharePointUserProfileAdaptor extends AbstractAdaptor
     } else {    
       AuthenticationSoap authenticationSoap = authenticationClientFactory
           .newSharePointFormsAuthentication(virtualServer, username, password);
+      if (!"".equals(adaptorUserAgent)) {
+        ((BindingProvider) authenticationSoap).getRequestContext().put(
+            MessageContext.HTTP_REQUEST_HEADERS, Collections.singletonMap(
+                "User-Agent", Collections.singletonList(adaptorUserAgent)));
+      }
       addSocketTimeoutConfiguration((BindingProvider) authenticationSoap);
       authenticationHandler = new SharePointFormsAuthenticationHandler
           .Builder(username, password, scheduledExecutor, authenticationSoap)
@@ -338,11 +350,29 @@ public class SharePointUserProfileAdaptor extends AbstractAdaptor
     }
     log.log(Level.FINEST, "Initializing User profile Service Client for {0}",
         virtualServer + USER_PROFILE_SERVICE_ENDPOINT);
+    //Construct request headers
+    Map<String, List<String>> headers = new HashMap<String, List<String>>();
+    // Add forms authentication cookies or disable forms authentication
+    if (authenticationHandler.getAuthenticationCookies().isEmpty()) {
+      // To access a SharePoint site that uses multiple authentication 
+      // providers by using a set of Windows credentials, need to add
+      // "X-FORMS_BASED_AUTH_ACCEPTED" request header to web service request 
+      // and set its value to "f"
+      // http://msdn.microsoft.com/en-us/library/hh124553(v=office.14).aspx
+      headers.put("X-FORMS_BASED_AUTH_ACCEPTED",
+          Collections.singletonList("f"));
+    } else {
+      headers.put("Cookie", authenticationHandler.getAuthenticationCookies()); 
+    }
+    
+    // Set User-Agent value
+    if (!"".equals(adaptorUserAgent)) {
+      headers.put("User-Agent", Collections.singletonList(adaptorUserAgent));
+    }
     userProfileServiceClient = new UserProfileServiceClient(
         userProfileServiceFactory.newUserProfileService(
             virtualServer + USER_PROFILE_SERVICE_ENDPOINT,
-            virtualServer + USER_PROFILE_CHANGE_SERVICE_ENDPOINT,
-            authenticationHandler.getAuthenticationCookies()));
+            virtualServer + USER_PROFILE_CHANGE_SERVICE_ENDPOINT, headers));
     userProfileChangeToken =
         userProfileServiceClient.userProfileServiceWS.getCurrentChangeToken();
   }
@@ -410,14 +440,14 @@ public class SharePointUserProfileAdaptor extends AbstractAdaptor
   @VisibleForTesting
   interface UserProfileServiceFactory {
     public UserProfileServiceWS newUserProfileService(String endpoint,
-        String endpointChangeService, List<String> cookies);
+        String endpointChangeService, Map<String, List<String>> requestHeaders);
   }
 
   private static class UserProfileServiceFactoryImpl
       implements UserProfileServiceFactory {
     private final Service userProfileServiceSoap;
     private final Service userProfileChangeServiceSoap;
-
+    
     public UserProfileServiceFactoryImpl() {
       URL urlUserProfileService =
           UserProfileServiceSoap.class.getResource("UserProfileService.wsdl");
@@ -434,7 +464,8 @@ public class SharePointUserProfileAdaptor extends AbstractAdaptor
 
     @Override
     public UserProfileServiceWS newUserProfileService(String endpoint,
-        String endpointChangeService, List<String> cookies) {
+        String endpointChangeService,
+        Map<String, List<String>> requestHeaders) {
       EndpointReference endpointRef = new W3CEndpointReferenceBuilder()
           .address(endpoint).build();
       EndpointReference endpointChangeRef = new W3CEndpointReferenceBuilder()
@@ -446,10 +477,10 @@ public class SharePointUserProfileAdaptor extends AbstractAdaptor
           = userProfileChangeServiceSoap.getPort(
               endpointChangeRef, UserProfileChangeServiceSoap.class);
    
-      addFormsAuthenticationCookies(
-          (BindingProvider) inUserProfileServiceSoap, cookies);
-      addFormsAuthenticationCookies(
-          (BindingProvider) inUserProfileChangeServiceSoap, cookies);
+      ((BindingProvider) inUserProfileServiceSoap).getRequestContext().put(
+          MessageContext.HTTP_REQUEST_HEADERS, requestHeaders);
+      ((BindingProvider) inUserProfileChangeServiceSoap).getRequestContext()
+          .put(MessageContext.HTTP_REQUEST_HEADERS, requestHeaders);     
       addSocketTimeoutConfiguration((BindingProvider) inUserProfileServiceSoap);
       addSocketTimeoutConfiguration(
           (BindingProvider) inUserProfileChangeServiceSoap);
@@ -458,19 +489,23 @@ public class SharePointUserProfileAdaptor extends AbstractAdaptor
           inUserProfileChangeServiceSoap);
     }
     
-    private void addFormsAuthenticationCookies(BindingProvider port, 
-        List<String> cookies) {
+    private void addRequestHeaders(BindingProvider port, 
+        List<String> cookies, String adaptorUserAgent) {
+      Map<String, List<String>> headers = new HashMap<String, List<String>>();
       if (cookies.isEmpty()) {
-        disableFormsAuthentication(port);
+        headers.put("X-FORMS_BASED_AUTH_ACCEPTED",
+            Collections.singletonList("f"));
+      } else {
+        headers.put("Cookie", cookies);
       }
-      port.getRequestContext().put(MessageContext.HTTP_REQUEST_HEADERS,
-          Collections.singletonMap("Cookie", cookies));
-    }
-    
-    private void disableFormsAuthentication(BindingProvider port) {
-      port.getRequestContext().put(MessageContext.HTTP_REQUEST_HEADERS, 
-          Collections.singletonMap(
-            "X-FORMS_BASED_AUTH_ACCEPTED", Collections.singletonList("f")));
+      
+      // Set User-Agent value
+      if (!"".equals(adaptorUserAgent)) {
+        headers.put("User-Agent", Collections.singletonList(adaptorUserAgent));
+      }
+      // Set request headers
+      port.getRequestContext().put(
+          MessageContext.HTTP_REQUEST_HEADERS, headers);
     }
   }
 
