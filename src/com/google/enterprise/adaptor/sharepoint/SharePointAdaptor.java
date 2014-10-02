@@ -327,6 +327,8 @@ public class SharePointAdaptor extends AbstractAdaptor
    * The URL of the top-level Virtual Server that we use to bootstrap our
    * SP instance knowledge.
    */
+  // TODO : Rename virtualServer variable to sharePointUrl to remove ambiguity
+  // about its meaning when adaptor is configured for site collection only mode.
   private String virtualServer;
   /**
    * Cache that provides immutable {@link MemberIdMapping} instances for the
@@ -344,9 +346,10 @@ public class SharePointAdaptor extends AbstractAdaptor
         .expireAfterWrite(45, TimeUnit.MINUTES)
         .build(new SiteUserCacheLoader());
   private RareModificationCache rareModCache;
-  /** Map from Content Database GUID to last known Change Token for that DB. */
-  private final ConcurrentSkipListMap<String, String> contentDatabaseChangeId
-      = new ConcurrentSkipListMap<String, String>();
+  /** Map from SharePoint Object GUID to last known Change Token for that 
+   * object. */
+  private final ConcurrentSkipListMap<String, String> 
+      objectGuidToChangeIdMapping = new ConcurrentSkipListMap<String, String>();
   private final SoapFactory soapFactory;
   /** Client for initiating raw HTTP connections. */
   private final HttpClient httpClient;
@@ -369,6 +372,7 @@ public class SharePointAdaptor extends AbstractAdaptor
    */
   private boolean isSp2007;
   private NtlmAuthenticator ntlmAuthenticator;
+  private boolean siteCollectionOnly = false;
   
   private FormsAuthenticationHandler authenticationHandler;
   private static final TimeZone gmt = TimeZone.getTimeZone("GMT");
@@ -466,6 +470,8 @@ public class SharePointAdaptor extends AbstractAdaptor
     // Set this to specific user-agent value to be used by adaptor while making
     // request to SharePoint
     config.addKey("adaptor.userAgent", "");
+    // Set this to true when you want to index only single site collection
+    config.addKey("sharepoint.siteCollectionOnly", "");
   }
 
   @Override
@@ -495,6 +501,14 @@ public class SharePointAdaptor extends AbstractAdaptor
     readTimeOutMillis = Integer.parseInt(
         config.getValue("adaptor.docContentTimeoutSecs")) * 1000;
     adaptorUserAgent = config.getValue("adaptor.userAgent").trim();
+
+    if (!"".equals(config.getValue("sharepoint.siteCollectionOnly").trim())) {
+      siteCollectionOnly = Boolean.parseBoolean(
+          config.getValue("sharepoint.siteCollectionOnly"));
+    } else {
+      siteCollectionOnly = virtualServer.split("/").length > 3;
+    }    
+    
     log.log(Level.CONFIG, "VirtualServer: {0}", virtualServer);
     log.log(Level.CONFIG, "Username: {0}", username);
     log.log(Level.CONFIG, "Password: {0}", password);
@@ -505,11 +519,20 @@ public class SharePointAdaptor extends AbstractAdaptor
         useLiveAuthentication);
     log.log(Level.CONFIG, "Adaptor user agent: {0}",
         adaptorUserAgent);
+    log.log(Level.CONFIG, "Run in Site Collection Only mode: {0}",
+        siteCollectionOnly);
+
+    if (siteCollectionOnly) {
+      log.info("Adaptor is configured to use site collection only mode. "
+          + "ACLs and anonymous access settings at web application policy "
+          + "level will be ignored.");
+    }
 
     ntlmAuthenticator = new NtlmAuthenticator(username, password);
     // Unfortunately, this is a JVM-wide modification.
     Authenticator.setDefault(ntlmAuthenticator);
     URL virtualServerUrl = new URL(virtualServer);
+    String rootUrl = getRootUrl(virtualServerUrl.toURI());
     ntlmAuthenticator.addPermitForHost(virtualServerUrl);
     scheduledExecutor = new ScheduledThreadPoolExecutor(1);
     String authenticationType;
@@ -520,7 +543,7 @@ public class SharePointAdaptor extends AbstractAdaptor
             + "and password.");
       }
       SamlHandshakeManager manager = authenticationClientFactory
-          .newLiveAuthentication(virtualServer, username, password);
+          .newLiveAuthentication(rootUrl, username, password);
       authenticationHandler = new SamlAuthenticationHandler.Builder(username,
           password, scheduledExecutor, manager).build();     
       authenticationType = "Live";
@@ -591,6 +614,12 @@ public class SharePointAdaptor extends AbstractAdaptor
           vsAdaptor.getSiteDataClient();
       rareModCache
           = new RareModificationCache(virtualServerSiteDataClient, executor);
+
+      if (siteCollectionOnly) {
+        // Test out configuration for site collection.
+        Site site = virtualServerSiteDataClient.getContentSite();
+        return;
+      }
 
       // Test out configuration.
       VirtualServer vs = virtualServerSiteDataClient.getContentVirtualServer();
@@ -806,10 +835,36 @@ public class SharePointAdaptor extends AbstractAdaptor
   public void getDocIds(DocIdPusher pusher) throws InterruptedException,
       IOException {
     log.entering("SharePointAdaptor", "getDocIds", pusher);
-    pusher.pushDocIds(Arrays.asList(virtualServerDocId));
-
+    if (siteCollectionOnly) {
+      getDocIdsSiteCollectionOnly(pusher);
+    } else {
+      getDocIdsVirtualServer(pusher);
+    } 
+    log.exiting("SharePointAdaptor", "getDocIds");
+  }
+  
+  private void getDocIdsSiteCollectionOnly(DocIdPusher pusher)
+      throws InterruptedException,IOException {
+    log.entering("SharePointAdaptor", "getDocIdsSiteCollectionOnly", pusher);
+    SiteAdaptor scAdaptor = getSiteAdaptor(virtualServer, virtualServer);
+    SiteDataClient vsClient = scAdaptor.getSiteDataClient();
+    Site site = vsClient.getContentSite();
+    DocId siteCollectionDocId = scAdaptor.encodeDocId(
+        site.getMetadata().getURL());
+    pusher.pushDocIds(Arrays.asList(siteCollectionDocId));
+    Map<GroupPrincipal, Collection<Principal>> groupDefs 
+        = new HashMap<GroupPrincipal, Collection<Principal>>();
+    groupDefs.putAll(scAdaptor.computeMembersForGroups(site.getGroups()));
+    pusher.pushGroupDefinitions(groupDefs, false);
+    log.exiting("SharePointAdaptor", "getDocIdsSiteCollectionOnly");
+  }
+  
+  private void getDocIdsVirtualServer(DocIdPusher pusher)
+      throws InterruptedException,IOException {
+    log.entering("SharePointAdaptor", "getDocIdsVirtualServer", pusher);
     SiteAdaptor vsAdaptor = getSiteAdaptor(virtualServer, virtualServer);
     SiteDataClient vsClient = vsAdaptor.getSiteDataClient();
+    pusher.pushDocIds(Arrays.asList(virtualServerDocId));
     VirtualServer vs = vsClient.getContentVirtualServer();
     Map<GroupPrincipal, Collection<Principal>> defs
         = new HashMap<GroupPrincipal, Collection<Principal>>();
@@ -852,13 +907,24 @@ public class SharePointAdaptor extends AbstractAdaptor
       }
     }
     pusher.pushGroupDefinitions(defs, false);
-    log.exiting("SharePointAdaptor", "getDocIds");
+    log.exiting("SharePointAdaptor", "getDocIdsVirtualServer");
   }
 
   @Override
   public void getModifiedDocIds(DocIdPusher pusher)
       throws InterruptedException {
     log.entering("SharePointAdaptor", "getModifiedDocIds", pusher);
+    if (siteCollectionOnly) {
+      getModifiedDocIdsSiteCollection(pusher);
+    } else {
+      getModifiedDocIdsVirtualServer(pusher);
+    }    
+    log.exiting("SharePointAdaptor", "getModifiedDocIds", pusher);
+  }
+  
+  private void getModifiedDocIdsVirtualServer(DocIdPusher pusher)
+      throws InterruptedException {
+    log.entering("SharePointAdaptor", "getModifiedDocIdsVirtualServer", pusher);
     SiteAdaptor siteAdaptor;
     try {
       siteAdaptor = getSiteAdaptor(virtualServer, virtualServer);
@@ -881,7 +947,7 @@ public class SharePointAdaptor extends AbstractAdaptor
     if (vs == null) {
       // Retrieving list of databases failed, but we can continue without it.
       discoveredContentDatabases
-        = new HashSet<String>(contentDatabaseChangeId.keySet());
+        = new HashSet<String>(objectGuidToChangeIdMapping.keySet());
     } else {
       discoveredContentDatabases = new HashSet<String>();
       if (vs.getContentDatabases() != null) {
@@ -892,7 +958,7 @@ public class SharePointAdaptor extends AbstractAdaptor
       }
     }
     Set<String> knownContentDatabases
-        = new HashSet<String>(contentDatabaseChangeId.keySet());
+        = new HashSet<String>(objectGuidToChangeIdMapping.keySet());
     Set<String> removedContentDatabases
         = new HashSet<String>(knownContentDatabases);
     removedContentDatabases.removeAll(discoveredContentDatabases);
@@ -910,7 +976,7 @@ public class SharePointAdaptor extends AbstractAdaptor
       pusher.pushRecords(Collections.singleton(record));
     }
     for (String contentDatabase : removedContentDatabases) {
-      contentDatabaseChangeId.remove(contentDatabase);
+      objectGuidToChangeIdMapping.remove(contentDatabase);
     }
     for (String contentDatabase : newContentDatabases) {
       ContentDatabase cd;
@@ -923,12 +989,12 @@ public class SharePointAdaptor extends AbstractAdaptor
         continue;
       }
       String changeId = cd.getMetadata().getChangeId();
-      contentDatabaseChangeId.put(contentDatabase, changeId);
+      objectGuidToChangeIdMapping.put(contentDatabase, changeId);
     }
     for (String contentDatabase : updatedContentDatabases) {
-      String changeId = contentDatabaseChangeId.get(contentDatabase);
+      String changeId = objectGuidToChangeIdMapping.get(contentDatabase);
       if (changeId == null) {
-        // The item was removed from contentDatabaseChangeId, so apparently
+        // The item was removed from objectGuidToChangeIdMapping, so apparently
         // this database is gone.
         continue;
       }
@@ -953,7 +1019,7 @@ public class SharePointAdaptor extends AbstractAdaptor
             // failed parsing, so we just ignore the failure and continue
             // looping.
           }
-          contentDatabaseChangeId.put(contentDatabase,
+          objectGuidToChangeIdMapping.put(contentDatabase,
               changesPaginator.getCursor());
         }
       } catch (IOException ex) {
@@ -961,6 +1027,16 @@ public class SharePointAdaptor extends AbstractAdaptor
             + contentDatabase, ex);
         // Continue processing. Hope that next time works better.
       }
+      pushIncrementalUpdatesAndGroups(
+          pusher, siteAdaptor, docIds, updatedSiteSecurity);
+      
+    }
+    log.exiting("SharePointAdaptor", "getModifiedDocIdsVirtualServer", pusher);
+  }
+
+  private void pushIncrementalUpdatesAndGroups(DocIdPusher pusher, 
+      SiteAdaptor siteAdaptor, Set<DocId> docIds,
+      Set<String> updatedSiteSecurity) throws InterruptedException {
       List<DocIdPusher.Record> records
           = new ArrayList<DocIdPusher.Record>(docIds.size());
       DocIdPusher.Record.Builder builder
@@ -971,7 +1047,7 @@ public class SharePointAdaptor extends AbstractAdaptor
       }
       pusher.pushRecords(records);
       if (updatedSiteSecurity.isEmpty()) {
-        continue;
+        return;
       }
       Map<GroupPrincipal, Collection<Principal>> groupDefs
           = new HashMap<GroupPrincipal, Collection<Principal>>();
@@ -989,8 +1065,6 @@ public class SharePointAdaptor extends AbstractAdaptor
       }
       pusher.pushGroupDefinitions(groupDefs, false);
     }
-    log.exiting("SharePointAdaptor", "getModifiedDocIds", pusher);
-  }
 
   @VisibleForTesting
   void getModifiedDocIdsContentDatabase(SPContentDatabase changes,
@@ -1005,6 +1079,64 @@ public class SharePointAdaptor extends AbstractAdaptor
       getModifiedDocIdsSite(site, docIds, updatedSiteSecurity);
     }
     log.exiting("SharePointAdaptor", "getModifiedDocIdsContentDatabase");
+  }
+
+  @VisibleForTesting
+  void getModifiedDocIdsSiteCollection(DocIdPusher pusher)
+      throws InterruptedException {
+    SiteAdaptor siteAdaptor;
+    try {
+      siteAdaptor = getSiteAdaptor(virtualServer, virtualServer);
+    } catch (IOException ex) {
+      // The call should never fail, and it is the only IOException-throwing
+      // call that we can't recover from. Handling it this way allows us to
+      // remove IOException from the signature and ensure that we handle the
+      // exception gracefully throughout this method.
+      throw new RuntimeException(ex);
+    }
+
+    SiteDataClient client = siteAdaptor.getSiteDataClient();
+    Site site;
+    try {
+      site = client.getContentSite();
+    } catch (IOException ex) {
+      // If we can't get hold of Site object, we can not proceed with change
+      // detection at Site Collection level. So we gracefully 
+      // handle IO exception here.
+      throw new RuntimeException(ex);
+    }    
+    if (site.getMetadata() == null || site.getMetadata().getID() == null 
+        || site.getMetadata().getChangeId() == null) {
+      log.log(Level.WARNING, 
+          "Invalid Site object. Unable to propcess incremental updates.");
+      return;
+    }
+    String siteId = site.getMetadata().getID();
+    if (!objectGuidToChangeIdMapping.containsKey(siteId)) {
+      objectGuidToChangeIdMapping.put(siteId, site.getMetadata().getChangeId());
+    }
+    
+    Set<DocId> docIds = new HashSet<DocId>();
+    Set<String> updatedSiteSecurity = new HashSet<String>();
+    try {
+      CursorPaginator<SPSite, String> changesPaginator 
+          = client.getChangesSPSite(siteId,
+              objectGuidToChangeIdMapping.get(siteId), isSp2007);
+      while(true) {
+        SPSite changes = changesPaginator.next();
+        if (changes == null) {
+          break;
+        }
+        getModifiedDocIdsSite(changes, docIds, updatedSiteSecurity);
+        objectGuidToChangeIdMapping.put(siteId, changesPaginator.getCursor());
+      }
+    } catch (IOException ex) {
+      log.log(Level.WARNING, "Error getting changes from Site Collection : "
+            + site.getMetadata().getURL(), ex);
+        // Continue processing. Hope that next time works better.
+    }
+    pushIncrementalUpdatesAndGroups(
+        pusher, siteAdaptor, docIds, updatedSiteSecurity);
   }
 
   private void getModifiedDocIdsSite(SPSite changes, Collection<DocId> docIds,
@@ -1662,20 +1794,22 @@ public class SharePointAdaptor extends AbstractAdaptor
           }
           admins.add(principal);
         }
-        response.putNamedResource(SITE_COLLECTION_ADMIN_FRAGMENT,
-            new Acl.Builder()
-              .setEverythingCaseInsensitive()
-              .setPermits(admins)
-              .setInheritFrom(virtualServerDocId)
-              .setInheritanceType(Acl.InheritanceType.PARENT_OVERRIDES)
-              .build());
+        Acl.Builder acl = new Acl.Builder().setEverythingCaseInsensitive()
+            .setPermits(admins)
+            .setInheritanceType(Acl.InheritanceType.PARENT_OVERRIDES);
+        if (!siteCollectionOnly) {
+          acl.setInheritFrom(virtualServerDocId);
+        } else {
+          log.log(Level.INFO, "Not inheriting from Web application policy "
+              + "since adaptor is configured for site collection only mode.");
+        }
+        response.putNamedResource(SITE_COLLECTION_ADMIN_FRAGMENT, acl.build());
       }
 
       boolean allowAnonymousAccess
           = isAllowAnonymousReadForWeb(new CachedWeb(w))
           // Check if anonymous access is denied by web application policy
-          && !isDenyAnonymousAccessOnVirtualServer(
-              rareModCache.getVirtualServer());
+          && (!isDenyAnonymousAccessOnVirtualServer());
 
       if (!allowAnonymousAccess) {
         final boolean includePermissions;
@@ -1788,8 +1922,7 @@ public class SharePointAdaptor extends AbstractAdaptor
       boolean allowAnonymousAccess
           = isAllowAnonymousReadForList(new CachedList(l))
           && isAllowAnonymousPeekForWeb(new CachedWeb(w))
-          && !isDenyAnonymousAccessOnVirtualServer(
-              rareModCache.getVirtualServer());
+          && (!isDenyAnonymousAccessOnVirtualServer());
 
       if (!allowAnonymousAccess) {
         String scopeId
@@ -2080,8 +2213,15 @@ public class SharePointAdaptor extends AbstractAdaptor
       return allowAnonymousRead;
     }
 
-    private boolean isDenyAnonymousAccessOnVirtualServer(
-        CachedVirtualServer vs) {
+    private boolean isDenyAnonymousAccessOnVirtualServer() throws IOException {
+      // Since Adaptor is configured to use Site Collection Only mode we are
+      // ignoring web application policy.
+      if (siteCollectionOnly) {
+        log.fine("Ignoring web application policy acls since adaptor is "
+            + "configured for site collection only mode.");
+        return false;
+      }
+      CachedVirtualServer vs = rareModCache.getVirtualServer();
       if ((LIST_ITEM_MASK & vs.anonymousDenyMask) != 0) {
         return true;
       }
@@ -2122,8 +2262,7 @@ public class SharePointAdaptor extends AbstractAdaptor
       boolean allowAnonymousAccess
           = isAllowAnonymousReadForWeb(w)
           // Check if anonymous access is denied by web application policy
-          && !isDenyAnonymousAccessOnVirtualServer(
-              rareModCache.getVirtualServer());
+          && (!isDenyAnonymousAccessOnVirtualServer());
       if (!allowAnonymousAccess) {
         response.setAcl(new Acl.Builder()
             .setInheritFrom(new DocId(parentId))
@@ -2232,8 +2371,7 @@ public class SharePointAdaptor extends AbstractAdaptor
       boolean allowAnonymousAccess = isAllowAnonymousReadForList(l)
           && scopeId.equals(l.scopeId.toLowerCase(Locale.ENGLISH))
           && isAllowAnonymousPeekForWeb(w)
-          && !isDenyAnonymousAccessOnVirtualServer(
-              rareModCache.getVirtualServer());
+          && (!isDenyAnonymousAccessOnVirtualServer());
 
       if (!allowAnonymousAccess) {
       Acl.Builder acl = null;
@@ -2574,8 +2712,7 @@ public class SharePointAdaptor extends AbstractAdaptor
       boolean allowAnonymousAccess = isAllowAnonymousReadForList(l)
           && scopeId.equals(l.scopeId.toLowerCase(Locale.ENGLISH))
           && isAllowAnonymousPeekForWeb(w)
-          && !isDenyAnonymousAccessOnVirtualServer(
-              rareModCache.getVirtualServer());
+          && (!isDenyAnonymousAccessOnVirtualServer());
       if (!allowAnonymousAccess) {
         String listItemUrl = row.getAttribute(OWS_SERVERURL_ATTRIBUTE);
         response.setAcl(new Acl.Builder()

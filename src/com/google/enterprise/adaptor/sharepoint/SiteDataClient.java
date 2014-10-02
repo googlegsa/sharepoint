@@ -21,6 +21,7 @@ import com.microsoft.schemas.sharepoint.soap.Item;
 import com.microsoft.schemas.sharepoint.soap.ItemData;
 import com.microsoft.schemas.sharepoint.soap.ObjectType;
 import com.microsoft.schemas.sharepoint.soap.SPContentDatabase;
+import com.microsoft.schemas.sharepoint.soap.SPSite;
 import com.microsoft.schemas.sharepoint.soap.Site;
 import com.microsoft.schemas.sharepoint.soap.SiteDataSoap;
 import com.microsoft.schemas.sharepoint.soap.VirtualServer;
@@ -297,6 +298,52 @@ class SiteDataClient {
         xml = xml.replace("<SPContentDatabase ",
             "<SPContentDatabase xmlns='" + XMLNS + "' ");
         return jaxbParse(xml, SPContentDatabase.class);
+      }
+
+      @Override
+      public String getCursor() {
+        return lastChangeId.value;
+      }
+    };
+  }
+
+  /**
+   * Get a paginator that allows looping over all the changes since {@code
+   * startChangeId}. If next() throws an XmlProcessingException, it is
+   * guaranteed to be after state has been updated so that a subsequent call
+   * to next() will provide the next page and not repeat the erroring page.
+   */
+  public CursorPaginator<SPSite, String>
+      getChangesSPSite(final String siteCollectionGuid,
+          String startChangeId, final boolean isSp2007) {
+    log.entering("SiteDataClient", "getChangesSPSite",
+        new Object[] {siteCollectionGuid, startChangeId});
+    final Holder<String> lastChangeId = new Holder<String>(startChangeId);
+    final Holder<String> lastLastChangeId = new Holder<String>();
+    final Holder<String> currentChangeId = new Holder<String>();
+    final Holder<Boolean> moreChanges = new Holder<Boolean>(true);
+    log.exiting("SiteDataClient", "getChangesSPSite");
+    return new CursorPaginator<SPSite, String>() {
+      @Override
+      public SPSite next() throws IOException {
+        if (!moreChanges.value) {
+          return null;
+        }
+        lastLastChangeId.value = lastChangeId.value;
+        Holder<String> result = new Holder<String>();
+        // In SP 2007, the timeout is a number of seconds. In SP2010 and above,
+        // the timeout is n * 60, where n is the number of items you want
+        // returned. However, asking for more than 10 items seems
+        // to lose results. If timeout is less than 60 in SP 2010 / 2013,
+        // then it causes an infinite loop.
+        int timeout = isSp2007 ? 15 : 10 * 60;
+        siteData.getChanges(ObjectType.SITE_COLLECTION, siteCollectionGuid,
+            lastChangeId, currentChangeId, timeout, result, moreChanges);
+        // XmlProcessingExceptions fine after this point.
+        String xml = result.value;
+        xml = xml.replace("<SPSite ",
+            "<SPSite xmlns='" + XMLNS + "' ");
+        return jaxbParse(xml, SPSite.class);
       }
 
       @Override
