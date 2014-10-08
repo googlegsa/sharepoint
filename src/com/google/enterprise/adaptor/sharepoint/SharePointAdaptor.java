@@ -93,6 +93,7 @@ import java.io.InputStream;
 import java.net.Authenticator;
 import java.net.ConnectException;
 import java.net.HttpURLConnection;
+import java.net.MalformedURLException;
 import java.net.PasswordAuthentication;
 import java.net.SocketTimeoutException;
 import java.net.URI;
@@ -322,14 +323,12 @@ public class SharePointAdaptor extends AbstractAdaptor
   private final ConcurrentMap<String, SiteAdaptor> siteAdaptors
       = new ConcurrentSkipListMap<String, SiteAdaptor>();
   private final DocId virtualServerDocId = new DocId("");
-  private AdaptorContext context;
+  private AdaptorContext context;  
   /**
-   * The URL of the top-level Virtual Server that we use to bootstrap our
-   * SP instance knowledge.
-   */
-  // TODO : Rename virtualServer variable to sharePointUrl to remove ambiguity
-  // about its meaning when adaptor is configured for site collection only mode.
-  private String virtualServer;
+   * The URL of Virtual Server or Site Collection that we use to 
+   * bootstrap our SP instance knowledge.
+   */ 
+  private SharePointUrl sharePointUrl;
   /**
    * Cache that provides immutable {@link MemberIdMapping} instances for the
    * provided site URL key. Since {@code MemberIdMapping} is immutable, updating
@@ -371,8 +370,7 @@ public class SharePointAdaptor extends AbstractAdaptor
    * value is used in case of error in certain situations.
    */
   private boolean isSp2007;
-  private NtlmAuthenticator ntlmAuthenticator;
-  private boolean siteCollectionOnly = false;
+  private NtlmAuthenticator ntlmAuthenticator;  
   
   private FormsAuthenticationHandler authenticationHandler;
   private static final TimeZone gmt = TimeZone.getTimeZone("GMT");
@@ -479,10 +477,8 @@ public class SharePointAdaptor extends AbstractAdaptor
     this.context = context;
     context.setPollingIncrementalLister(this);
     Config config = context.getConfig();
-    virtualServer = config.getValue("sharepoint.server");
-    if (virtualServer.endsWith("/")) {
-      virtualServer = virtualServer.substring(0, virtualServer.length() - 1);
-    }
+    sharePointUrl = new SharePointUrl(config.getValue("sharepoint.server"),
+        config.getValue("sharepoint.siteCollectionOnly"));
     String username = config.getValue("sharepoint.username");
     String password = context.getSensitiveValueDecoder().decodeValue(
         config.getValue("sharepoint.password"));
@@ -500,16 +496,9 @@ public class SharePointAdaptor extends AbstractAdaptor
         config.getValue("adaptor.docHeaderTimeoutSecs")) * 1000;
     readTimeOutMillis = Integer.parseInt(
         config.getValue("adaptor.docContentTimeoutSecs")) * 1000;
-    adaptorUserAgent = config.getValue("adaptor.userAgent").trim();
-
-    if (!"".equals(config.getValue("sharepoint.siteCollectionOnly").trim())) {
-      siteCollectionOnly = Boolean.parseBoolean(
-          config.getValue("sharepoint.siteCollectionOnly"));
-    } else {
-      siteCollectionOnly = virtualServer.split("/").length > 3;
-    }    
+    adaptorUserAgent = config.getValue("adaptor.userAgent").trim();    
     
-    log.log(Level.CONFIG, "VirtualServer: {0}", virtualServer);
+    log.log(Level.CONFIG, "SharePoint Url: {0}", sharePointUrl);
     log.log(Level.CONFIG, "Username: {0}", username);
     log.log(Level.CONFIG, "Password: {0}", password);
     log.log(Level.CONFIG, "Default Namespace: {0}", defaultNamespace);
@@ -520,9 +509,9 @@ public class SharePointAdaptor extends AbstractAdaptor
     log.log(Level.CONFIG, "Adaptor user agent: {0}",
         adaptorUserAgent);
     log.log(Level.CONFIG, "Run in Site Collection Only mode: {0}",
-        siteCollectionOnly);
+        sharePointUrl.isSiteCollectionUrl());
 
-    if (siteCollectionOnly) {
+    if (sharePointUrl.isSiteCollectionUrl()) {
       log.info("Adaptor is configured to use site collection only mode. "
           + "ACLs and anonymous access settings at web application policy "
           + "level will be ignored.");
@@ -531,8 +520,7 @@ public class SharePointAdaptor extends AbstractAdaptor
     ntlmAuthenticator = new NtlmAuthenticator(username, password);
     // Unfortunately, this is a JVM-wide modification.
     Authenticator.setDefault(ntlmAuthenticator);
-    URL virtualServerUrl = new URL(virtualServer);
-    String rootUrl = getRootUrl(virtualServerUrl.toURI());
+    URL virtualServerUrl = new URL(sharePointUrl.getVirtualServerUrl());
     ntlmAuthenticator.addPermitForHost(virtualServerUrl);
     scheduledExecutor = new ScheduledThreadPoolExecutor(1);
     String authenticationType;
@@ -543,7 +531,8 @@ public class SharePointAdaptor extends AbstractAdaptor
             + "and password.");
       }
       SamlHandshakeManager manager = authenticationClientFactory
-          .newLiveAuthentication(rootUrl, username, password);
+          .newLiveAuthentication(sharePointUrl.getVirtualServerUrl(),
+              username, password);
       authenticationHandler = new SamlAuthenticationHandler.Builder(username,
           password, scheduledExecutor, manager).build();     
       authenticationType = "Live";
@@ -554,15 +543,17 @@ public class SharePointAdaptor extends AbstractAdaptor
             + "and password.");
       }
       SamlHandshakeManager manager = authenticationClientFactory
-          .newAdfsAuthentication(virtualServer, username, password, stsendpoint,
-              stsrealm, config.getValue("sharepoint.sts.login"),
+          .newAdfsAuthentication(sharePointUrl.getSharePointUrl(), username,
+              password, stsendpoint, stsrealm,
+              config.getValue("sharepoint.sts.login"),
               config.getValue("sharepoint.sts.trustLocation"));
       authenticationHandler = new SamlAuthenticationHandler.Builder(username,
           password, scheduledExecutor, manager).build();            
       authenticationType = "ADFS";
     } else {    
       AuthenticationSoap authenticationSoap = authenticationClientFactory
-          .newSharePointFormsAuthentication(virtualServer, username, password);
+          .newSharePointFormsAuthentication(sharePointUrl.getSharePointUrl(),
+              username, password);
       if (!"".equals(adaptorUserAgent)) {
         ((BindingProvider) authenticationSoap).getRequestContext().put(
             MessageContext.HTTP_REQUEST_HEADERS, Collections.singletonMap(
@@ -584,7 +575,7 @@ public class SharePointAdaptor extends AbstractAdaptor
         // Just rethrow excption and allow adaptor to retry.
         throw new IOException(String.format(
             "Cannot find SharePoint server \"%s\" -- please make sure it is "
-                + "specified properly.", virtualServer), ex);
+                + "specified properly.", sharePointUrl.getSharePointUrl()), ex);
       }
       if (ex.getCause() instanceof ConnectException 
           || ex.getCause() instanceof SocketTimeoutException ) {
@@ -595,7 +586,7 @@ public class SharePointAdaptor extends AbstractAdaptor
         throw new IOException(String.format(
             "Unable to connect to SharePoint server \"%s\" -- please make "
                 + "sure it is specified properly and is available.",
-            virtualServer), ex);
+            sharePointUrl.getSharePointUrl()), ex);
       }
       String adfsWarning = "ADFS".equals(authenticationType) 
           ? " Also verify if stsendpoint and stsrealm is specified correctly "
@@ -609,20 +600,21 @@ public class SharePointAdaptor extends AbstractAdaptor
    
     try {
       executor = executorFactory.call();
-      SiteAdaptor vsAdaptor = getSiteAdaptor(virtualServer, virtualServer);
-      SiteDataClient virtualServerSiteDataClient =
-          vsAdaptor.getSiteDataClient();
+      SiteAdaptor spAdaptor = getSiteAdaptor(sharePointUrl.getSharePointUrl(),
+          sharePointUrl.getSharePointUrl());
+      SiteDataClient sharePointSiteDataClient =
+          spAdaptor.getSiteDataClient();
       rareModCache
-          = new RareModificationCache(virtualServerSiteDataClient, executor);
+          = new RareModificationCache(sharePointSiteDataClient, executor);
 
-      if (siteCollectionOnly) {
+      if (sharePointUrl.isSiteCollectionUrl()) {
         // Test out configuration for site collection.
-        Site site = virtualServerSiteDataClient.getContentSite();
+        Site site = sharePointSiteDataClient.getContentSite();
         return;
       }
 
       // Test out configuration.
-      VirtualServer vs = virtualServerSiteDataClient.getContentVirtualServer();
+      VirtualServer vs = sharePointSiteDataClient.getContentVirtualServer();
 
       // Check Full Read permission for Adaptor User on SharePoint
       checkFullReadPermissionForAdaptorUser(vs, username);
@@ -641,7 +633,7 @@ public class SharePointAdaptor extends AbstractAdaptor
           vs.getContentDatabases().getContentDatabase()) {
         ContentDatabase cd;
         try {
-          cd = virtualServerSiteDataClient.getContentContentDatabase(
+          cd = sharePointSiteDataClient.getContentContentDatabase(
               cdcd.getID(), true);
         } catch (IOException ex) {
           log.log(Level.WARNING, "Failed to get sites for database: " 
@@ -653,8 +645,9 @@ public class SharePointAdaptor extends AbstractAdaptor
         }
         for (Sites.Site siteListing : cd.getSites().getSite()) {
           String siteString
-              = vsAdaptor.encodeDocId(siteListing.getURL()).getUniqueId();
-          if (virtualServer.equalsIgnoreCase(siteString)) {
+              = spAdaptor.encodeDocId(siteListing.getURL()).getUniqueId();
+          if (sharePointUrl.getVirtualServerUrl()
+              .equalsIgnoreCase(siteString)) {
             urlAvailableInAlternateAccessMapping = true;
           }
           ntlmAuthenticator.addPermitForHost(spUrlToUri(siteString).toURL());
@@ -667,14 +660,16 @@ public class SharePointAdaptor extends AbstractAdaptor
             + "not work as expected. Also include / exclude patterns "
             + "configured on GSA as per Virtual server URL might not "
             + "work as expected. Please make sure that adaptor is configured "
-            + "to use Public URL instead on internal URL.", virtualServer);
+            + "to use Public URL instead on internal URL.",
+            sharePointUrl.getVirtualServerUrl());
       }
     } catch (WebServiceIOException ex) {
       String warning;
       Throwable cause = ex.getCause();
       if (cause instanceof UnknownHostException) {
         warning = String.format("Cannot find SharePoint server \"%s\" -- "
-            + "please make sure it is specified properly.", virtualServer);
+            + "please make sure it is specified properly.",
+            sharePointUrl.getSharePointUrl());
         // Note: even this exception should not be treated as a "Permanent
         // configuration error" -- it can be caused by transient network down
         // or DNS down.
@@ -683,14 +678,15 @@ public class SharePointAdaptor extends AbstractAdaptor
             + "current user.  Please make sure the server is specified "
             + "correctly, and that the user has sufficient permission to "
             + "access the SharePoint server.  If the SharePoint server is "
-            + "currently down, please try again later.", virtualServer);
+            + "currently down, please try again later.",
+            sharePointUrl.getSharePointUrl());
       } else {
         warning = String.format("Cannot connect to server \"%s\" as user "
             + "\"%s\" with the specified password.  Please make sure they are "
             + "specified correctly, and that the user has sufficient "
             + "permission to access the SharePoint server.  If the SharePoint "
             + "server is currently down, please try again later.",
-            virtualServer, username);
+            sharePointUrl.getSharePointUrl(), username);
       }
       throw new IOException(warning, ex);
     } catch (Exception e) {
@@ -807,7 +803,8 @@ public class SharePointAdaptor extends AbstractAdaptor
     DocId id = request.getDocId();
      if (id.equals(virtualServerDocId)) {
       SiteAdaptor virtualServerSiteAdaptor
-          = getSiteAdaptor(virtualServer, virtualServer);
+          = getSiteAdaptor(sharePointUrl.getVirtualServerUrl(),
+              sharePointUrl.getVirtualServerUrl());
       virtualServerSiteAdaptor.getVirtualServerDocContent(request, response);
     } else {
       SiteAdaptor rootSiteAdaptor
@@ -835,7 +832,7 @@ public class SharePointAdaptor extends AbstractAdaptor
   public void getDocIds(DocIdPusher pusher) throws InterruptedException,
       IOException {
     log.entering("SharePointAdaptor", "getDocIds", pusher);
-    if (siteCollectionOnly) {
+    if (sharePointUrl.isSiteCollectionUrl()) {
       getDocIdsSiteCollectionOnly(pusher);
     } else {
       getDocIdsVirtualServer(pusher);
@@ -846,7 +843,8 @@ public class SharePointAdaptor extends AbstractAdaptor
   private void getDocIdsSiteCollectionOnly(DocIdPusher pusher)
       throws InterruptedException,IOException {
     log.entering("SharePointAdaptor", "getDocIdsSiteCollectionOnly", pusher);
-    SiteAdaptor scAdaptor = getSiteAdaptor(virtualServer, virtualServer);
+    SiteAdaptor scAdaptor = getSiteAdaptor(sharePointUrl.getSharePointUrl(), 
+        sharePointUrl.getSharePointUrl());
     SiteDataClient vsClient = scAdaptor.getSiteDataClient();
     Site site = vsClient.getContentSite();
     DocId siteCollectionDocId = scAdaptor.encodeDocId(
@@ -862,7 +860,8 @@ public class SharePointAdaptor extends AbstractAdaptor
   private void getDocIdsVirtualServer(DocIdPusher pusher)
       throws InterruptedException,IOException {
     log.entering("SharePointAdaptor", "getDocIdsVirtualServer", pusher);
-    SiteAdaptor vsAdaptor = getSiteAdaptor(virtualServer, virtualServer);
+    SiteAdaptor vsAdaptor = getSiteAdaptor(sharePointUrl.getVirtualServerUrl(),
+        sharePointUrl.getVirtualServerUrl());
     SiteDataClient vsClient = vsAdaptor.getSiteDataClient();
     pusher.pushDocIds(Arrays.asList(virtualServerDocId));
     VirtualServer vs = vsClient.getContentVirtualServer();
@@ -914,7 +913,7 @@ public class SharePointAdaptor extends AbstractAdaptor
   public void getModifiedDocIds(DocIdPusher pusher)
       throws InterruptedException {
     log.entering("SharePointAdaptor", "getModifiedDocIds", pusher);
-    if (siteCollectionOnly) {
+    if (sharePointUrl.isSiteCollectionUrl()) {
       getModifiedDocIdsSiteCollection(pusher);
     } else {
       getModifiedDocIdsVirtualServer(pusher);
@@ -927,7 +926,8 @@ public class SharePointAdaptor extends AbstractAdaptor
     log.entering("SharePointAdaptor", "getModifiedDocIdsVirtualServer", pusher);
     SiteAdaptor siteAdaptor;
     try {
-      siteAdaptor = getSiteAdaptor(virtualServer, virtualServer);
+      siteAdaptor = getSiteAdaptor(sharePointUrl.getVirtualServerUrl(),
+          sharePointUrl.getVirtualServerUrl());
     } catch (IOException ex) {
       // The call should never fail, and it is the only IOException-throwing
       // call that we can't recover from. Handling it this way allows us to
@@ -1086,7 +1086,8 @@ public class SharePointAdaptor extends AbstractAdaptor
       throws InterruptedException {
     SiteAdaptor siteAdaptor;
     try {
-      siteAdaptor = getSiteAdaptor(virtualServer, virtualServer);
+      siteAdaptor = getSiteAdaptor(sharePointUrl.getSharePointUrl(),
+          sharePointUrl.getSharePointUrl());
     } catch (IOException ex) {
       // The call should never fail, and it is the only IOException-throwing
       // call that we can't recover from. Handling it this way allows us to
@@ -1445,6 +1446,63 @@ public class SharePointAdaptor extends AbstractAdaptor
     log.log(Level.WARNING, "Unsupported claims value {0}", loginName);
     return null;
   }
+  
+  @VisibleForTesting
+  class SharePointUrl {
+    private final String sharePointUrl;
+    private final String virtualServerUrl;
+    private final boolean siteCollectionOnly;
+    
+    public SharePointUrl(String sharePointUrl,
+        String siteCollectionOnlyModeConfig)
+        throws InvalidConfigurationException {
+      if (sharePointUrl == null || siteCollectionOnlyModeConfig == null) {
+        throw new NullPointerException();
+      }
+      sharePointUrl = sharePointUrl.trim();
+      siteCollectionOnlyModeConfig = siteCollectionOnlyModeConfig.trim();
+
+      if (sharePointUrl.endsWith("/")) {
+        this.sharePointUrl 
+            = sharePointUrl.substring(0, sharePointUrl.length() - 1);
+      } else {
+        this.sharePointUrl = sharePointUrl;
+      }
+      
+      if (!"".equals(siteCollectionOnlyModeConfig)) {
+        this.siteCollectionOnly = Boolean.parseBoolean(
+            siteCollectionOnlyModeConfig);
+      } else {
+        this.siteCollectionOnly =  this.sharePointUrl.split("/").length > 3;
+      }
+      
+      
+      try {
+        this.virtualServerUrl = getRootUrl(new URL(this.sharePointUrl).toURI());
+      } catch (MalformedURLException exMalformed) {
+        throw new InvalidConfigurationException(
+            "Adaptor is configured with malformed SharePoint URL [" 
+            + sharePointUrl + "]. Please specify valid SharePoint URL.",
+            exMalformed);
+      } catch (URISyntaxException exSyntax) {
+        throw new InvalidConfigurationException(
+            "Adaptor is configured with invalid SharePoint URL [" 
+            + sharePointUrl + "]. Please specify valid SharePoint URL.",
+            exSyntax);
+      }
+    }
+    
+    public boolean isSiteCollectionUrl() {
+      return this.siteCollectionOnly;
+    }
+    
+    public String getVirtualServerUrl() {
+      return this.virtualServerUrl;
+    }
+    public String getSharePointUrl() {
+      return this.sharePointUrl;
+    }
+  }
 
   @VisibleForTesting
   class SiteAdaptor {
@@ -1797,7 +1855,7 @@ public class SharePointAdaptor extends AbstractAdaptor
         Acl.Builder acl = new Acl.Builder().setEverythingCaseInsensitive()
             .setPermits(admins)
             .setInheritanceType(Acl.InheritanceType.PARENT_OVERRIDES);
-        if (!siteCollectionOnly) {
+        if (!sharePointUrl.isSiteCollectionUrl()) {
           acl.setInheritFrom(virtualServerDocId);
         } else {
           log.log(Level.INFO, "Not inheriting from Web application policy "
@@ -2216,7 +2274,7 @@ public class SharePointAdaptor extends AbstractAdaptor
     private boolean isDenyAnonymousAccessOnVirtualServer() throws IOException {
       // Since Adaptor is configured to use Site Collection Only mode we are
       // ignoring web application policy.
-      if (siteCollectionOnly) {
+      if (sharePointUrl.isSiteCollectionUrl()) {
         log.fine("Ignoring web application policy acls since adaptor is "
             + "configured for site collection only mode.");
         return false;

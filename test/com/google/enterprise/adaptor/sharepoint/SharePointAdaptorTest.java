@@ -18,6 +18,7 @@ import static com.google.enterprise.adaptor.sharepoint.SharePointAdaptor.FileInf
 import static com.google.enterprise.adaptor.sharepoint.SharePointAdaptor.HttpClient;
 import static com.google.enterprise.adaptor.sharepoint.SharePointAdaptor.SoapFactory;
 import static org.junit.Assert.assertEquals;
+import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertNotNull;
 import static org.junit.Assert.assertNull;
 import static org.junit.Assert.assertTrue;
@@ -37,6 +38,7 @@ import com.google.enterprise.adaptor.Metadata;
 import com.google.enterprise.adaptor.Principal;
 import com.google.enterprise.adaptor.UserPrincipal;
 import com.google.enterprise.adaptor.sharepoint.SamlAuthenticationHandler.SamlHandshakeManager;
+import com.google.enterprise.adaptor.sharepoint.SharePointAdaptor.SharePointUrl;
 import com.google.enterprise.adaptor.sharepoint.SharePointAdaptor.SiteUserIdMappingCallable;
 import com.google.enterprise.adaptor.sharepoint.SharePointAdaptor.SoapFactory;
 
@@ -493,6 +495,17 @@ public class SharePointAdaptorTest {
         "GDC-PSL\\administrator"));
     assertEquals(-1, SharePointAdaptor.checkFullReadPermissionForAdaptorUser(vs,
         "Some Fake User"));
+  }
+  
+  @Test
+  public void testAdaptorInitwithMalformedSharePointUrl() throws Exception {
+    adaptor = new SharePointAdaptor(initableSoapFactory,
+        new UnsupportedHttpClient(), executorFactory,
+        new MockAuthenticationClientFactoryForms());
+    config.overrideKey("sharepoint.server", "malformed-url");
+    thrown.expect(InvalidConfigurationException.class);
+    adaptor.init(new MockAdaptorContext(config, pusher));
+    adaptor = null;
   }
 
   @Test
@@ -2465,6 +2478,56 @@ public class SharePointAdaptorTest {
         = new FileInfo.Builder(new ByteArrayInputStream(new byte[0]));
     thrown.expect(IllegalArgumentException.class);
     builder.setHeaders(Arrays.asList("odd-length"));
+  }
+  
+  @Test
+  public void testSharePointUrlNullInputUrl() {
+    SharePointAdaptor adaptor = new SharePointAdaptor();
+    thrown.expect(NullPointerException.class);
+    adaptor.new SharePointUrl(null, "");
+  }
+  
+  @Test
+  public void testSharePointUrlConstructor() {
+    SharePointAdaptor adaptor = new SharePointAdaptor();
+    adaptor.new SharePointUrl("http://sharepoint.intranet.com", "");
+  }
+  
+  @Test
+  public void testSharePointUrlMalformedInput() {
+    SharePointAdaptor adaptor = new SharePointAdaptor();
+    thrown.expect(InvalidConfigurationException.class);
+    adaptor.new SharePointUrl("malformed.sharepoint.com", "");
+  }  
+  
+  @Test
+  public void testSharePointUrlAndRootUrl() {
+    SharePointAdaptor adaptor = new SharePointAdaptor();
+    SharePointUrl sharePointUrl = adaptor.new SharePointUrl(
+        "http://localhost:1000/sites/collection/", "");
+    assertEquals("http://localhost:1000/sites/collection",
+        sharePointUrl.getSharePointUrl());
+    assertEquals("http://localhost:1000", sharePointUrl.getVirtualServerUrl());
+  }
+  
+  @Test
+  public void testSharePointUrlIsSiteCollectionUrl() {
+    SharePointAdaptor adaptor = new SharePointAdaptor();
+    SharePointUrl sharePointUrl = adaptor.new SharePointUrl(
+        "http://localhost:1000/sites/collection/", "");
+    assertTrue(sharePointUrl.isSiteCollectionUrl());
+    
+    SharePointUrl virtualServer 
+        = adaptor.new SharePointUrl("http://localhost:1000/", "");
+    assertFalse(virtualServer.isSiteCollectionUrl());
+    
+    SharePointUrl sharePointUrlWithMode = adaptor.new SharePointUrl(
+        "http://localhost:1000/sites/collection/", "false");
+    assertFalse(sharePointUrlWithMode.isSiteCollectionUrl());
+    
+    SharePointUrl virtualServerWithMode 
+        = adaptor.new SharePointUrl("http://localhost:1000/", "true");
+    assertTrue(virtualServerWithMode.isSiteCollectionUrl());
   }
 
   private static <T> void setValue(Holder<T> holder, T value) {
