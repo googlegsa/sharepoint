@@ -104,6 +104,7 @@ import java.io.ByteArrayOutputStream;
 import java.io.IOException;
 import java.io.InputStream;
 import java.math.BigInteger;
+import java.net.HttpURLConnection;
 import java.net.URI;
 import java.net.URL;
 import java.net.UnknownHostException;
@@ -652,6 +653,41 @@ public class SharePointAdaptorTest {
   @Test(expected = IllegalArgumentException.class)
   public void testSpUrlToUriNoSceme() throws Exception {
     SharePointAdaptor.spUrlToUri("http:/");
+  }
+  
+  @Test
+  public void testAdaptorInitWithInvalidMaxRedirects() throws Exception {
+    adaptor = new SharePointAdaptor(initableSoapFactory,
+        new UnsupportedHttpClient(), executorFactory,
+        new MockAuthenticationClientFactoryForms());
+    config.overrideKey("adaptor.maxRedirectsToFollow", "invalid");
+    thrown.expect(InvalidConfigurationException.class);
+    adaptor.init(new MockAdaptorContext(config, pusher));
+    adaptor = null;
+  }
+  
+  @Test
+  public void testAdaptorInitWithNegativeMaxRedirects() throws Exception {
+    adaptor = new SharePointAdaptor(initableSoapFactory,
+        new UnsupportedHttpClient(), executorFactory,
+        new MockAuthenticationClientFactoryForms());
+    config.overrideKey("adaptor.maxRedirectsToFollow", "-2");
+    thrown.expect(InvalidConfigurationException.class);
+    adaptor.init(new MockAdaptorContext(config, pusher));
+    adaptor = null;
+  }
+  
+  @Test
+  public void testAdaptorInitWithValidMaxRedirectsNoBrowserLeniency()
+      throws Exception {
+    adaptor = new SharePointAdaptor(initableSoapFactory,
+        new UnsupportedHttpClient(), executorFactory,
+        new MockAuthenticationClientFactoryForms());
+    config.overrideKey("adaptor.maxRedirectsToFollow", "20");
+    config.overrideKey("adaptor.lenientUrlRulesAndCustomRedirect", "false");
+    thrown.expect(InvalidConfigurationException.class);
+    adaptor.init(new MockAdaptorContext(config, pusher));
+    adaptor = null;
   }
 
   @Test
@@ -1380,7 +1416,8 @@ public class SharePointAdaptorTest {
         new HttpClient() {
       @Override
       public FileInfo issueGetRequest(URL url,
-          List<String> authenticationCookies, String adaptorUserAgent) {
+          List<String> authenticationCookies, String adaptorUserAgent,
+          int maxRedirectsToFollow, boolean performBrowserLeniency) {
         assertEquals(
           "http://localhost:1/sites/SiteCollection/Lists/Custom%20List/"
             + "Attachments/2/1046000.pdf",
@@ -1403,6 +1440,12 @@ public class SharePointAdaptorTest {
 
         return "http://localhost:1/sites/SiteCollection/Lists/Custom List"
             + "/AllItems.aspx";
+      }
+
+      @Override
+      public HttpURLConnection getHttpURLConnection(URL url)
+          throws IOException {
+        throw new UnsupportedOperationException();
       }
     }, executorFactory, new MockAuthenticationClientFactoryForms());
     adaptor.init(new MockAdaptorContext(config, pusher));
@@ -1451,7 +1494,8 @@ public class SharePointAdaptorTest {
         new HttpClient() {
       @Override
       public FileInfo issueGetRequest(URL url,
-          List<String> authenticationCookies, String adaptorUserAgent) {
+          List<String> authenticationCookies, String adaptorUserAgent,
+          int maxRedirectsToFollow, boolean performBrowserLeniency) {
         throw new UnsupportedOperationException();
       }
 
@@ -1465,6 +1509,12 @@ public class SharePointAdaptorTest {
 
         return "http://localhost:1/sites/SiteCollection/Lists/Custom List"
             + "/AllItems.aspx";
+      }
+
+      @Override
+      public HttpURLConnection getHttpURLConnection(URL url)
+          throws IOException {
+        throw new UnsupportedOperationException();
       }
     }, executorFactory, new MockAuthenticationClientFactoryForms());
     adaptor.init(new MockAdaptorContext(config, pusher));
@@ -1496,7 +1546,8 @@ public class SharePointAdaptorTest {
         new HttpClient() {
       @Override
       public FileInfo issueGetRequest(URL url,
-          List<String> authenticationCookies, String adaptorUserAgent) {
+          List<String> authenticationCookies, String adaptorUserAgent,
+          int maxRedirectsToFollow, boolean performBrowserLeniency) {
         InputStream contents = new ByteArrayInputStream(new byte[0]);
         List<String> headers = Arrays.asList(
             "Content-Type", "application/vnd.ms-excel.12");
@@ -1513,6 +1564,12 @@ public class SharePointAdaptorTest {
         
         return "http://localhost:1/sites/SiteCollection/Lists/Custom List"
             + "/AllItems.aspx";
+      }
+
+      @Override
+      public HttpURLConnection getHttpURLConnection(URL url)
+          throws IOException {
+        throw new UnsupportedOperationException();
       }
     }, executorFactory, new MockAuthenticationClientFactoryForms());
     adaptor.init(new MockAdaptorContext(config, pusher));
@@ -2481,6 +2538,147 @@ public class SharePointAdaptorTest {
   }
   
   @Test
+  public void testIssueGetRequestWithMoreThanMaxRedirect() throws Exception {
+    HttpClient client = new SharePointAdaptor.HttpClientImpl(){
+      @Override
+      public HttpURLConnection getHttpURLConnection(URL url)
+          throws IOException {
+        return new MockHttpURLConnection(url, HttpURLConnection.HTTP_MOVED_TEMP,
+            "http://localshost:8080/default.aspx?q={Some Value}", null);
+      }
+    };
+    thrown.expect(IOException.class);
+    client.issueGetRequest(new URL("http://localshost:8080/default.aspx"),
+        new ArrayList<String>(), "", 10, true);
+  }
+  
+  @Test
+  public void testIssueGetRequestWithSameAsMaxRedirect() throws Exception {
+    HttpClient client = new SharePointAdaptor.HttpClientImpl(){
+      int requestCount = 0;
+      @Override
+      public HttpURLConnection getHttpURLConnection(URL url)
+          throws IOException {
+        requestCount++;
+        if (requestCount <= 10) {
+         return new MockHttpURLConnection(url,
+             HttpURLConnection.HTTP_MOVED_TEMP,
+             "http://localshost:8080/default.aspx?q={Some Value}", null);
+        } else {
+          return new MockHttpURLConnection(url, HttpURLConnection.HTTP_OK, null,
+              "Golden Content");
+        }
+      }
+    };    
+    FileInfo output =
+        client.issueGetRequest(new URL("http://localshost:8080/default.aspx"),
+            new ArrayList<String>(), "", 10, true);
+    ByteArrayOutputStream content = new ByteArrayOutputStream();
+    IOHelper.copyStream(output.getContents(), content);
+    assertEquals("Golden Content", content.toString());
+    output.getContents().close();
+  }
+  
+  @Test
+  public void testIssueGetRequestWithHttpOk() throws Exception {
+    HttpClient client = new SharePointAdaptor.HttpClientImpl(){
+      @Override
+      public HttpURLConnection getHttpURLConnection(URL url)
+          throws IOException {
+        return new MockHttpURLConnection(url, HttpURLConnection.HTTP_OK, null,
+            "Golden Content");
+      }
+    };    
+    FileInfo output =
+        client.issueGetRequest(new URL("http://localshost:8080/default.aspx"),
+            new ArrayList<String>(), "", 10, true);
+    ByteArrayOutputStream content = new ByteArrayOutputStream();
+    IOHelper.copyStream(output.getContents(), content);
+    assertEquals("Golden Content", content.toString());
+    output.getContents().close();
+  }
+  
+  @Test
+  public void testIssueGetRequestWithZeroRedirectsAllowed() throws Exception {
+    HttpClient client = new SharePointAdaptor.HttpClientImpl(){
+      int requestCount = 0;
+      @Override
+      public HttpURLConnection getHttpURLConnection(URL url)
+          throws IOException {
+        requestCount++;
+        System.out.println(requestCount);
+        if (requestCount == 1) {
+         return new MockHttpURLConnection(url,
+             HttpURLConnection.HTTP_MOVED_TEMP,
+             "http://localshost:8080/default.aspx?q={Some Value}", null);
+        } else {
+          throw new UnsupportedOperationException("With 0 redirects allowed "
+              + "only one call to getHttpUrlConnection is expected.");
+        }
+      }
+    };
+    thrown.expect(IOException.class);
+    client.issueGetRequest(new URL("http://localshost:8080/default.aspx"),
+        new ArrayList<String>(), "", 0, true);
+  }
+
+  @Test
+  public void testIssueGetRequestWithRedirect() throws Exception {
+    HttpClient client = new SharePointAdaptor.HttpClientImpl(){
+      @Override
+      public HttpURLConnection getHttpURLConnection(URL url)
+          throws IOException {
+        String urlToServe = url.toString();
+        if ("http://localshost:8080/default.aspx"
+            .equalsIgnoreCase(urlToServe)) {
+          return new MockHttpURLConnection(url,
+              HttpURLConnection.HTTP_MOVED_TEMP,
+              "http://localshost:8080/Redirect1.aspx", null);
+        } else if ("http://localshost:8080/Redirect1.aspx"
+            .equalsIgnoreCase(urlToServe)) {
+          return new MockHttpURLConnection(url,
+              HttpURLConnection.HTTP_MOVED_PERM,
+              "http://localshost:8080/Final.aspx?q={data}", null);
+        } else if ("http://localshost:8080/Final.aspx?q=%7Bdata%7D"
+            .equalsIgnoreCase(urlToServe)) {
+          return new MockHttpURLConnection(url, HttpURLConnection.HTTP_OK, null,
+              "Golden Content");
+        }
+        throw new UnsupportedOperationException();
+      }
+    };
+    FileInfo output =
+        client.issueGetRequest(new URL("http://localshost:8080/default.aspx"),
+            new ArrayList<String>(), "", 20, true);
+    ByteArrayOutputStream content = new ByteArrayOutputStream();
+    IOHelper.copyStream(output.getContents(), content);
+    assertEquals("Golden Content", content.toString());
+    output.getContents().close();
+  }
+  
+  @Test
+  public void testEncodeSharePointUrl() throws Exception {
+    //Just host
+    assertEquals("http://intranet.example.com",
+        SharePointAdaptor.encodeSharePointUrl(
+            "http://intranet.example.com", true).toString());
+    // No query params
+    assertEquals("http://intranet.example.com/team%20site/page.aspx",
+        SharePointAdaptor.encodeSharePointUrl(
+            "http://intranet.example.com/team site/page.aspx", true)
+        .toString());
+    // Query params needs encoding
+    assertEquals("https://localshost:80/team%20site/Final.aspx?q=%7Bdata%7D",
+        SharePointAdaptor.encodeSharePointUrl(
+            "https://localshost:80/team site/Final.aspx?q={data}", true)
+        .toString());
+    // Host with query params
+    assertEquals("https://localshost:8080/?q=%7Bdata%20more%7D",
+        SharePointAdaptor.encodeSharePointUrl(
+            "https://localshost:8080?q={data more}", true).toString());
+  }
+
+  @Test
   public void testSharePointUrlNullInputUrl() {
     SharePointAdaptor adaptor = new SharePointAdaptor();
     thrown.expect(NullPointerException.class);
@@ -2561,7 +2759,8 @@ public class SharePointAdaptorTest {
   private static class UnsupportedHttpClient implements HttpClient {
     @Override
     public FileInfo issueGetRequest(URL url,
-        List<String> authenticationCookies, String adaptorUserAgent) {
+        List<String> authenticationCookies, String adaptorUserAgent,
+        int maxRedirectsToFollow, boolean performBrowserLeniency) {
       throw new UnsupportedOperationException();
     }
 
@@ -2569,6 +2768,11 @@ public class SharePointAdaptorTest {
     public String getRedirectLocation(URL url,
         List<String> authenticationCookies, String adaptorUserAgent)
         throws IOException {
+      throw new UnsupportedOperationException();
+    }
+
+    @Override
+    public HttpURLConnection getHttpURLConnection(URL url) throws IOException {
       throw new UnsupportedOperationException();
     }
   }
@@ -3575,4 +3779,63 @@ public class SharePointAdaptorTest {
     }
   }
   
+  private static class MockHttpURLConnection extends HttpURLConnection {
+    private final int responseCodeToReturn;
+    private final String redirectLocation;
+    private final String content;
+    
+    public MockHttpURLConnection(URL url, int responseCodeToReturn,
+        String redirectLocation, String content) {
+      super(url);
+      this.responseCodeToReturn = responseCodeToReturn;
+      this.redirectLocation = redirectLocation;
+      this.content = content;      
+    }
+    @Override
+    public void disconnect() {
+      throw new UnsupportedOperationException();
+    }
+
+    @Override
+    public boolean usingProxy() {
+      throw new UnsupportedOperationException();
+    }
+
+    @Override
+    public void connect() throws IOException {
+      throw new UnsupportedOperationException();
+    }
+    
+    @Override
+    public int getResponseCode() throws IOException {
+      return responseCodeToReturn;
+    }
+    
+    @Override
+    public String getHeaderField(String name) {
+      if ("Location".equals(name)) {
+        return redirectLocation;
+      }
+      return null;
+    }
+    
+    @Override
+    public InputStream getInputStream() throws IOException {
+      if (responseCodeToReturn >= HttpURLConnection.HTTP_BAD_REQUEST) {
+        return null;
+      }
+      if (content == null) {
+        return new ByteArrayInputStream("".getBytes());
+      }
+      return new ByteArrayInputStream(content.getBytes());
+    }
+
+    @Override
+    public InputStream getErrorStream() {
+      if (responseCodeToReturn < HttpURLConnection.HTTP_BAD_REQUEST) {
+        return null;
+      }
+      return new ByteArrayInputStream("".getBytes());
+    }
+  }
 }

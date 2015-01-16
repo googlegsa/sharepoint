@@ -15,10 +15,12 @@
 package com.google.enterprise.adaptor.sharepoint;
 
 import com.google.common.annotations.VisibleForTesting;
+import com.google.common.base.Strings;
 import com.google.common.cache.CacheBuilder;
 import com.google.common.cache.LoadingCache;
 import com.google.common.collect.Multimap;
 import com.google.common.collect.TreeMultimap;
+import com.google.common.primitives.Ints;
 import com.google.enterprise.adaptor.AbstractAdaptor;
 import com.google.enterprise.adaptor.Acl;
 import com.google.enterprise.adaptor.AdaptorContext;
@@ -265,9 +267,19 @@ public class SharePointAdaptor extends AbstractAdaptor
   }
 
   private static final String SITE_COLLECTION_ADMIN_FRAGMENT = "admin";
+  
+  private static final int DEFAULT_MAX_REDIRECTS_TO_FOLLOW = 20;
 
   private int socketTimeoutMillis;
   private int readTimeOutMillis;
+  private int maxRedirectsToFollow;
+  
+  // flag controls whether adaptor leniently corrects common URL mistakes
+  // like presence of brackets "[]" in path or "_" in hostname. if true
+  // also makes adaptor handle redirects instead of relying on default
+  // Java HTTP redirects, because otherwise those URLs wouldn't receive
+  // this lenient encoding treatment.
+  private boolean performBrowserLeniency;
 
   /**
    * Mapping of mime-types used by SharePoint to ones that the GSA comprehends.
@@ -470,6 +482,12 @@ public class SharePointAdaptor extends AbstractAdaptor
     config.addKey("adaptor.userAgent", "");
     // Set this to true when you want to index only single site collection
     config.addKey("sharepoint.siteCollectionOnly", "");
+    // Set this to positive integer value to configure maximum number of 
+    // URL redirects allowed to download document contents.
+    config.addKey("adaptor.maxRedirectsToFollow", "");
+    // Set this to true when adaptor needs to encode redirect urls and perform
+    // browser leniency for handling unsupported characters in urls.
+    config.addKey("adaptor.lenientUrlRulesAndCustomRedirect", "true");
   }
 
   @Override
@@ -496,7 +514,35 @@ public class SharePointAdaptor extends AbstractAdaptor
         config.getValue("adaptor.docHeaderTimeoutSecs")) * 1000;
     readTimeOutMillis = Integer.parseInt(
         config.getValue("adaptor.docContentTimeoutSecs")) * 1000;
-    adaptorUserAgent = config.getValue("adaptor.userAgent").trim();    
+    adaptorUserAgent = config.getValue("adaptor.userAgent").trim();
+    String maxRedirectsToFollowStr = config.getValue(
+        "adaptor.maxRedirectsToFollow");
+    performBrowserLeniency = Boolean.parseBoolean(config.getValue(
+        "adaptor.lenientUrlRulesAndCustomRedirect"));
+    if (performBrowserLeniency && "".equals(maxRedirectsToFollowStr)) {
+      maxRedirectsToFollow = DEFAULT_MAX_REDIRECTS_TO_FOLLOW;
+    } else if (performBrowserLeniency) {
+      if (!isNumeric(maxRedirectsToFollowStr)) {
+        throw new InvalidConfigurationException("Invalid configuration value "
+            + "for maximum number of url redirects "
+            + "allowed (adaptor.maxRedirectsToFollow).");
+      } else {
+        maxRedirectsToFollow = Integer.parseInt(maxRedirectsToFollowStr);
+        if (maxRedirectsToFollow < 0) {
+          throw new InvalidConfigurationException("Invalid configuration value "
+              + "for maximum number of url redirects "
+              + "allowed (adaptor.maxRedirectsToFollow).");
+        }
+      }
+    } else if (!performBrowserLeniency && !"".equals(maxRedirectsToFollowStr)) {
+      throw new InvalidConfigurationException("Unexpected configuration value "
+          + "for maximum number of url redirects "
+          + "allowed (adaptor.maxRedirectsToFollow), as adaptor is not "
+          + "configured to perform browser leniency "
+          + "(adaptor.lenientUrlRulesAndCustomRedirect).");
+    } else if (!performBrowserLeniency && "".equals(maxRedirectsToFollowStr)) {
+      maxRedirectsToFollow = -1;
+    }
     
     log.log(Level.CONFIG, "SharePoint Url: {0}", sharePointUrl);
     log.log(Level.CONFIG, "Username: {0}", username);
@@ -739,6 +785,12 @@ public class SharePointAdaptor extends AbstractAdaptor
     }
   }
 
+  private static boolean isNumeric(String input) {
+    if (input == null) {
+      return false;
+    }
+    return null != Ints.tryParse(input);
+  }
   private static PolicyUser getPolicyUserForAdatorUser(VirtualServer vs,
       String adaptorUser) {
     if (adaptorUser == null) {
@@ -1326,6 +1378,43 @@ public class SharePointAdaptor extends AbstractAdaptor
       throw new IOException(ex);
     }
     return hostUri.resolve(pathUri);
+  }
+  
+  /**
+   * Encode input url by
+   *   1. Handle unicode in URL by converting to ASCII string.
+   *   2. Perform browser leniency by either encoding or escaping unsupported
+   *      characters in URL.
+   */
+  @VisibleForTesting
+  static URL encodeSharePointUrl(String url, boolean performBrowserLeniency)
+      throws IOException {
+    if (!performBrowserLeniency) {
+      // If no need to perform browser leniency, just return properly escaped 
+      // string using toASCIIString() to handle unicode.
+      return new URL(spUrlToUri(url).toASCIIString());
+    }
+    String[] urlParts = url.split("\\?", 2);
+    URI encodedUri = spUrlToUri(urlParts[0]);
+    if (urlParts.length == 1) {
+      return new URL(encodedUri.toASCIIString());
+    }
+    URI queryUri;
+    try {
+      // Special handling for path when path is empty. e.g. for URL
+      // http://sharepoint.example.com?ID=1 generates 400 bad request 
+      // in Java code but in browser it works fine.
+      // Following code block will generate URL as
+      // http://sharepoint.example.com/?ID=1 which works fine in Java code.
+      String path 
+          = "".equals(encodedUri.getPath()) ? "/" : encodedUri.getPath();
+      // Create new URI with query parameters
+      queryUri = new URI(encodedUri.getScheme(), encodedUri.getAuthority(),
+          path, urlParts[1], encodedUri.getFragment());
+      return new URL(queryUri.toASCIIString());
+    } catch (URISyntaxException ex) {
+      throw new IOException(ex);
+    }
   }
 
   /**
@@ -2344,8 +2433,10 @@ public class SharePointAdaptor extends AbstractAdaptor
       log.entering("SiteAdaptor", "getFileDocContent",
           new Object[] {request, response});
       URI displayUrl = docIdToUri(request.getDocId());
-      FileInfo fi = httpClient.issueGetRequest(displayUrl.toURL(),
-          authenticationHandler.getAuthenticationCookies(), adaptorUserAgent);
+      FileInfo fi = httpClient.issueGetRequest(encodeSharePointUrl(
+              request.getDocId().getUniqueId(), performBrowserLeniency),
+          authenticationHandler.getAuthenticationCookies(), adaptorUserAgent,
+          maxRedirectsToFollow, performBrowserLeniency);
       if (fi == null) {
         response.respondNotFound();
         return;
@@ -3042,42 +3133,91 @@ public class SharePointAdaptor extends AbstractAdaptor
      * @return {@code null} if not found, {@code FileInfo} instance otherwise
      */
     public FileInfo issueGetRequest(URL url, List<String> authenticationCookies,
-        String adaptorUserAgent) throws IOException;
+        String adaptorUserAgent, int maxRedirectsToFollow,
+        boolean performBrowserLeniency) throws IOException;
     
     public String getRedirectLocation(URL url,
         List<String> authenticationCookies, String adaptorUserAgent)
         throws IOException;
+
+    public HttpURLConnection getHttpURLConnection(URL url) throws IOException;
   }
 
   static class HttpClientImpl implements HttpClient {
     @Override
     public FileInfo issueGetRequest(URL url, List<String> authenticationCookies,
-        String adaptorUserAgent) throws IOException {
-      // Handle Unicode. Java does not properly encode the GET.
-      try {
-        url = new URL(url.toURI().toASCIIString());
-      } catch (URISyntaxException ex) {
-        throw new IOException(ex);
-      }
-      HttpURLConnection conn = (HttpURLConnection) url.openConnection();
-      // TODO :Close connection for non 200 responses.
-      if (authenticationCookies.isEmpty()) {
-        conn.addRequestProperty("X-FORMS_BASED_AUTH_ACCEPTED", "f");
-      } else {
-        for (String cookie : authenticationCookies) {
-          conn.addRequestProperty("Cookie", cookie);
+        String adaptorUserAgent, int maxRedirectsToFollow,
+        boolean performBrowserLeniency) throws IOException {
+      int redirectAttempt = 0;
+      final URL initialRequest = url;
+      HttpURLConnection conn;
+      do {
+        log.log(Level.FINER, "Handling URL {0}", url);
+        conn = getHttpURLConnection(url);
+        if (authenticationCookies.isEmpty()) {
+          conn.addRequestProperty("X-FORMS_BASED_AUTH_ACCEPTED", "f");
+        } else {
+          // Pass authentication cookies only if talking to same SharePoint
+          // instance as initial request.
+          if (initialRequest.getHost().equalsIgnoreCase(url.getHost())
+              && initialRequest.getPort() == url.getPort()) {
+            for (String cookie : authenticationCookies) {
+              conn.addRequestProperty("Cookie", cookie);
+            }
+          } else {
+            log.log(Level.FINER,
+                "Not passing authentication cookies for {0}", url);
+          }
         }
-      }
-      if (!"".equals(adaptorUserAgent)) {
-        conn.addRequestProperty("User-Agent", adaptorUserAgent);
-      }
-      conn.setDoInput(true);
-      conn.setDoOutput(false);
-      if (conn.getResponseCode() == HttpURLConnection.HTTP_NOT_FOUND) {
-        return null;
-      }
+        if (!"".equals(adaptorUserAgent)) {
+          conn.addRequestProperty("User-Agent", adaptorUserAgent);
+        }
+        conn.setDoInput(true);
+        conn.setDoOutput(false);
+        // Set follow redirects to true here if adaptor need not to handle
+        // encoding of redirect URLs.
+        conn.setInstanceFollowRedirects(!performBrowserLeniency);
+        int responseCode = conn.getResponseCode();
+        if (responseCode == HttpURLConnection.HTTP_NOT_FOUND) {
+          return null;
+        }
+        if (responseCode == HttpURLConnection.HTTP_OK) {
+          break;
+        }
+        if (responseCode != HttpURLConnection.HTTP_MOVED_TEMP
+            && responseCode != HttpURLConnection.HTTP_MOVED_PERM) {
+          InputStream inputStream =
+              responseCode >= HttpURLConnection.HTTP_BAD_REQUEST
+              ? conn.getErrorStream() : conn.getInputStream();
+          inputStream.close();
+          throw new IOException(String.format("Got status code %d for URL %s",
+                  responseCode, url));
+        }
+        if (maxRedirectsToFollow < 0) {
+          throw new AssertionError();
+        }
+        if ((maxRedirectsToFollow == 0)) {
+          throw new IOException(String.format("Got status code %d for url %s "
+                  + "but adaptor is configured to follow 0 redirects.",
+              responseCode, initialRequest));
+        }
+        redirectAttempt++;
+        String redirectLocation = conn.getHeaderField("Location");
+        // Close input stream
+        InputStream inputStream = conn.getInputStream();
+        inputStream.close();
+        if (Strings.isNullOrEmpty(redirectLocation)) {
+          throw new IOException(
+              "No redirect location available for URL " + url);
+        }
+        log.log(Level.FINE, "Redirected to URL {0} from URL {1}",
+            new Object[] {redirectLocation, url});
+        url = encodeSharePointUrl(redirectLocation, performBrowserLeniency);
+      } while (redirectAttempt <= maxRedirectsToFollow);
       if (conn.getResponseCode() != HttpURLConnection.HTTP_OK) {
-        throw new IOException("Got status code: " + conn.getResponseCode());
+        throw new IOException(String.format("Got status code %d for initial "
+                + "request %s after %d redirect attempts.",
+                conn.getResponseCode(), initialRequest, redirectAttempt));
       }
       String errorHeader = conn.getHeaderField("SharePointError");
       // SharePoint adds header SharePointError to response to indicate error
@@ -3151,6 +3291,11 @@ public class SharePointAdaptor extends AbstractAdaptor
             ? conn.getErrorStream() : conn.getInputStream();
         inputStream.close();
       }
+    }
+
+    @Override
+    public HttpURLConnection getHttpURLConnection(URL url) throws IOException {
+      return (HttpURLConnection)url.openConnection();
     }
   }
 
