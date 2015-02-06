@@ -1018,6 +1018,8 @@ public class SharePointAdaptorTest {
         "S-1-5-21-736911", "User1", "User1@domain.com", false, false));
     users.getUser().add(createUserGroupUser(500, "GDC-PSL\\User500",
         "S-1-5-21-7369500", "User500", "User11@domain.com", false, false));
+    users.getUser().add(createUserGroupUser(300, "GDC-PSL\\Group300",
+        "S-1-5-21-7369300", "Group300", "Group300@domain.com", true, false));
     users.getUser().add(createUserGroupUser(1073741823, "System.Account",
         "S-1-5-21-7369343", "System Account", "System.Account@domain.com",
         false, true));
@@ -1048,7 +1050,8 @@ public class SharePointAdaptorTest {
                         "<permission memberid='4' mask='0' />")
                     .replaceInContent("</permissions>",
                         "<permission memberid='500' mask='756052856929' />"
-                            + "</permissions>"))
+                        + "<permission memberid='300' mask='756052856929' />"
+                        + "</permissions>"))
                 .register(SITES_SITECOLLECTION_SC_CONTENT_EXCHANGE))
         .endpoint("http://localhost:1/sites/SiteCollection/"
             + "_vti_bin/UserGroup.asmx", mockUserGroupSoap);
@@ -1070,7 +1073,8 @@ public class SharePointAdaptorTest {
         .setInheritanceType(Acl.InheritanceType.PARENT_OVERRIDES)
         .setPermitGroups(Arrays.asList(
             SITES_SITECOLLECTION_MEMBERS,
-            SITES_SITECOLLECTION_OWNERS))
+            SITES_SITECOLLECTION_OWNERS,
+            new GroupPrincipal("GDC-PSL\\Group300", DEFAULT_NAMESPACE)))
         .setPermitUsers(Arrays.asList(GDC_PSL_SPUSER1, 
             new UserPrincipal("GDC-PSL\\User500", DEFAULT_NAMESPACE))).build(),
         response.getAcl());

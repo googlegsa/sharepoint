@@ -2996,8 +2996,13 @@ public class SharePointAdaptor extends AbstractAdaptor
               user.getID());
           continue;
         }
-        map.put((int) user.getID(),
-            new UserPrincipal(userName, defaultNamespace));
+        if (isDomainGroup) {
+          map.put((int) user.getID(),
+              new GroupPrincipal(userName, defaultNamespace));
+        } else {
+          map.put((int) user.getID(),
+              new UserPrincipal(userName, defaultNamespace));
+        }
       }
       mapping = new MemberIdMapping(map);
       log.exiting("SiteAdaptor", "retrieveSiteUserMapping", mapping);
