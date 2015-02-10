@@ -2696,11 +2696,18 @@ public class SharePointAdaptorTest {
   }
   
   @Test
+  public void testSharePointUrlConstructorWithSpaceInUrl() {
+    SharePointAdaptor adaptor = new SharePointAdaptor();
+    adaptor.new SharePointUrl(
+        "http://sharepoint.intranet.com/sites/new site collection", "");
+  }
+  
+  @Test
   public void testSharePointUrlMalformedInput() {
     SharePointAdaptor adaptor = new SharePointAdaptor();
     thrown.expect(InvalidConfigurationException.class);
     adaptor.new SharePointUrl("malformed.sharepoint.com", "");
-  }  
+  }
   
   @Test
   public void testSharePointUrlAndRootUrl() {

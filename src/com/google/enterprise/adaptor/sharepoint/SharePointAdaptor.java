@@ -1563,11 +1563,11 @@ public class SharePointAdaptor extends AbstractAdaptor
             siteCollectionOnlyModeConfig);
       } else {
         this.siteCollectionOnly =  this.sharePointUrl.split("/").length > 3;
-      }
-      
+      }      
       
       try {
-        this.virtualServerUrl = getRootUrl(new URL(this.sharePointUrl).toURI());
+        this.virtualServerUrl = getRootUrl(encodeSharePointUrl(
+                this.sharePointUrl, performBrowserLeniency).toURI());
       } catch (MalformedURLException exMalformed) {
         throw new InvalidConfigurationException(
             "Adaptor is configured with malformed SharePoint URL [" 
@@ -1578,6 +1578,16 @@ public class SharePointAdaptor extends AbstractAdaptor
             "Adaptor is configured with invalid SharePoint URL [" 
             + sharePointUrl + "]. Please specify valid SharePoint URL.",
             exSyntax);
+      } catch (IOException ex) {
+        throw new InvalidConfigurationException(
+            "Adaptor is configured with invalid SharePoint URL [" 
+            + sharePointUrl + "]. Please specify valid SharePoint URL.",
+            ex);        
+      } catch (IllegalArgumentException exIllegal) {
+        throw new InvalidConfigurationException(
+            "Adaptor is configured with invalid SharePoint URL [" 
+            + sharePointUrl + "]. Please specify valid SharePoint URL.",
+            exIllegal);        
       }
     }
     
