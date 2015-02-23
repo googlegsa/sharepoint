@@ -829,7 +829,23 @@ public class SharePointAdaptorTest {
         + "LoginName=\"c:0-.t|adfsv2|grouplevel1@gsa-connectors.com\" "
         + "BinaryIdentifier=\"c:0-.t|adfsv2|grouplevel1@gsa-connectors.com\" "
         + "Sid=\"\" BinaryIdentifierType=\"UserKey\" "
-        + "GrantMask=\"4611686224789442657\" DenyMask=\"0\" /></Policies>";
+        + "GrantMask=\"4611686224789442657\" DenyMask=\"0\" />"
+        + "<PolicyUser "
+        + "LoginName=\"c:0?.t|adfsv2|group1.nameid@gsa-connectors.com\" "
+        + "BinaryIdentifier=\"c:0?.t|adfsv2|group1.nameid@gsa-connectors.com\" "
+        + "Sid=\"\" BinaryIdentifierType=\"UserKey\" "
+        + "GrantMask=\"4611686224789442657\" DenyMask=\"0\" />"      
+        + "<PolicyUser "
+        + "LoginName=\"i:0?.t|adfsv2|spuat.adaptor.nameid@gsa-connectors.com\" "
+        + "BinaryIdentifier=\"i:0e.t|adfsv2|spuat.adaptor.nameid@gsa-"
+        + "connectors.com\" Sid=\"\" BinaryIdentifierType=\"UserKey\" "
+        + "GrantMask=\"4611686224789442657\" DenyMask=\"0\" />"
+        + "<PolicyUser "
+        + "LoginName=\"i:0aa.t|adfsv2|invalidclaim\" "
+        + "BinaryIdentifier=\"i:0aa.t|adfsv2|invalidclaim\" "
+        + "Sid=\"\" BinaryIdentifierType=\"UserKey\" "
+        + "GrantMask=\"4611686224789442657\" DenyMask=\"0\" />"
+        + "</Policies>";
     MockPeopleSoap mockPeople = new MockPeopleSoap();
     mockPeople.addToResult("i:0#.w|GSA-CONNECTORS\\Administrator",
         "Administrator", SPPrincipalType.USER);
@@ -845,6 +861,13 @@ public class SharePointAdaptorTest {
         "spuat.adaptor@gsa-connectors.com", SPPrincipalType.USER);
     mockPeople.addToResult("c:0-.t|adfsv2|grouplevel1@gsa-connectors.com",
         "grouplevel1@gsa-connectors.com", SPPrincipalType.SECURITY_GROUP);
+    mockPeople.addToResult(
+        "i:0?.t|adfsv2|spuat.adaptor.nameid@gsa-connectors.com",
+        "spuat.adaptor.nameid@gsa-connectors.com", SPPrincipalType.USER);
+    mockPeople.addToResult("c:0?.t|adfsv2|group1.nameid@gsa-connectors.com",
+        "group1.nameid@gsa-connectors.com", SPPrincipalType.SECURITY_GROUP);
+    mockPeople.addToResult("i:0aa.t|adfsv2|invalidclaim",
+        "invalidclaim", SPPrincipalType.USER);
     
     SoapFactory siteDataFactory = MockSoapFactory.blank()
         .endpoint(VS_ENDPOINT, MockSiteData.blank()
@@ -867,10 +890,14 @@ public class SharePointAdaptorTest {
             NT_AUTHORITY_LOCAL_SERVICE, new UserPrincipal(
                 "GSA-CONNECTORS\\Administrator", DEFAULT_NAMESPACE),
             new UserPrincipal("spuat.adaptor@gsa-connectors.com",
+                DEFAULT_NAMESPACE),
+            new UserPrincipal("spuat.adaptor.nameid@gsa-connectors.com",
                 DEFAULT_NAMESPACE)))
         .setPermitGroups(Arrays.asList(new GroupPrincipal(
             "GSA-CONNECTORS\\Domain Users", DEFAULT_NAMESPACE),
             new GroupPrincipal("grouplevel1@gsa-connectors.com",
+                DEFAULT_NAMESPACE),
+            new GroupPrincipal("group1.nameid@gsa-connectors.com",
                 DEFAULT_NAMESPACE)))
         .build(),
         response.getAcl());
