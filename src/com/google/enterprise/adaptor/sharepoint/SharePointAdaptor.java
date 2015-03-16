@@ -37,6 +37,7 @@ import com.google.enterprise.adaptor.Request;
 import com.google.enterprise.adaptor.Response;
 import com.google.enterprise.adaptor.StartupException;
 import com.google.enterprise.adaptor.UserPrincipal;
+import com.google.enterprise.adaptor.sharepoint.ActiveDirectoryClientFactory.ActiveDirectoryClientFactoryImpl;
 import com.google.enterprise.adaptor.sharepoint.RareModificationCache.CachedList;
 import com.google.enterprise.adaptor.sharepoint.RareModificationCache.CachedVirtualServer;
 import com.google.enterprise.adaptor.sharepoint.RareModificationCache.CachedWeb;
@@ -280,6 +281,8 @@ public class SharePointAdaptor extends AbstractAdaptor
   // Java HTTP redirects, because otherwise those URLs wouldn't receive
   // this lenient encoding treatment.
   private boolean performBrowserLeniency;
+  
+  private boolean performSidLookup;
 
   /**
    * Mapping of mime-types used by SharePoint to ones that the GSA comprehends.
@@ -367,6 +370,8 @@ public class SharePointAdaptor extends AbstractAdaptor
   private final Callable<ExecutorService> executorFactory;
 
   private final AuthenticationClientFactory authenticationClientFactory;
+  private final ActiveDirectoryClientFactory adClientFactory;
+  
   private ExecutorService executor;
   private boolean xmlValidation;
   private int feedMaxUrls;
@@ -385,6 +390,7 @@ public class SharePointAdaptor extends AbstractAdaptor
   private NtlmAuthenticator ntlmAuthenticator;  
   
   private FormsAuthenticationHandler authenticationHandler;
+  private ActiveDirectoryClient adClient;
   private static final TimeZone gmt = TimeZone.getTimeZone("GMT");
   /** RFC 822 date format, as updated by RFC 1123. */
   private final ThreadLocal<DateFormat> dateFormatRfc1123
@@ -420,21 +426,24 @@ public class SharePointAdaptor extends AbstractAdaptor
 
   public SharePointAdaptor() {
     this(new SoapFactoryImpl(), new HttpClientImpl(),
-        new CachedThreadPoolFactory(), new AuthenticationClientFactoryImpl());
+        new CachedThreadPoolFactory(), new AuthenticationClientFactoryImpl(),
+        new ActiveDirectoryClientFactoryImpl());
   }
 
   @VisibleForTesting
   SharePointAdaptor(SoapFactory soapFactory, HttpClient httpClient,
       Callable<ExecutorService> executorFactory,
-      AuthenticationClientFactory authenticationClientFactory) {
+      AuthenticationClientFactory authenticationClientFactory,
+      ActiveDirectoryClientFactory adClientFactory) {
     if (soapFactory == null || httpClient == null || executorFactory == null 
-        || authenticationClientFactory == null) {
+        || authenticationClientFactory == null || adClientFactory == null) {
       throw new NullPointerException();
     }
     this.soapFactory = soapFactory;
     this.httpClient = httpClient;
     this.executorFactory = executorFactory;
     this.authenticationClientFactory = authenticationClientFactory;
+    this.adClientFactory = adClientFactory;
   }
 
   /**
@@ -488,6 +497,11 @@ public class SharePointAdaptor extends AbstractAdaptor
     // Set this to true when adaptor needs to encode redirect urls and perform
     // browser leniency for handling unsupported characters in urls.
     config.addKey("adaptor.lenientUrlRulesAndCustomRedirect", "true");
+    config.addKey("sidLookup.host", "");
+    config.addKey("sidLookup.port", "3268");
+    config.addKey("sidLookup.username", "");
+    config.addKey("sidLookup.password", "");
+    config.addKey("sidLookup.method", "standard");
   }
 
   @Override
@@ -544,6 +558,27 @@ public class SharePointAdaptor extends AbstractAdaptor
       maxRedirectsToFollow = -1;
     }
     
+    String sidLookupHost = config.getValue("sidLookup.host");
+    String sidLookupUsername = null;
+    String sidLookupPassword = null;
+    String sidLookupMethod = null;
+    int sidLookupPort = 0;
+    if (Strings.isNullOrEmpty(sidLookupHost)) {
+      performSidLookup = false;
+    } else {
+      sidLookupUsername = config.getValue("sidLookup.username");
+      sidLookupPassword = context.getSensitiveValueDecoder().decodeValue(
+          config.getValue("sidLookup.password"));
+      if ("".equals(sidLookupUsername) || "".equals(sidLookupPassword)) {
+        throw new InvalidConfigurationException("Adaptor is configured to "
+            + "perfom SID based lookup. please specify valid username and "
+            + "password to perform SID lookup");
+      }
+      sidLookupPort = Integer.parseInt(config.getValue("sidLookup.port"));
+      sidLookupMethod = config.getValue("sidLookup.method");
+      performSidLookup = true;     
+    }
+    
     log.log(Level.CONFIG, "SharePoint Url: {0}", sharePointUrl);
     log.log(Level.CONFIG, "Username: {0}", username);
     log.log(Level.CONFIG, "Password: {0}", password);
@@ -556,6 +591,14 @@ public class SharePointAdaptor extends AbstractAdaptor
         adaptorUserAgent);
     log.log(Level.CONFIG, "Run in Site Collection Only mode: {0}",
         sharePointUrl.isSiteCollectionUrl());
+    log.log(Level.CONFIG, "Perform SID Lookup for domain groups: {0}",
+        performSidLookup);
+    if(performSidLookup) {
+      log.log(Level.CONFIG, "SID Lookup Host: {0}", sidLookupHost);
+      log.log(Level.CONFIG, "SID Lookup Username: {0}", sidLookupUsername);
+      log.log(Level.CONFIG, "SID Lookup Password: {0}", sidLookupPassword);
+      log.log(Level.CONFIG, "SID Lookup Port: {0}", sidLookupPort);
+    }
 
     if (sharePointUrl.isSiteCollectionUrl()) {
       log.info("Adaptor is configured to use site collection only mode. "
@@ -652,6 +695,11 @@ public class SharePointAdaptor extends AbstractAdaptor
           spAdaptor.getSiteDataClient();
       rareModCache
           = new RareModificationCache(sharePointSiteDataClient, executor);
+      if (performSidLookup) {
+      adClient = adClientFactory.newActiveDirectoryClient(
+              sidLookupHost,sidLookupPort, sidLookupUsername,
+              sidLookupPassword,sidLookupMethod);     
+      }
 
       if (sharePointUrl.isSiteCollectionUrl()) {
         // Test out configuration for site collection.
@@ -798,7 +846,7 @@ public class SharePointAdaptor extends AbstractAdaptor
     }
     for(PolicyUser p : vs.getPolicies().getPolicyUser()) {
       String policyUser = decodeClaim(
-          p.getLoginName(), p.getLoginName(), false);
+          p.getLoginName(), p.getLoginName());
       if (policyUser == null) {
         // Un-supported claim type
         continue;
@@ -1494,8 +1542,7 @@ public class SharePointAdaptor extends AbstractAdaptor
   }
 
   @VisibleForTesting
-  static String decodeClaim(String loginName, String name
-      , boolean isDomainGroup) {
+  static String decodeClaim(String loginName, String name) {
     if (!loginName.startsWith(IDENTITY_CLAIMS_PREFIX)
         && !loginName.startsWith(OTHER_CLAIMS_PREFIX)) {
       return loginName;
@@ -1525,6 +1572,38 @@ public class SharePointAdaptor extends AbstractAdaptor
     }
     log.log(Level.WARNING, "Unsupported claims value {0}", loginName);
     return null;
+  }
+  
+  /**
+   * Method to get decoded login name for users and groups principals. For 
+   * claims encoded domain groups if performSidLookup is true, this method will
+   * use {@link ActiveDirectoryClient} to convert sid to domain\groupname.
+   * If conversion fails method will return displayName as login name.
+   * In other cases decodeClaims method will decode input loginName.   
+   */
+  private String getLoginNameForPrincipal(String loginName,
+      String displayName, boolean isDomainGroup) {
+    if (isDomainGroup && performSidLookup && loginName.startsWith("c:0+.w|")) {
+      try {
+        String groupSid = loginName.substring(7);
+        String principal = adClient.getUserAccountBySid(loginName.substring(7));
+        if (principal == null) {
+          log.log(Level.WARNING, "Could not resolve login name for SID {0}."
+              + " Using display name {1} as fallback.",
+              new Object[]{groupSid, displayName});
+          return displayName;
+        } else {
+          return principal;
+        }
+      } catch (IOException ex) {
+        log.log(Level.WARNING, String.format("Error performing SID lookup for "
+            + "User %s. Returing display name %s as fallback.",
+            loginName, displayName), ex);
+        return displayName;
+      }      
+    } else {
+      return decodeClaim(loginName, displayName);
+    }
   }
   
   @VisibleForTesting
@@ -1822,8 +1901,8 @@ public class SharePointAdaptor extends AbstractAdaptor
         }
         boolean isGroup
             = p.getPrincipalType() == SPPrincipalType.SECURITY_GROUP;
-        String accountName = decodeClaim(p.getAccountName(), p.getDisplayName(),
-            isGroup);
+        String accountName = getLoginNameForPrincipal(
+            p.getAccountName(), p.getDisplayName(), isGroup);                
         if (accountName == null) {
           log.log(Level.WARNING, 
               "Unable to decode claim. Skipping policy user {0}", loginName);
@@ -2954,8 +3033,8 @@ public class SharePointAdaptor extends AbstractAdaptor
 
     private Principal userDescriptionToPrincipal(UserDescription user) {
       boolean isDomainGroup = (user.getIsDomainGroup() == TrueFalseType.TRUE);
-      String userName
-          = decodeClaim(user.getLoginName(), user.getName(), isDomainGroup);
+      String userName = getLoginNameForPrincipal(
+          user.getLoginName(), user.getName(), isDomainGroup);
       if (userName == null) {
         return null;
       }
@@ -2988,9 +3067,9 @@ public class SharePointAdaptor extends AbstractAdaptor
       for (User user : siteUsers.getUsers().getUser()) {
         boolean isDomainGroup = (user.getIsDomainGroup()
             == com.microsoft.schemas.sharepoint.soap.directory.TrueFalseType.TRUE);
-        String userName =
-            decodeClaim(user.getLoginName(), user.getName(), isDomainGroup);
-
+        
+        String userName = getLoginNameForPrincipal(
+            user.getLoginName(), user.getName(), isDomainGroup);
         if (userName == null) {
           log.log(Level.WARNING,
               "Unable to determine login name. Skipping user with ID {0}",
