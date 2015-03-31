@@ -1058,13 +1058,25 @@ public class SharePointAdaptorTest {
   
   @Test
   public void testGetDocContentSiteCollectionOnly() throws Exception {
+    final String getChangesSiteCollection726 =
+        loadTestString("testModifiedGetDocIdsClient.changes-sc.xml");
     SoapFactory siteDataFactory = MockSoapFactory.blank()
         .endpoint(VS_ENDPOINT, MockSiteData.blank()
             .register(SITES_SITECOLLECTION_SAW_EXCHANGE))
         .endpoint(SITES_SITECOLLECTION_ENDPOINT, MockSiteData.blank()
             .register(SITES_SITECOLLECTION_URLSEG_EXCHANGE)
             .register(SITES_SITECOLLECTION_S_CONTENT_EXCHANGE)
-            .register(SITES_SITECOLLECTION_SC_CONTENT_EXCHANGE));
+            .register(SITES_SITECOLLECTION_SC_CONTENT_EXCHANGE)
+            .register(new ChangesExchange(ObjectType.SITE_COLLECTION,
+                    "{bb3bb2dd-6ea7-471b-a361-6fb67988755c}",
+                    "1;1;bb3bb2dd-6ea7-471b-a361-6fb67988755c;"
+                        + "634762601982930000;726",
+                    "1;1;bb3bb2dd-6ea7-471b-a361-6fb67988755c;"
+                        + "634762601982930000;726",
+                    null,
+                    "1;1;bb3bb2dd-6ea7-471b-a361-6fb67988755c;"
+                        + "634762601982930000;726",
+                    600, getChangesSiteCollection726, false)));
 
     adaptor = new SharePointAdaptor(siteDataFactory,
         new UnsupportedHttpClient(), executorFactory,
@@ -2364,6 +2376,64 @@ public class SharePointAdaptorTest {
     assertEquals(
         Arrays.asList(new DocIdPusher.Record.Builder(new DocId("")).build()),
         pusher.getRecords());
+    assertEquals(goldenGroups, pusher.getGroups());
+  }
+  
+  @Test
+  public void testGetDocIdsSiteCollectionOnly() throws Exception {
+    final Map<GroupPrincipal, Collection<Principal>> goldenGroups;
+    {
+      Map<GroupPrincipal, Collection<Principal>> tmp
+          = new TreeMap<GroupPrincipal, Collection<Principal>>();
+      tmp.put(SITES_SITECOLLECTION_OWNERS, Arrays.<Principal>asList(
+          GDC_PSL_ADMINISTRATOR));
+      tmp.put(SITES_SITECOLLECTION_MEMBERS, Arrays.asList(
+            new UserPrincipal("GDC-PSL\\spuser2", DEFAULT_NAMESPACE),
+            new GroupPrincipal("BUILTIN\\users", DEFAULT_NAMESPACE),
+            new UserPrincipal("GDC-PSL\\spuser4", DEFAULT_NAMESPACE)));
+      tmp.put(SITES_SITECOLLECTION_VISITORS, Arrays.<Principal>asList());
+      goldenGroups = Collections.unmodifiableMap(tmp);
+    }
+
+    final String getChangesSiteCollection726 =
+        loadTestString("testModifiedGetDocIdsClient.changes-sc.xml");
+    final ContentExchange getContentSiteCollection  =
+        new ContentExchange(ObjectType.SITE_COLLECTION, null, null, null,
+            true, false, null, loadTestString("sites-SiteCollection-sc.xml")
+                .replace("http://localhost:1/sites/SiteCollection",
+                    "http://localhost:1/sites/sitecollection"));
+    SoapFactory siteDataFactory = MockSoapFactory.blank()        
+        .endpoint(SITES_SITECOLLECTION_ENDPOINT.replace("SiteCollection",
+            "sitecollection"), MockSiteData.blank()            
+            .register(getContentSiteCollection)
+            .register(new ChangesExchange(ObjectType.SITE_COLLECTION,
+                    "{bb3bb2dd-6ea7-471b-a361-6fb67988755c}",
+                    "1;1;bb3bb2dd-6ea7-471b-a361-6fb67988755c;"
+                        + "634762601982930000;726",
+                    "1;1;bb3bb2dd-6ea7-471b-a361-6fb67988755c;"
+                        + "634762601982930000;726",
+                    null,
+                    "1;1;bb3bb2dd-6ea7-471b-a361-6fb67988755c;"
+                        + "634762601982930000;726",
+                    600, getChangesSiteCollection726, false)))
+        .endpoint(SITES_SITECOLLECTION_ENDPOINT, MockSiteData.blank()
+            .register(SITES_SITECOLLECTION_URLSEG_EXCHANGE)
+            .register(SITES_SITECOLLECTION_S_CONTENT_EXCHANGE)
+            .register(SITES_SITECOLLECTION_SC_CONTENT_EXCHANGE));
+
+    adaptor = new SharePointAdaptor(siteDataFactory,
+        new UnsupportedHttpClient(), executorFactory,
+        new MockAuthenticationClientFactoryForms(),
+        new UnsupportedActiveDirectoryClientFactory());
+    config.overrideKey("sharepoint.server",
+        "http://localhost:1/sites/sitecollection");
+    AccumulatingDocIdPusher pusher = new AccumulatingDocIdPusher();
+    adaptor.init(new MockAdaptorContext(config, pusher));
+    adaptor.getDocIds(pusher);
+    assertEquals(
+        Arrays.asList(new DocIdPusher.Record.Builder(
+            new DocId("http://localhost:1/sites/SiteCollection")).build()),
+            pusher.getRecords());
     assertEquals(goldenGroups, pusher.getGroups());
   }
 

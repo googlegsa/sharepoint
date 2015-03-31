@@ -509,8 +509,9 @@ public class SharePointAdaptor extends AbstractAdaptor
     this.context = context;
     context.setPollingIncrementalLister(this);
     Config config = context.getConfig();
-    sharePointUrl = new SharePointUrl(config.getValue("sharepoint.server"),
-        config.getValue("sharepoint.siteCollectionOnly"));
+    SharePointUrl configuredSharePointUrl =
+        new SharePointUrl(config.getValue("sharepoint.server"),
+            config.getValue("sharepoint.siteCollectionOnly"));
     String username = config.getValue("sharepoint.username");
     String password = context.getSensitiveValueDecoder().decodeValue(
         config.getValue("sharepoint.password"));
@@ -579,7 +580,7 @@ public class SharePointAdaptor extends AbstractAdaptor
       performSidLookup = true;     
     }
     
-    log.log(Level.CONFIG, "SharePoint Url: {0}", sharePointUrl);
+    log.log(Level.CONFIG, "SharePoint Url: {0}", configuredSharePointUrl);
     log.log(Level.CONFIG, "Username: {0}", username);
     log.log(Level.CONFIG, "Password: {0}", password);
     log.log(Level.CONFIG, "Default Namespace: {0}", defaultNamespace);
@@ -590,7 +591,7 @@ public class SharePointAdaptor extends AbstractAdaptor
     log.log(Level.CONFIG, "Adaptor user agent: {0}",
         adaptorUserAgent);
     log.log(Level.CONFIG, "Run in Site Collection Only mode: {0}",
-        sharePointUrl.isSiteCollectionUrl());
+        configuredSharePointUrl.isSiteCollectionUrl());
     log.log(Level.CONFIG, "Perform SID Lookup for domain groups: {0}",
         performSidLookup);
     if(performSidLookup) {
@@ -600,7 +601,7 @@ public class SharePointAdaptor extends AbstractAdaptor
       log.log(Level.CONFIG, "SID Lookup Port: {0}", sidLookupPort);
     }
 
-    if (sharePointUrl.isSiteCollectionUrl()) {
+    if (configuredSharePointUrl.isSiteCollectionUrl()) {
       log.info("Adaptor is configured to use site collection only mode. "
           + "ACLs and anonymous access settings at web application policy "
           + "level will be ignored.");
@@ -609,7 +610,8 @@ public class SharePointAdaptor extends AbstractAdaptor
     ntlmAuthenticator = new NtlmAuthenticator(username, password);
     // Unfortunately, this is a JVM-wide modification.
     Authenticator.setDefault(ntlmAuthenticator);
-    URL virtualServerUrl = new URL(sharePointUrl.getVirtualServerUrl());
+    URL virtualServerUrl =
+        new URL(configuredSharePointUrl.getVirtualServerUrl());
     ntlmAuthenticator.addPermitForHost(virtualServerUrl);
     scheduledExecutor = new ScheduledThreadPoolExecutor(1);
     String authenticationType;
@@ -620,7 +622,7 @@ public class SharePointAdaptor extends AbstractAdaptor
             + "and password.");
       }
       SamlHandshakeManager manager = authenticationClientFactory
-          .newLiveAuthentication(sharePointUrl.getVirtualServerUrl(),
+          .newLiveAuthentication(configuredSharePointUrl.getVirtualServerUrl(),
               username, password);
       authenticationHandler = new SamlAuthenticationHandler.Builder(username,
           password, scheduledExecutor, manager).build();     
@@ -632,8 +634,8 @@ public class SharePointAdaptor extends AbstractAdaptor
             + "and password.");
       }
       SamlHandshakeManager manager = authenticationClientFactory
-          .newAdfsAuthentication(sharePointUrl.getSharePointUrl(), username,
-              password, stsendpoint, stsrealm,
+          .newAdfsAuthentication(configuredSharePointUrl.getSharePointUrl(),
+              username, password, stsendpoint, stsrealm,
               config.getValue("sharepoint.sts.login"),
               config.getValue("sharepoint.sts.trustLocation"));
       authenticationHandler = new SamlAuthenticationHandler.Builder(username,
@@ -641,8 +643,8 @@ public class SharePointAdaptor extends AbstractAdaptor
       authenticationType = "ADFS";
     } else {    
       AuthenticationSoap authenticationSoap = authenticationClientFactory
-          .newSharePointFormsAuthentication(sharePointUrl.getSharePointUrl(),
-              username, password);
+          .newSharePointFormsAuthentication(
+              configuredSharePointUrl.getSharePointUrl(), username, password);
       if (!"".equals(adaptorUserAgent)) {
         ((BindingProvider) authenticationSoap).getRequestContext().put(
             MessageContext.HTTP_REQUEST_HEADERS, Collections.singletonMap(
@@ -664,7 +666,8 @@ public class SharePointAdaptor extends AbstractAdaptor
         // Just rethrow excption and allow adaptor to retry.
         throw new IOException(String.format(
             "Cannot find SharePoint server \"%s\" -- please make sure it is "
-                + "specified properly.", sharePointUrl.getSharePointUrl()), ex);
+                + "specified properly.",
+                configuredSharePointUrl.getSharePointUrl()), ex);
       }
       if (ex.getCause() instanceof ConnectException 
           || ex.getCause() instanceof SocketTimeoutException ) {
@@ -675,7 +678,7 @@ public class SharePointAdaptor extends AbstractAdaptor
         throw new IOException(String.format(
             "Unable to connect to SharePoint server \"%s\" -- please make "
                 + "sure it is specified properly and is available.",
-            sharePointUrl.getSharePointUrl()), ex);
+                configuredSharePointUrl.getSharePointUrl()), ex);
       }
       String adfsWarning = "ADFS".equals(authenticationType) 
           ? " Also verify if stsendpoint and stsrealm is specified correctly "
@@ -689,8 +692,9 @@ public class SharePointAdaptor extends AbstractAdaptor
    
     try {
       executor = executorFactory.call();
-      SiteAdaptor spAdaptor = getSiteAdaptor(sharePointUrl.getSharePointUrl(),
-          sharePointUrl.getSharePointUrl());
+      SiteAdaptor spAdaptor = getSiteAdaptor(
+          configuredSharePointUrl.getSharePointUrl(),
+          configuredSharePointUrl.getSharePointUrl());
       SiteDataClient sharePointSiteDataClient =
           spAdaptor.getSiteDataClient();
       rareModCache
@@ -700,13 +704,33 @@ public class SharePointAdaptor extends AbstractAdaptor
               sidLookupHost,sidLookupPort, sidLookupUsername,
               sidLookupPassword,sidLookupMethod);     
       }
-
-      if (sharePointUrl.isSiteCollectionUrl()) {
-        // Test out configuration for site collection.
+      
+      if (!configuredSharePointUrl.isSiteCollectionUrl()) {
+        sharePointUrl = configuredSharePointUrl;
+      } else {
         Site site = sharePointSiteDataClient.getContentSite();
+        CursorPaginator<SPSite, String> changesPaginator =
+            sharePointSiteDataClient.getChangesSPSite(
+                site.getMetadata().getID(),
+                site.getMetadata().getChangeId(), isSp2007);
+        String siteCollectionUrl = null;
+        SPSite spSite = changesPaginator.next();
+        if (spSite != null) {
+          SPSite.Site sc = spSite.getSite();
+          if (sc != null && sc.getMetadata() != null) {
+            siteCollectionUrl = spSite.getSite().getMetadata().getURL();
+          }      
+        }
+        if(Strings.isNullOrEmpty(siteCollectionUrl)){
+          log.log(Level.WARNING, "Unable to get exact url for site "
+              + "collection url. Using {0} instead.",
+              site.getMetadata().getURL());
+          siteCollectionUrl = site.getMetadata().getURL();
+        }
+        sharePointUrl = new SharePointUrl(siteCollectionUrl,
+            config.getValue("sharepoint.siteCollectionOnly"));
         return;
       }
-
       // Test out configuration.
       VirtualServer vs = sharePointSiteDataClient.getContentVirtualServer();
 
@@ -755,7 +779,7 @@ public class SharePointAdaptor extends AbstractAdaptor
             + "configured on GSA as per Virtual server URL might not "
             + "work as expected. Please make sure that adaptor is configured "
             + "to use Public URL instead on internal URL.",
-            sharePointUrl.getVirtualServerUrl());
+            configuredSharePointUrl.getVirtualServerUrl());
       }
     } catch (WebServiceIOException ex) {
       String warning;
@@ -763,7 +787,7 @@ public class SharePointAdaptor extends AbstractAdaptor
       if (cause instanceof UnknownHostException) {
         warning = String.format("Cannot find SharePoint server \"%s\" -- "
             + "please make sure it is specified properly.",
-            sharePointUrl.getSharePointUrl());
+            configuredSharePointUrl.getSharePointUrl());
         // Note: even this exception should not be treated as a "Permanent
         // configuration error" -- it can be caused by transient network down
         // or DNS down.
@@ -773,14 +797,14 @@ public class SharePointAdaptor extends AbstractAdaptor
             + "correctly, and that the user has sufficient permission to "
             + "access the SharePoint server.  If the SharePoint server is "
             + "currently down, please try again later.",
-            sharePointUrl.getSharePointUrl());
+            configuredSharePointUrl.getSharePointUrl());
       } else {
         warning = String.format("Cannot connect to server \"%s\" as user "
             + "\"%s\" with the specified password.  Please make sure they are "
             + "specified correctly, and that the user has sufficient "
             + "permission to access the SharePoint server.  If the SharePoint "
             + "server is currently down, please try again later.",
-            sharePointUrl.getSharePointUrl(), username);
+            configuredSharePointUrl.getSharePointUrl(), username);
       }
       throw new IOException(warning, ex);
     } catch (Exception e) {
@@ -945,8 +969,8 @@ public class SharePointAdaptor extends AbstractAdaptor
     log.entering("SharePointAdaptor", "getDocIdsSiteCollectionOnly", pusher);
     SiteAdaptor scAdaptor = getSiteAdaptor(sharePointUrl.getSharePointUrl(), 
         sharePointUrl.getSharePointUrl());
-    SiteDataClient vsClient = scAdaptor.getSiteDataClient();
-    Site site = vsClient.getContentSite();
+    SiteDataClient scClient = scAdaptor.getSiteDataClient();
+    Site site = scClient.getContentSite();
     DocId siteCollectionDocId = scAdaptor.encodeDocId(
         site.getMetadata().getURL());
     pusher.pushDocIds(Arrays.asList(siteCollectionDocId));
