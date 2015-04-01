@@ -39,6 +39,7 @@ import com.google.enterprise.adaptor.Principal;
 import com.google.enterprise.adaptor.UserPrincipal;
 import com.google.enterprise.adaptor.sharepoint.ActiveDirectoryClient.ADServer;
 import com.google.enterprise.adaptor.sharepoint.SamlAuthenticationHandler.SamlHandshakeManager;
+import com.google.enterprise.adaptor.sharepoint.SharePointAdaptor.FileInfo;
 import com.google.enterprise.adaptor.sharepoint.SharePointAdaptor.SharePointUrl;
 import com.google.enterprise.adaptor.sharepoint.SharePointAdaptor.SiteUserIdMappingCallable;
 import com.google.enterprise.adaptor.sharepoint.SharePointAdaptor.SoapFactory;
@@ -1983,6 +1984,80 @@ public class SharePointAdaptorTest {
     assertEquals(URI.create("http://localhost:1/sites/SiteCollection/Lists/"
           + "Custom%20List/DispForm.aspx?ID=2"),
         response.getDisplayUrl());
+  }
+  
+  @Test
+  public void testGetDocContentMsgFile() throws Exception {
+    SiteDataSoap siteData = MockSiteData.blank()
+        .register(SITES_SITECOLLECTION_S_CONTENT_EXCHANGE)
+        .register(SITES_SITECOLLECTION_LISTS_CUSTOMLIST_L_CONTENT_EXCHANGE)
+        .register(SITES_SITECOLLECTION_LISTS_CUSTOMLIST_2_LI_CONTENT_EXCHANGE
+            .replaceInContent("2_.000", "outlookFile.msg")
+            .replaceInContent("ows_ContentTypeId='0x0100",
+                "ows_ContentTypeId='0x0101")
+            .replaceInContent("ows_Attachments='1'", "ows_Attachments='0'")
+            .replaceInContent("Inside Folder", "Under List")
+            .replaceInContent("/Test Folder", "")
+            .replaceInContent("/Test%20Folder", "")
+            .replaceInContent(
+              "ows_ScopeId='2;#{2E29615C-59E7-493B-B08A-3642949CC069}'",
+              "ows_ScopeId='2;#{f9cb02b3-7f29-4cac-804f-ba6e14f1eb39}'"))
+        .register(new URLSegmentsExchange("http://localhost:1/sites/"
+            + "SiteCollection/Lists/Custom List/outlookFile.msg",
+          true, null, null, "{6F33949A-B3FF-4B0C-BA99-93CB518AC2C0}", "2"));
+    final String goldenContents = "msg contents";
+    final String goldenContentType = "application/octet-stream";
+    adaptor = new SharePointAdaptor(initableSoapFactory,
+        new HttpClient() {
+          @Override
+          public FileInfo issueGetRequest(URL url,
+              List<String> authenticationCookies, String adaptorUserAgent,
+              int maxRedirectsToFollow, boolean performBrowserLeniency) {
+            assertEquals("http://localhost:1/sites/SiteCollection/Lists/"
+                + "Custom%20List/outlookFile.msg", url.toString());
+            InputStream contents = new ByteArrayInputStream(
+                goldenContents.getBytes(charset));
+            List<String> headers = Arrays.asList("not-the-Content-Type",
+                "early", "conTent-TypE", goldenContentType, "Content-Type",
+                "late", "Last-Modified", "Tue, 01 May 2012 22:14:41 GMT");
+            return new FileInfo.Builder(contents).setHeaders(headers).build();
+          }
+
+          @Override
+          public String getRedirectLocation(URL url,
+              List<String> authenticationCookies, String adaptorUserAgent)
+                  throws IOException {
+            throw new UnsupportedOperationException();        
+          }
+
+          @Override
+          public HttpURLConnection getHttpURLConnection(URL url)
+              throws IOException {
+            throw new UnsupportedOperationException();
+          }
+        }, executorFactory, new MockAuthenticationClientFactoryForms(),
+        new UnsupportedActiveDirectoryClientFactory());
+    adaptor.init(new MockAdaptorContext(config, pusher));
+    ByteArrayOutputStream baos = new ByteArrayOutputStream();
+    GetContentsRequest request = new GetContentsRequest(
+        new DocId("http://localhost:1/sites/SiteCollection/Lists/Custom List"
+          + "/outlookFile.msg"));
+    GetContentsResponse response = new GetContentsResponse(baos);
+    adaptor.new SiteAdaptor("http://localhost:1/sites/SiteCollection",
+          "http://localhost:1/sites/SiteCollection", siteData,
+          new UnsupportedUserGroupSoap(), new UnsupportedPeopleSoap(),
+          Callables.returning(SITES_SITECOLLECTION_MEMBER_MAPPING),
+          new UnsupportedCallable<MemberIdMapping>())
+        .getDocContent(request, response);    
+    assertEquals(new Acl.Builder()
+        .setInheritFrom(new DocId("http://localhost:1/sites/SiteCollection/"
+            + "Lists/Custom List"))
+        .setInheritanceType(Acl.InheritanceType.PARENT_OVERRIDES).build(),
+        response.getAcl());
+    assertEquals(URI.create("http://localhost:1/sites/SiteCollection/Lists/"
+          + "Custom%20List/outlookFile.msg"),
+        response.getDisplayUrl());
+    assertEquals("application/vnd.ms-outlook", response.getContentType());
   }
 
   @Test

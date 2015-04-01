@@ -327,6 +327,16 @@ public class SharePointAdaptor extends AbstractAdaptor
 
     MIME_TYPE_MAPPING = Collections.unmodifiableMap(map);
   }
+  
+  private static final Map<String, String> FILE_EXTENSION_TO_MIME_TYPE_MAPPING;
+  static {
+    Map<String, String> map = new HashMap<String, String>();
+    
+    // Map .msg files to mime type application/vnd.ms-outlook
+    map.put(".msg", "application/vnd.ms-outlook");
+    
+    FILE_EXTENSION_TO_MIME_TYPE_MAPPING = Collections.unmodifiableMap(map);
+  }
 
   private static final Logger log
       = Logger.getLogger(SharePointAdaptor.class.getName());
@@ -2547,13 +2557,28 @@ public class SharePointAdaptor extends AbstractAdaptor
       }
       try {
         response.setDisplayUrl(displayUrl);
-        String contentType = fi.getFirstHeaderWithName("Content-Type");
-        if (contentType != null) {
-          String lowerType = contentType.toLowerCase(Locale.ENGLISH);
-          if (MIME_TYPE_MAPPING.containsKey(lowerType)) {
-            contentType = MIME_TYPE_MAPPING.get(lowerType);
+        String filePath = displayUrl.getPath();
+        String fileExtension = "";
+        if (filePath.lastIndexOf('.') > 0) {
+          fileExtension = filePath.substring(
+              filePath.lastIndexOf('.')).toLowerCase(Locale.ENGLISH);
+        }        
+        if (FILE_EXTENSION_TO_MIME_TYPE_MAPPING.containsKey(fileExtension)) {
+          String contentType =
+              FILE_EXTENSION_TO_MIME_TYPE_MAPPING.get(fileExtension);
+          log.log(Level.FINER,
+              "Overriding content type as {0} for file extension {1}",
+              new Object[] {contentType, fileExtension});
+          response.setContentType(contentType);          
+        } else {
+          String contentType = fi.getFirstHeaderWithName("Content-Type");
+          if (contentType != null) {
+            String lowerType = contentType.toLowerCase(Locale.ENGLISH);
+            if (MIME_TYPE_MAPPING.containsKey(lowerType)) {
+              contentType = MIME_TYPE_MAPPING.get(lowerType);
+            }
+            response.setContentType(contentType);
           }
-          response.setContentType(contentType);
         }
         String lastModifiedString = fi.getFirstHeaderWithName("Last-Modified");
         if (lastModifiedString != null && setLastModified) {
