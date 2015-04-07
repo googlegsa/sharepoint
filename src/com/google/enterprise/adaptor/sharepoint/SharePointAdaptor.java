@@ -1975,12 +1975,18 @@ public class SharePointAdaptor extends AbstractAdaptor
       DocIdEncoder encoder = context.getDocIdEncoder();
       for (ContentDatabases.ContentDatabase cdcd
           : vs.getContentDatabases().getContentDatabase()) {
-        ContentDatabase cd
-            = siteDataClient.getContentContentDatabase(cdcd.getID(), true);
-        if (cd.getSites() != null) {
-          for (Sites.Site site : cd.getSites().getSite()) {
-            writer.addLink(encodeDocId(site.getURL()), null);
+        try {
+          ContentDatabase cd
+              = siteDataClient.getContentContentDatabase(cdcd.getID(), true);
+          if (cd.getSites() != null) {
+            for (Sites.Site site : cd.getSites().getSite()) {
+              writer.addLink(encodeDocId(site.getURL()), null);
+            }
           }
+        } catch (IOException ex) {
+          log.log(Level.WARNING,
+              "Error retriving sites from content database " + cdcd.getID(),
+              ex);          
         }
       }
       writer.finish();

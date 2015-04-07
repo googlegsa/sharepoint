@@ -828,6 +828,56 @@ public class SharePointAdaptorTest {
   }
   
   @Test
+  public void testGetDocContentVirtualServerContentDBError()
+      throws Exception {
+    MockPeopleSoap mockPeople = new MockPeopleSoap();    
+    mockPeople.addToResult("NT AUTHORITY\\LOCAL SERVICE", 
+        "NT AUTHORITY\\LOCAL SERVICE", SPPrincipalType.USER);
+    mockPeople.addToResult("GDC-PSL\\spuser1", "spuser1", SPPrincipalType.USER);
+    mockPeople.addToResult("GDC-PSL\\Administrator", "dministrator", 
+        SPPrincipalType.USER);
+    SoapFactory siteDataFactory = MockSoapFactory.blank()
+        .endpoint(VS_ENDPOINT, MockSiteData.blank()
+            .register(VS_CONTENT_EXCHANGE.
+                replaceInContent("</ContentDatabases>",
+                    "<ContentDatabase ID=\"{error content db}\" />"
+                    + "</ContentDatabases>"))
+            .register(CD_CONTENT_EXCHANGE)
+            .register(new ContentExchange(ObjectType.CONTENT_DATABASE,
+                "{error content db}", null, null, true, false, null, "error",
+                new WebServiceException("Content database not available"))))
+        .endpoint("http://localhost:1/_vti_bin/People.asmx", mockPeople);
+
+    adaptor = new SharePointAdaptor(siteDataFactory,
+        new UnsupportedHttpClient(), executorFactory,        
+        new MockAuthenticationClientFactoryForms(),
+        new UnsupportedActiveDirectoryClientFactory());
+    adaptor.init(new MockAdaptorContext(config, pusher));
+    ByteArrayOutputStream baos = new ByteArrayOutputStream();
+    GetContentsResponse response = new GetContentsResponse(baos);
+    adaptor.getDocContent(new GetContentsRequest(new DocId("")), response);
+    String responseString = new String(baos.toByteArray(), charset);
+    final String golden = "<!DOCTYPE html>\n"
+        + "<html><head><title>http://localhost:1/</title></head>"
+        + "<body><h1><!--googleoff: index-->Virtual Server"
+        +   "<!--googleon: index--> http://localhost:1/</h1>"
+        + "<p><!--googleoff: index-->Sites<!--googleon: index--></p><ul>"
+        // These are relative URLs to DocIds that are URLs, and thus the "./"
+        // prefix is correct.
+        + "<li><a href=\"./http://localhost:1\">localhost:1</a></li>"
+        + "<li><a href=\"./http://localhost:1/sites/SiteCollection\">"
+        + "SiteCollection</a></li>"
+        + "</ul></body></html>";
+    assertEquals(golden, responseString);
+    assertEquals(new Acl.Builder()
+        .setEverythingCaseInsensitive()
+        .setInheritanceType(Acl.InheritanceType.PARENT_OVERRIDES)
+        .setPermitUsers(Arrays.asList(GDC_PSL_ADMINISTRATOR, GDC_PSL_SPUSER1,
+            NT_AUTHORITY_LOCAL_SERVICE)).build(), response.getAcl());
+    assertNull(response.getDisplayUrl());
+  }
+  
+  @Test
   public void testPolicyAclsWithClaims() throws Exception {
     String claimsPolicyUsers = "<PolicyUser "
         + "LoginName=\"i:0#.w|GSA-CONNECTORS\\Administrator\" "
@@ -3869,6 +3919,9 @@ public class SharePointAdaptorTest {
             || ex.securityOnly != securityOnly) {
           continue;
         }
+        if (ex.exceptionToThrow != null) {
+          throw ex.exceptionToThrow;
+        }
         setValue(lastItemIdOnPage, ex.lastItemIdOnPage);
         setValue(getContentResult, ex.getContentResult);
         return;
@@ -3976,11 +4029,20 @@ public class SharePointAdaptorTest {
     public final boolean securityOnly;
     public final String lastItemIdOnPage;
     public final String getContentResult;
-
+    public final WebServiceException exceptionToThrow;
+    
     public ContentExchange(ObjectType objectType, String objectId,
         String folderUrl, String itemId, boolean retrieveChildItems,
         boolean securityOnly, String lastItemIdOnPage,
         String getContentResult) {
+      this(objectType, objectId, folderUrl, itemId, retrieveChildItems,
+          securityOnly, lastItemIdOnPage, getContentResult, null);
+    }
+
+    public ContentExchange(ObjectType objectType, String objectId,
+        String folderUrl, String itemId, boolean retrieveChildItems,
+        boolean securityOnly, String lastItemIdOnPage,
+        String getContentResult, WebServiceException exceptionToThrow) {
       this.objectType = objectType;
       this.objectId = objectId;
       this.folderUrl = folderUrl;
@@ -3989,6 +4051,7 @@ public class SharePointAdaptorTest {
       this.securityOnly = securityOnly;
       this.lastItemIdOnPage = lastItemIdOnPage;
       this.getContentResult = getContentResult;
+      this.exceptionToThrow = exceptionToThrow;
     }
 
     public ContentExchange replaceInContent(String match, String replacement) {
