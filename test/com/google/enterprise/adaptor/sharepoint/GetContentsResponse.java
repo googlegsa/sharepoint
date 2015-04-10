@@ -18,6 +18,7 @@ import com.google.enterprise.adaptor.Acl;
 import com.google.enterprise.adaptor.Metadata;
 import com.google.enterprise.adaptor.Response;
 
+import java.io.IOException;
 import java.io.OutputStream;
 import java.net.URI;
 import java.util.ArrayList;
@@ -43,6 +44,7 @@ class GetContentsResponse implements Response {
   private boolean crawlOnce;
   private URI displayUrl;
   private Map<String, Acl> namedResources = new HashMap<String, Acl>();
+  private boolean noContent;
 
   public GetContentsResponse(OutputStream os) {
     this.os = os;
@@ -56,6 +58,11 @@ class GetContentsResponse implements Response {
   @Override
   public void respondNotFound() {
     notFound = true;
+  }
+  
+  @Override
+  public void respondNoContent() throws IOException {    
+    noContent = true;
   }
 
   @Override
@@ -185,4 +192,9 @@ class GetContentsResponse implements Response {
   public Map<String, Acl> getNamedResources() {
     return namedResources;
   }
+  
+  public boolean isNoContent() {
+    return noContent;
+  }
+ 
 }

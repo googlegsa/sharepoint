@@ -40,4 +40,9 @@ class GetContentsRequest implements Request {
   public DocId getDocId() {
     return docId;
   }
+  
+  @Override
+  public boolean canRespondWithNoContent(Date lastModified) {    
+    return false;
+  }
 }

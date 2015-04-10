@@ -35,32 +35,38 @@ public class AccumulatingAsyncDocIdPusher implements AsyncDocIdPusher{
     this.pusher = pusher;
   }
   @Override
-  public void pushDocId(DocId docid) {
+  public boolean pushDocId(DocId docid) {
     try {
       pusher.pushDocIds(Collections.singletonList(docid));
+      return true;
     } catch (InterruptedException e) {
       log.log(Level.WARNING, "Interrupted during pushDocId", e);
       Thread.currentThread().interrupt();
+      return false;
     }
   }
 
   @Override
-  public void pushRecord(DocIdPusher.Record record) {
+  public boolean pushRecord(DocIdPusher.Record record) {
     try {
       pusher.pushRecords(Collections.singletonList(record));
+      return true;
     } catch (InterruptedException e) {
       log.log(Level.WARNING, "Interrupted during pushRecord", e);
       Thread.currentThread().interrupt();
+      return false;
     }
   }
 
   @Override
-  public void pushNamedResource(DocId docid, Acl acl) {
+  public boolean pushNamedResource(DocId docid, Acl acl) {
     try {
       pusher.pushNamedResources(Collections.singletonMap(docid, acl));
+      return true;
     } catch (InterruptedException e) {
       log.log(Level.WARNING, "Interrupted during pushNamedResource", e);
       Thread.currentThread().interrupt();
+      return false;
     }
   }
 }
