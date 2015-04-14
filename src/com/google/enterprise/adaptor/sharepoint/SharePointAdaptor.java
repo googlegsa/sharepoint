@@ -382,6 +382,7 @@ public class SharePointAdaptor extends AbstractAdaptor
   private final AuthenticationClientFactory authenticationClientFactory;
   private final ActiveDirectoryClientFactory adClientFactory;
   
+  /** Executor service to perform background tasks */
   private ExecutorService executor;
   private boolean xmlValidation;
   private int feedMaxUrls;
@@ -2071,6 +2072,24 @@ public class SharePointAdaptor extends AbstractAdaptor
               + "since adaptor is configured for site collection only mode.");
         }
         response.putNamedResource(SITE_COLLECTION_ADMIN_FRAGMENT, acl.build());
+        final GroupMembership groups =
+            siteDataClient.getContentSite().getGroups();        
+        final String siteUrl = request.getDocId().getUniqueId();
+        executor.execute(new Runnable() {
+          @Override
+          public void run() {
+            try {
+              final Map<GroupPrincipal, Collection<Principal>> groupDefs =
+                  new HashMap<GroupPrincipal, Collection<Principal>>();
+              groupDefs.putAll(computeMembersForGroups(groups));
+              context.getDocIdPusher().pushGroupDefinitions(groupDefs, false);
+            } catch (InterruptedException e) {
+              log.log(Level.WARNING,
+                  "interrupted during group push for site " + siteUrl, e);
+              Thread.currentThread().interrupt();
+            }
+          }
+        });
       }
 
       boolean allowAnonymousAccess

@@ -976,7 +976,21 @@ public class SharePointAdaptorTest {
   }
 
   @Test
-  public void testGetDocContentSiteCollection() throws Exception {
+  public void testGetDocContentSiteCollection() throws Exception {    
+    final Map<GroupPrincipal, Collection<Principal>> goldenGroups;
+    {
+      Map<GroupPrincipal, Collection<Principal>> tmp
+          = new TreeMap<GroupPrincipal, Collection<Principal>>();
+      tmp.put(SITES_SITECOLLECTION_OWNERS, Arrays.<Principal>asList(
+          GDC_PSL_ADMINISTRATOR));
+      tmp.put(SITES_SITECOLLECTION_MEMBERS, Arrays.asList(
+            new UserPrincipal("GDC-PSL\\spuser2", DEFAULT_NAMESPACE),
+            new GroupPrincipal("BUILTIN\\users", DEFAULT_NAMESPACE),
+            new UserPrincipal("GDC-PSL\\spuser4", DEFAULT_NAMESPACE)));
+      tmp.put(SITES_SITECOLLECTION_VISITORS, Arrays.<Principal>asList());
+      goldenGroups = Collections.unmodifiableMap(tmp);
+    }
+    
     SoapFactory siteDataFactory = MockSoapFactory.blank()
         .endpoint(VS_ENDPOINT, MockSiteData.blank()
             .register(VS_CONTENT_EXCHANGE)
@@ -991,6 +1005,7 @@ public class SharePointAdaptorTest {
         new UnsupportedHttpClient(), executorFactory,
         new MockAuthenticationClientFactoryForms(),
         new UnsupportedActiveDirectoryClientFactory());
+    AccumulatingDocIdPusher pusher = new AccumulatingDocIdPusher();    
     adaptor.init(new MockAdaptorContext(config, pusher));
     ByteArrayOutputStream baos = new ByteArrayOutputStream();
     GetContentsRequest request = new GetContentsRequest(
@@ -1040,9 +1055,24 @@ public class SharePointAdaptorTest {
         .build()), response.getNamedResources());
     assertEquals(URI.create("http://localhost:1/sites/SiteCollection"),
         response.getDisplayUrl());
+    assertEquals(goldenGroups, pusher.getGroups());
   }
   
   public void testGetDocContentSiteCollectionWithSidlookup() throws Exception {
+    final Map<GroupPrincipal, Collection<Principal>> goldenGroups;
+    {
+      Map<GroupPrincipal, Collection<Principal>> tmp
+          = new TreeMap<GroupPrincipal, Collection<Principal>>();
+      tmp.put(SITES_SITECOLLECTION_OWNERS, Arrays.<Principal>asList(
+          GDC_PSL_ADMINISTRATOR));
+      tmp.put(SITES_SITECOLLECTION_MEMBERS, Arrays.asList(
+            new UserPrincipal("GDC-PSL\\spuser2", DEFAULT_NAMESPACE),
+            new GroupPrincipal("BUILTIN\\users", DEFAULT_NAMESPACE),
+            new UserPrincipal("GDC-PSL\\spuser4", DEFAULT_NAMESPACE)));
+      tmp.put(SITES_SITECOLLECTION_VISITORS, Arrays.<Principal>asList());
+      goldenGroups = Collections.unmodifiableMap(tmp);
+    }
+
     SoapFactory siteDataFactory = MockSoapFactory.blank()
         .endpoint(VS_ENDPOINT, MockSiteData.blank()
             .register(VS_CONTENT_EXCHANGE)
@@ -1056,7 +1086,8 @@ public class SharePointAdaptorTest {
         new UnsupportedHttpClient(), executorFactory,
         new MockAuthenticationClientFactoryForms(),
         new UnsupportedActiveDirectoryClientFactory());
-   
+    AccumulatingDocIdPusher pusher = new AccumulatingDocIdPusher();
+    adaptor.init(new MockAdaptorContext(config, pusher));
     ByteArrayOutputStream baos = new ByteArrayOutputStream();
     GetContentsRequest request = new GetContentsRequest(
         new DocId("http://localhost:1/sites/SiteCollection"));
@@ -1105,10 +1136,25 @@ public class SharePointAdaptorTest {
         .build()), response.getNamedResources());
     assertEquals(URI.create("http://localhost:1/sites/SiteCollection"),
         response.getDisplayUrl());
+    assertEquals(goldenGroups, pusher.getGroups());
   }
   
   @Test
   public void testGetDocContentSiteCollectionOnly() throws Exception {
+    final Map<GroupPrincipal, Collection<Principal>> goldenGroups;
+    {
+      Map<GroupPrincipal, Collection<Principal>> tmp
+          = new TreeMap<GroupPrincipal, Collection<Principal>>();
+      tmp.put(SITES_SITECOLLECTION_OWNERS, Arrays.<Principal>asList(
+          GDC_PSL_ADMINISTRATOR));
+      tmp.put(SITES_SITECOLLECTION_MEMBERS, Arrays.asList(
+            new UserPrincipal("GDC-PSL\\spuser2", DEFAULT_NAMESPACE),
+            new GroupPrincipal("BUILTIN\\users", DEFAULT_NAMESPACE),
+            new UserPrincipal("GDC-PSL\\spuser4", DEFAULT_NAMESPACE)));
+      tmp.put(SITES_SITECOLLECTION_VISITORS, Arrays.<Principal>asList());
+      goldenGroups = Collections.unmodifiableMap(tmp);
+    }
+    
     final String getChangesSiteCollection726 =
         loadTestString("testModifiedGetDocIdsClient.changes-sc.xml");
     SoapFactory siteDataFactory = MockSoapFactory.blank()
@@ -1135,6 +1181,7 @@ public class SharePointAdaptorTest {
         new UnsupportedActiveDirectoryClientFactory());
     config.overrideKey("sharepoint.server",
         "http://localhost:1/sites/SiteCollection");
+    AccumulatingDocIdPusher pusher = new AccumulatingDocIdPusher();
     adaptor.init(new MockAdaptorContext(config, pusher));
     ByteArrayOutputStream baos = new ByteArrayOutputStream();
     GetContentsRequest request = new GetContentsRequest(
@@ -1183,6 +1230,7 @@ public class SharePointAdaptorTest {
         .build()), response.getNamedResources());
     assertEquals(URI.create("http://localhost:1/sites/SiteCollection"),
         response.getDisplayUrl());
+    assertEquals(goldenGroups, pusher.getGroups());
   }
 
   @Test
@@ -1260,6 +1308,20 @@ public class SharePointAdaptorTest {
 
   @Test
   public void testGetDocContentSiteCollectionWithAdGroup() throws Exception {
+    final Map<GroupPrincipal, Collection<Principal>> goldenGroups;
+    {
+      Map<GroupPrincipal, Collection<Principal>> tmp
+          = new TreeMap<GroupPrincipal, Collection<Principal>>();
+      tmp.put(SITES_SITECOLLECTION_OWNERS, Arrays.<Principal>asList(
+          new GroupPrincipal("GDC-PSL\\administrator", DEFAULT_NAMESPACE)));
+      tmp.put(SITES_SITECOLLECTION_MEMBERS, Arrays.<Principal>asList(
+            new GroupPrincipal("GDC-PSL\\spuser2", DEFAULT_NAMESPACE),
+            new GroupPrincipal("BUILTIN\\users", DEFAULT_NAMESPACE),
+            new GroupPrincipal("GDC-PSL\\spuser4", DEFAULT_NAMESPACE)));
+      tmp.put(SITES_SITECOLLECTION_VISITORS, Arrays.<Principal>asList());
+      goldenGroups = Collections.unmodifiableMap(tmp);
+    }
+    
     SoapFactory siteDataFactory = MockSoapFactory.blank()
         .endpoint(VS_ENDPOINT, MockSiteData.blank()
             .register(VS_CONTENT_EXCHANGE)
@@ -1282,6 +1344,7 @@ public class SharePointAdaptorTest {
         new UnsupportedHttpClient(), executorFactory,
         new MockAuthenticationClientFactoryForms(),
         new UnsupportedActiveDirectoryClientFactory());
+    AccumulatingDocIdPusher pusher = new AccumulatingDocIdPusher();
     adaptor.init(new MockAdaptorContext(config, pusher));
     ByteArrayOutputStream baos = new ByteArrayOutputStream();
     GetContentsRequest request = new GetContentsRequest(
@@ -1297,10 +1360,25 @@ public class SharePointAdaptorTest {
             SITES_SITECOLLECTION_OWNERS, SITES_SITECOLLECTION_VISITORS,
             new GroupPrincipal("GDC-PSL\\group", DEFAULT_NAMESPACE))).build(),
         response.getAcl());
+    assertEquals(goldenGroups, pusher.getGroups());
   }
 
   @Test
   public void testGetDocContentSiteCollectionWithClaims() throws Exception {
+    final Map<GroupPrincipal, Collection<Principal>> goldenGroups;
+    {
+      Map<GroupPrincipal, Collection<Principal>> tmp
+          = new TreeMap<GroupPrincipal, Collection<Principal>>();
+      tmp.put(SITES_SITECOLLECTION_OWNERS, Arrays.<Principal>asList(
+          GDC_PSL_ADMINISTRATOR));
+      tmp.put(SITES_SITECOLLECTION_MEMBERS, Arrays.asList(
+            new UserPrincipal("GDC-PSL\\spuser2", DEFAULT_NAMESPACE),
+            new GroupPrincipal("BUILTIN\\users", DEFAULT_NAMESPACE),
+            new UserPrincipal("GDC-PSL\\spuser4", DEFAULT_NAMESPACE)));
+      tmp.put(SITES_SITECOLLECTION_VISITORS, Arrays.<Principal>asList());
+      goldenGroups = Collections.unmodifiableMap(tmp);
+    }
+
     String permissions = "<permission memberid='11' mask='756052856929' />"
         + "<permission memberid='12' mask='756052856929' />"
         + "<permission memberid='13' mask='756052856929' />"
@@ -1324,6 +1402,7 @@ public class SharePointAdaptorTest {
         new UnsupportedHttpClient(), executorFactory,
         new MockAuthenticationClientFactoryForms(),
         new UnsupportedActiveDirectoryClientFactory());
+    AccumulatingDocIdPusher pusher = new AccumulatingDocIdPusher();
     adaptor.init(new MockAdaptorContext(config, pusher));
     ByteArrayOutputStream baos = new ByteArrayOutputStream();
     GetContentsRequest request = new GetContentsRequest(
@@ -1348,11 +1427,26 @@ public class SharePointAdaptorTest {
             new GroupPrincipal("roleprovider:super", DEFAULT_NAMESPACE)))
         .build(),
         response.getAcl());
+    assertEquals(goldenGroups, pusher.getGroups());
   }
     
   @Test
   public void testGetDocContentSiteCollectionWithClaimsSidLookup()
       throws Exception {
+    final Map<GroupPrincipal, Collection<Principal>> goldenGroups;
+    {
+      Map<GroupPrincipal, Collection<Principal>> tmp
+          = new TreeMap<GroupPrincipal, Collection<Principal>>();
+      tmp.put(SITES_SITECOLLECTION_OWNERS, Arrays.<Principal>asList(
+          GDC_PSL_ADMINISTRATOR));
+      tmp.put(SITES_SITECOLLECTION_MEMBERS, Arrays.asList(
+            new UserPrincipal("GDC-PSL\\spuser2", DEFAULT_NAMESPACE),
+            new GroupPrincipal("BUILTIN\\users", DEFAULT_NAMESPACE),
+            new UserPrincipal("GDC-PSL\\spuser4", DEFAULT_NAMESPACE)));
+      tmp.put(SITES_SITECOLLECTION_VISITORS, Arrays.<Principal>asList());
+      goldenGroups = Collections.unmodifiableMap(tmp);
+    }
+
     String permissions = "<permission memberid='11' mask='756052856929' />"
         + "<permission memberid='12' mask='756052856929' />"
         + "<permission memberid='13' mask='756052856929' />"
@@ -1385,7 +1479,8 @@ public class SharePointAdaptorTest {
         adClientFactory);
     config.overrideKey("sidLookup.host", "adhost");
     config.overrideKey("sidLookup.username", "aduser");
-    config.overrideKey("sidLookup.password", "password"); 
+    config.overrideKey("sidLookup.password", "password");
+    AccumulatingDocIdPusher pusher = new AccumulatingDocIdPusher();
     adaptor.init(new MockAdaptorContext(config, pusher));
     ByteArrayOutputStream baos = new ByteArrayOutputStream();
     GetContentsRequest request = new GetContentsRequest(
@@ -1409,11 +1504,26 @@ public class SharePointAdaptorTest {
             NT_AUTHORITY_AUTHENTICATED_USERS,
             new GroupPrincipal("roleprovider:super", DEFAULT_NAMESPACE)))
         .build(),response.getAcl());
+    assertEquals(goldenGroups, pusher.getGroups());
   }
 
   @Test
   public void testGetDocContentSiteCollectionWithOutOfDateMemberCache()
       throws Exception {
+    final Map<GroupPrincipal, Collection<Principal>> goldenGroups;
+    {
+      Map<GroupPrincipal, Collection<Principal>> tmp
+          = new TreeMap<GroupPrincipal, Collection<Principal>>();
+      tmp.put(SITES_SITECOLLECTION_OWNERS, Arrays.<Principal>asList(
+          GDC_PSL_ADMINISTRATOR));
+      tmp.put(SITES_SITECOLLECTION_MEMBERS, Arrays.asList(
+            new UserPrincipal("GDC-PSL\\spuser100", DEFAULT_NAMESPACE),
+            new GroupPrincipal("BUILTIN\\users", DEFAULT_NAMESPACE),
+            new UserPrincipal("GDC-PSL\\spuser4", DEFAULT_NAMESPACE)));
+      tmp.put(SITES_SITECOLLECTION_VISITORS, Arrays.<Principal>asList());
+      goldenGroups = Collections.unmodifiableMap(tmp);
+    }
+
     ReferenceSiteData siteData = new ReferenceSiteData();
     Users users = new Users();
     MockUserGroupSoap mockUserGroupSoap = new MockUserGroupSoap(users);
@@ -1443,6 +1553,7 @@ public class SharePointAdaptorTest {
         new UnsupportedHttpClient(), executorFactory,
         new MockAuthenticationClientFactoryForms(),
         new UnsupportedActiveDirectoryClientFactory());
+    AccumulatingDocIdPusher pusher = new AccumulatingDocIdPusher();
     adaptor.init(new MockAdaptorContext(config, pusher));
 
     // This populates the cache, but otherwise doesn't test anything new.
@@ -1477,6 +1588,7 @@ public class SharePointAdaptorTest {
             new UserPrincipal("GDC-PSL\\spuser100", DEFAULT_NAMESPACE)))
         .build(),
         response.getAcl());
+    assertEquals(goldenGroups, pusher.getGroups());
   }
 
   public void testGetDocContentSiteCollectionNoIndex() throws Exception {
