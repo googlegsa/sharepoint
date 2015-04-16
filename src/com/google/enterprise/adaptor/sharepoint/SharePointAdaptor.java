@@ -1206,9 +1206,14 @@ public class SharePointAdaptor extends AbstractAdaptor
       Collection<DocId> docIds,
       Collection<String> updatedSiteSecurity) throws IOException {
     log.entering("SharePointAdaptor", "getModifiedDocIdsContentDatabase",
-        new Object[] {changes, docIds});
+        new Object[] {changes, docIds});   
     if (!"Unchanged".equals(changes.getChange())) {
       docIds.add(virtualServerDocId);
+    }
+    List<SPSite> changedSites = changes.getSPSite();
+    if (changedSites == null) {      
+      log.exiting("SharePointAdaptor", "getModifiedDocIdsContentDatabase");
+      return;
     }
     for (SPSite site : changes.getSPSite()) {       
       getModifiedDocIdsSite(site, docIds, updatedSiteSecurity);
@@ -1280,7 +1285,7 @@ public class SharePointAdaptor extends AbstractAdaptor
     log.entering("SharePointAdaptor", "getModifiedDocIdsSite",
         new Object[] {changes, docIds});
     if (isModified(changes.getChange())) {
-      String siteUrl = changes.getServerUrl() + changes.getDisplayUrl();
+      String siteUrl = changes.getServerUrl() + changes.getDisplayUrl();      
       if (siteUrl.endsWith("/")) {
         siteUrl = siteUrl.substring(0, siteUrl.length() - 1);
       }
@@ -1292,7 +1297,12 @@ public class SharePointAdaptor extends AbstractAdaptor
         updatedSiteSecurity.add(siteUrl);
       }
     }
-    for (SPWeb web : changes.getSPWeb()) {
+    List<SPWeb> changedWebs = changes.getSPWeb();
+    if (changedWebs == null) {
+      log.exiting("SharePointAdaptor", "getModifiedDocIdsSite");
+      return;
+    }
+    for (SPWeb web : changedWebs) {
       getModifiedDocIdsWeb(web, docIds);
     }
     log.exiting("SharePointAdaptor", "getModifiedDocIdsSite");
@@ -1309,7 +1319,12 @@ public class SharePointAdaptor extends AbstractAdaptor
       docIds.add(new DocId(webUrl));
     }
     
-    for (Object choice : changes.getSPFolderOrSPListOrSPFile()) {      
+    List<Object> spObjects = changes.getSPFolderOrSPListOrSPFile();
+    if (spObjects == null) {
+      log.exiting("SharePointAdaptor", "getModifiedDocIdsWeb");
+      return;
+    }
+    for (Object choice : spObjects) {      
       if (choice instanceof SPList) {
         getModifiedDocIdsList((SPList) choice, docIds);
       }
@@ -1325,7 +1340,12 @@ public class SharePointAdaptor extends AbstractAdaptor
       String listUrl = changes.getServerUrl() + changes.getDisplayUrl();
       docIds.add(new DocId(listUrl));
     }
-    for (Object choice : changes.getSPViewOrSPListItem()) {
+    List<Object> spObjects = changes.getSPViewOrSPListItem();
+    if (spObjects == null) {
+      log.exiting("SharePointAdaptor", "getModifiedDocIdsList");
+      return;
+    }
+    for (Object choice : spObjects) {
       // Ignore view change detection.
 
       if (choice instanceof SPListItem) {
@@ -1340,7 +1360,12 @@ public class SharePointAdaptor extends AbstractAdaptor
     log.entering("SharePointAdaptor", "getModifiedDocIdsListItem",
         new Object[] {changes, docIds});
     if (isModified(changes.getChange())) {
-      Object oData = changes.getListItem().getAny();
+      SPListItem.ListItem listItem = changes.getListItem();
+      if (listItem == null) {
+        log.exiting("SharePointAdaptor", "getModifiedDocIdsListItem");
+        return;
+      }      
+      Object oData = listItem.getAny();
       if (!(oData instanceof Element)) {
         log.log(Level.WARNING, "Unexpected object type for data: {0}",
             oData.getClass());
