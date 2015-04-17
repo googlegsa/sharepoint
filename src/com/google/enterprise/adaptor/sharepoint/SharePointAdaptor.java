@@ -935,30 +935,20 @@ public class SharePointAdaptor extends AbstractAdaptor
       throws IOException {
     log.entering("SharePointAdaptor", "getDocContent",
         new Object[] {request, response});
-    DocId id = request.getDocId();
-     if (id.equals(virtualServerDocId)) {
-      SiteAdaptor virtualServerSiteAdaptor
-          = getSiteAdaptor(sharePointUrl.getVirtualServerUrl(),
-              sharePointUrl.getVirtualServerUrl());
-      virtualServerSiteAdaptor.getVirtualServerDocContent(request, response);
+    DocId id = request.getDocId();    
+    SiteAdaptor adptorForDocId = getAdaptorForDocId(id);
+    if (adptorForDocId == null) {
+      log.log(Level.FINE,
+          "responding not found as site adptor for {0} is null", id);
+      response.respondNotFound();
+      log.exiting("SharePointAdaptor", "getDocContent");
+      return;
+    }
+    
+    if (id.equals(virtualServerDocId)) {
+      adptorForDocId.getVirtualServerDocContent(request, response);
     } else {
-      SiteAdaptor rootSiteAdaptor
-          = getRootAdaptorForUrl(spUrlToUri(id.getUniqueId()));
-      if (rootSiteAdaptor == null) {
-        log.log(Level.FINE, "responding not found");
-        response.respondNotFound();
-        log.exiting("SharePointAdaptor", "getDocContent");
-        return;
-      }
-      SiteAdaptor siteAdaptor
-          = rootSiteAdaptor.getAdaptorForUrl(id.getUniqueId());
-      if (siteAdaptor == null) {
-        log.log(Level.FINE, "responding not found");
-        response.respondNotFound();
-        log.exiting("SharePointAdaptor", "getDocContent");
-        return;
-      }
-      siteAdaptor.getDocContent(request, response);
+      adptorForDocId.getDocContent(request, response); 
     }
     log.exiting("SharePointAdaptor", "getDocContent");
   }
@@ -1546,18 +1536,46 @@ public class SharePointAdaptor extends AbstractAdaptor
     AbstractAdaptor.main(new SharePointAdaptor(), args);
   }
 
-  private SiteAdaptor getRootAdaptorForUrl(URI uri) throws IOException {
+  private SiteAdaptor getAdaptorForDocId(DocId docId) throws IOException {
+    if (virtualServerDocId.equals(docId)) {
+      if (sharePointUrl.isSiteCollectionUrl()) {
+        log.log(Level.FINE, "Returning null SiteAdaptor for root document "
+            + " because adaptor is currently configured in site collection "
+            + "mode for {0} only.", sharePointUrl.getSharePointUrl());
+        return null;
+      }
+      return getSiteAdaptor(sharePointUrl.getVirtualServerUrl(),
+          sharePointUrl.getVirtualServerUrl());
+    } 
+    URI uri = spUrlToUri(docId.getUniqueId());
     if (!ntlmAuthenticator.isPermittedHost(uri.toURL())) {
       log.log(Level.WARNING, "URL {0} not white listed", uri);
       return null;
-    }
+    }      
     String rootUrl;
     try {
        rootUrl = getRootUrl(uri);
     } catch (URISyntaxException e) {
       throw new IOException(e);
     }
-    return getSiteAdaptor(rootUrl, rootUrl);
+    SiteAdaptor rootAdaptor = getSiteAdaptor(rootUrl, rootUrl);
+    SiteAdaptor adaptorForUrl =
+        rootAdaptor.getAdaptorForUrl(docId.getUniqueId());
+    if (adaptorForUrl == null) {
+      return null;
+    }    
+    if (sharePointUrl.isSiteCollectionUrl() &&
+        // Performing case sensitive comparison as mismatch in URL casing 
+        // between SharePoint Server and adaptor can result in broken ACL
+        // inheritance chain on GSA.
+        !sharePointUrl.getSharePointUrl().equals(adaptorForUrl.siteUrl)) {
+      log.log(Level.FINE, "Returning null SiteAdaptor for {0} because "
+          + "adaptor is currently configured in site collection mode "
+          + "for {1} only.", new Object[] {docId.getUniqueId(),
+          sharePointUrl.getSharePointUrl()});
+      return null;
+    }
+    return adaptorForUrl;    
   }
   
   private String getRootUrl(URI uri) throws URISyntaxException {

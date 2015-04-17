@@ -783,6 +783,56 @@ public class SharePointAdaptorTest {
     adaptor.getDocContent(request, response);
     assertTrue(response.isNotFound());
   }
+  
+  @Test
+  public void testGetDocContentForNotIncludedDocumentPaths() throws Exception {    
+    final String getChangesSiteCollection726 =
+        loadTestString("testModifiedGetDocIdsClient.changes-sc.xml");
+    SoapFactory siteDataFactory = MockSoapFactory.blank()
+        .endpoint(VS_ENDPOINT, MockSiteData.blank()
+            .register(SITES_SITECOLLECTION_SAW_EXCHANGE)
+            .register(new SiteAndWebExchange(
+                "http://localhost:1/sites/other", 0, 
+                "http://localhost:1/sites/other", 
+                "http://localhost:1/sites/other")))
+        .endpoint("http://localhost:1/sites/other/_vti_bin/SiteData.asmx",
+            MockSiteData.blank())        
+        .endpoint(SITES_SITECOLLECTION_ENDPOINT, MockSiteData.blank()
+            .register(SITES_SITECOLLECTION_URLSEG_EXCHANGE)
+            .register(SITES_SITECOLLECTION_S_CONTENT_EXCHANGE)
+            .register(SITES_SITECOLLECTION_SC_CONTENT_EXCHANGE)
+            .register(new ChangesExchange(ObjectType.SITE_COLLECTION,
+                    "{bb3bb2dd-6ea7-471b-a361-6fb67988755c}",
+                    "1;1;bb3bb2dd-6ea7-471b-a361-6fb67988755c;"
+                        + "634762601982930000;726",
+                    "1;1;bb3bb2dd-6ea7-471b-a361-6fb67988755c;"
+                        + "634762601982930000;726",
+                    null,
+                    "1;1;bb3bb2dd-6ea7-471b-a361-6fb67988755c;"
+                        + "634762601982930000;726",
+                    600, getChangesSiteCollection726, false)));
+
+    adaptor = new SharePointAdaptor(siteDataFactory,
+        new UnsupportedHttpClient(), executorFactory,
+        new MockAuthenticationClientFactoryForms(),
+        new UnsupportedActiveDirectoryClientFactory());
+    config.overrideKey("sharepoint.server",
+        "http://localhost:1/sites/SiteCollection");
+    adaptor.init(new MockAdaptorContext(config, pusher));
+    ByteArrayOutputStream baos = new ByteArrayOutputStream();
+    GetContentsRequest requestOtherSC = new GetContentsRequest(
+        new DocId("http://localhost:1/sites/other"));
+    GetContentsResponse responseOtherSC = new GetContentsResponse(baos);
+    adaptor.getDocContent(requestOtherSC, responseOtherSC);
+    assertTrue(responseOtherSC.isNotFound());
+    
+    GetContentsRequest requestRoot= new GetContentsRequest(
+        new DocId(""));
+    GetContentsResponse responseRoot = new GetContentsResponse(baos);
+    adaptor.getDocContent(requestRoot, responseRoot);
+    assertTrue(responseRoot.isNotFound());
+    
+  }
 
   @Test
   public void testGetDocContentVirtualServer() throws Exception {
@@ -3222,7 +3272,7 @@ public class SharePointAdaptorTest {
     assertEquals("http://localhost:1000/sites/collection",
         sharePointUrl.getSharePointUrl());
     assertEquals("http://localhost:1000", sharePointUrl.getVirtualServerUrl());
-  }
+  }  
   
   @Test
   public void testSharePointUrlIsSiteCollectionUrl() {
