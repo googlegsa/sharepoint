@@ -3040,6 +3040,12 @@ public class SharePointAdaptorTest {
     xml = loadTestString("sites-SiteCollection-Lists-CustomList-1-f.xml")
         .replace("<Folder>",
             "<Folder xmlns='http://schemas.microsoft.com/sharepoint/soap/'>")
+        .replace("MetaInfo='2;#'", "MetaInfo='2;#&#1;'");
+    assertNotNull(client.jaxbParse(xml, ItemData.class));
+    
+    xml = loadTestString("sites-SiteCollection-Lists-CustomList-1-f.xml")
+        .replace("<Folder>",
+            "<Folder xmlns='http://schemas.microsoft.com/sharepoint/soap/'>")
         .replace("MetaInfo='2;#'", "MetaInfo='2;#&#11;'");
     assertNotNull(client.jaxbParse(xml, ItemData.class));
     

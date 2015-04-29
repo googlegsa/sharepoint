@@ -71,8 +71,8 @@ class SiteDataClient {
    */
   private static final Schema schema;
 
-  // Unused character range 1 : &#00; - &#08;
-  private static final String UNUSED_CHAR_RANGE1 = "(0[0-8])";
+  // Unused character range 1 : &#00; - &#08; or &#0; - &#8;
+  private static final String UNUSED_CHAR_RANGE1 = "((0[0-8])|[0-8])";
   // Unused character range 2 : &#11; - &#12;
   private static final String UNUSED_CHAR_RANGE2 = "(1[12])";
   // Unused character range 3 : &#14; - &#31;
