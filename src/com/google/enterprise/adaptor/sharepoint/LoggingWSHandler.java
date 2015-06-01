@@ -57,16 +57,18 @@ class LoggingWSHandler implements InvocationHandler {
   public Object invoke(Object proxy, Method method, Object[] args)
       throws Throwable {
     final Level logLevel = Level.FINE;
+    String inArgs = null;
     if (log.isLoggable(logLevel)) {
       WebMethod webMethod = method.getAnnotation(WebMethod.class);
       if (webMethod != null) {
-        String inArgs = formArgumentString(method, args, WebParam.Mode.IN);
+        inArgs = formArgumentString(method, args, WebParam.Mode.IN);
         log.log(logLevel, "WS Request {0}: {1}",
             new Object[] {webMethod.operationName(), inArgs});
       }
     }
     Object ret;
-    try {
+    long startMillis = System.currentTimeMillis();
+    try {      
       ret = method.invoke(wrapped, args);
     } catch (IllegalAccessException ex) {
       throw new RuntimeException("Misconfigured LoggingWSHandler", ex);
@@ -81,6 +83,9 @@ class LoggingWSHandler implements InvocationHandler {
         String outArgs = formArgumentString(method, args, WebParam.Mode.OUT);
         log.log(logLevel, "WS Response {0}: {1}",
             new Object[] {webMethod.operationName(), outArgs});
+        log.log(logLevel, "Duration: WS Request {0} - {1} : {2,number,#} ms",
+            new Object[] {webMethod.operationName(), inArgs,
+            System.currentTimeMillis() - startMillis});
       }
     }
     return ret;

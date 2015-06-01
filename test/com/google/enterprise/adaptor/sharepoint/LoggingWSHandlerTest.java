@@ -81,7 +81,7 @@ public class LoggingWSHandlerTest {
     Holder<Boolean> output = new Holder<Boolean>();
     LoggingWSHandler.create(WebServiceInterface.class, new WebServiceClass())
         .webServiceMethod("input arg", inputOutput, output);
-    assertEquals(2, logLog.getLog().size());
+    assertEquals(3, logLog.getLog().size());
     LogRecord record = logLog.getLog().get(0);
     assertEquals("WS Request {0}: {1}", record.getMessage());
     assertArrayEquals(new Object[] {"webServiceMethod",
@@ -107,7 +107,7 @@ public class LoggingWSHandlerTest {
     setLevel(Level.FINEST);
     LoggingWSHandler.create(WebServiceInterface.class, new WebServiceClass())
         .webServiceMethod(null, null, null);
-    assertEquals(2, logLog.getLog().size());
+    assertEquals(3, logLog.getLog().size());
     LogRecord record = logLog.getLog().get(0);
     assertEquals("WS Request {0}: {1}", record.getMessage());
     assertArrayEquals(new Object[] {"webServiceMethod",
@@ -124,7 +124,7 @@ public class LoggingWSHandlerTest {
     setLevel(Level.FINEST);
     LoggingWSHandler.create(WebServiceInterface.class, new WebServiceClass())
         .noArgMethod();
-    assertEquals(2, logLog.getLog().size());
+    assertEquals(3, logLog.getLog().size());
     LogRecord record = logLog.getLog().get(0);
     assertEquals("WS Request {0}: {1}", record.getMessage());
     assertArrayEquals(new Object[] {"noArgMethod", ""},

@@ -933,6 +933,7 @@ public class SharePointAdaptor extends AbstractAdaptor
   @Override
   public void getDocContent(Request request, Response response)
       throws IOException {
+    long startMillis = System.currentTimeMillis();
     log.entering("SharePointAdaptor", "getDocContent",
         new Object[] {request, response});
     DocId id = request.getDocId();    
@@ -949,7 +950,10 @@ public class SharePointAdaptor extends AbstractAdaptor
       adptorForDocId.getVirtualServerDocContent(request, response);
     } else {
       adptorForDocId.getDocContent(request, response); 
-    }
+    }   
+    log.log(Level.FINE, "Duration: getDocContent {0} : {1,number,#} ms",
+        new Object[] {request.getDocId(),
+        System.currentTimeMillis() - startMillis});
     log.exiting("SharePointAdaptor", "getDocContent");
   }
 
@@ -2614,7 +2618,9 @@ public class SharePointAdaptor extends AbstractAdaptor
         boolean setLastModified) throws IOException {
       log.entering("SiteAdaptor", "getFileDocContent",
           new Object[] {request, response});
+      String contentUrl = request.getDocId().getUniqueId();
       URI displayUrl = docIdToUri(request.getDocId());
+      long startMillis = System.currentTimeMillis();
       FileInfo fi = httpClient.issueGetRequest(encodeSharePointUrl(
               request.getDocId().getUniqueId(), performBrowserLeniency),
           authenticationHandler.getAuthenticationCookies(), adaptorUserAgent,
@@ -2623,6 +2629,8 @@ public class SharePointAdaptor extends AbstractAdaptor
         response.respondNotFound();
         return;
       }
+      log.log(Level.FINE, "Duration: fetch headers {0} : {1,number,#} ms",
+          new Object[] {contentUrl, System.currentTimeMillis() - startMillis});      
       try {
         response.setDisplayUrl(displayUrl);
         String filePath = displayUrl.getPath();
@@ -2658,10 +2666,16 @@ public class SharePointAdaptor extends AbstractAdaptor
                 lastModifiedString);
           }
         }
+        long contentDownloadStart = System.currentTimeMillis();
         IOHelper.copyStream(fi.getContents(), response.getOutputStream());
+        log.log(Level.FINE, "Duration: downlaod content {0} : {1,number,#} ms",
+            new Object[] {contentUrl,
+            System.currentTimeMillis() - contentDownloadStart});        
       } finally {
         fi.getContents().close();
       }
+      log.log(Level.FINE, "Duration: getFileDocContent {0} : {1,number,#} ms",
+          new Object[] {contentUrl, System.currentTimeMillis() - startMillis});      
       log.exiting("SiteAdaptor", "getFileDocContent");
     }
 
