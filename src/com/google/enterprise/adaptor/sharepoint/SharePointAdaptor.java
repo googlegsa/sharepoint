@@ -2749,11 +2749,11 @@ public class SharePointAdaptor extends AbstractAdaptor
         // folder.
         boolean parentIsList = folderDocId.equals(rootFolderDocId);      
         String parentScopeId;
-        if (parentIsList) {
-          com.microsoft.schemas.sharepoint.soap.List list
-              = siteDataClient.getContentList(listId);
-          parentScopeId
-              = list.getMetadata().getScopeID().toLowerCase(Locale.ENGLISH);
+        // If current item has same scope id as list then inheritance is not
+        // broken irrespective of current item is inside folder or not.
+        if (parentIsList 
+            || scopeId.equals(l.scopeId.toLowerCase(Locale.ENGLISH))) {       
+          parentScopeId = l.scopeId.toLowerCase(Locale.ENGLISH);
         } else {
           // Instead of using getUrlSegments and getContent(ListItem), we could
           // use just getContent(Folder). However, getContent(Folder) always
