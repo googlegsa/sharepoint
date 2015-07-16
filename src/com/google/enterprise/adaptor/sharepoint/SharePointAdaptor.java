@@ -93,6 +93,7 @@ import org.w3c.dom.NodeList;
 
 import java.io.IOException;
 import java.io.InputStream;
+import java.lang.reflect.Method;
 import java.net.Authenticator;
 import java.net.ConnectException;
 import java.net.HttpURLConnection;
@@ -513,6 +514,9 @@ public class SharePointAdaptor extends AbstractAdaptor
     config.addKey("sidLookup.username", "");
     config.addKey("sidLookup.password", "");
     config.addKey("sidLookup.method", "standard");
+    // Set this to static factory method name which will return 
+    // custom SamlHandshakeManager object
+    config.addKey("sharepoint.customSamlManager", "");
   }
 
   @Override
@@ -536,6 +540,7 @@ public class SharePointAdaptor extends AbstractAdaptor
     String stsrealm = config.getValue("sharepoint.sts.realm");
     boolean useLiveAuthentication = Boolean.parseBoolean(
         config.getValue("sharepoint.useLiveAuthentication"));
+    String customSamlManager = config.getValue("sharepoint.customSamlManager"); 
     socketTimeoutMillis = Integer.parseInt(
         config.getValue("adaptor.docHeaderTimeoutSecs")) * 1000;
     readTimeOutMillis = Integer.parseInt(
@@ -599,6 +604,7 @@ public class SharePointAdaptor extends AbstractAdaptor
     log.log(Level.CONFIG, "STS Realm: {0}", stsrealm);
     log.log(Level.CONFIG, "Use Live Authentication: {0}",
         useLiveAuthentication);
+    log.log(Level.CONFIG, "Custom SAML provider: {0}", customSamlManager);
     log.log(Level.CONFIG, "Adaptor user agent: {0}",
         adaptorUserAgent);
     log.log(Level.CONFIG, "Run in Site Collection Only mode: {0}",
@@ -626,7 +632,26 @@ public class SharePointAdaptor extends AbstractAdaptor
     ntlmAuthenticator.addPermitForHost(virtualServerUrl);
     scheduledExecutor = new ScheduledThreadPoolExecutor(1);
     String authenticationType;
-    if (useLiveAuthentication)  {
+    if (!"".equals(customSamlManager)) {
+      authenticationType = "Custom SAML Provider";
+      // Creating map for config values instead of passing config object, as
+      // it will be consumed by third party code. Also config object is
+      // not immutable and there is a risk of possible alteration to values
+      // from third party code.
+      // TODO : Add helper method to config object to get map of configuration 
+      // values. Current helper method doesn't return decoded values.
+      Map<String, String> adaptorConfig = new HashMap<String, String>();
+      for(String configKey : config.getAllKeys()) {
+        // Decoding each config value as there is no information about which 
+        // config values are sensitive and need decoding.
+        adaptorConfig.put(configKey, context.getSensitiveValueDecoder()
+            .decodeValue(config.getValue(configKey)));
+      }
+      SamlHandshakeManager manager = authenticationClientFactory
+          .newCustomSamlAuthentication(customSamlManager, adaptorConfig);          
+      authenticationHandler = new SamlAuthenticationHandler.Builder(username,
+          password, scheduledExecutor, manager).build();      
+    } else if (useLiveAuthentication)  {
       if ("".equals(username) || "".equals(password)) {
         throw new InvalidConfigurationException("Adaptor is configured to "
             + "use Live authentication. Please specify valid username "

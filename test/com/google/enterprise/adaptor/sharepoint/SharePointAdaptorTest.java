@@ -622,6 +622,112 @@ public class SharePointAdaptorTest {
     adaptor.destroy();
     adaptor = null;
   }
+  
+  @Test
+  public void testAdaptorInitWithInvalidCustomSamlManager() throws Exception {
+    SoapFactory siteDataFactory = MockSoapFactory.blank()
+        .endpoint(VS_ENDPOINT, MockSiteData.blank()
+            .register(VS_CONTENT_EXCHANGE)
+            .register(CD_CONTENT_EXCHANGE))
+        .endpoint("http://localhost:1/_vti_bin/People.asmx",
+            new MockPeopleSoap())
+        .endpoint("http://localhost:1/_vti_bin/UserGroup.asmx",
+            new MockUserGroupSoap(null));
+    
+    adaptor = new SharePointAdaptor(siteDataFactory,
+        new UnsupportedHttpClient(), executorFactory,
+        new AuthenticationClientFactoryImpl(),
+        new UnsupportedActiveDirectoryClientFactory());
+    config.overrideKey(
+        "sharepoint.customSamlManager", "com.invalid.class.method");
+    config.overrideKey("gsa.version", "7.4.0-0");
+    thrown.expect(InvalidConfigurationException.class);
+    adaptor.init(new MockAdaptorContext(config, pusher));
+    adaptor.destroy();
+    adaptor = null;
+  }
+  
+  @Test
+  public void testAdaptorInitWithInvalidCustomSamlManagerMethod()
+      throws Exception {
+    SoapFactory siteDataFactory = MockSoapFactory.blank()
+        .endpoint(VS_ENDPOINT, MockSiteData.blank()
+            .register(VS_CONTENT_EXCHANGE)
+            .register(CD_CONTENT_EXCHANGE))
+        .endpoint("http://localhost:1/_vti_bin/People.asmx",
+            new MockPeopleSoap())
+        .endpoint("http://localhost:1/_vti_bin/UserGroup.asmx",
+            new MockUserGroupSoap(null));
+    
+    adaptor = new SharePointAdaptor(siteDataFactory,
+        new UnsupportedHttpClient(), executorFactory,
+        new AuthenticationClientFactoryImpl(),
+        new UnsupportedActiveDirectoryClientFactory());
+    String factoryMethod = MockCustomSamlHandshakeManager.class
+        .getName() + ".getInstanceWrong";
+    config.overrideKey("sharepoint.customSamlManager", factoryMethod);
+    config.overrideKey("gsa.version", "7.4.0-0");
+    config.overrideKey("test.token", "test token");
+    config.overrideKey("test.cookie", "test cookie");
+    thrown.expect(InvalidConfigurationException.class);
+    adaptor.init(new MockAdaptorContext(config, pusher));
+    adaptor.destroy();
+    adaptor = null;
+  }
+  
+  @Test
+  public void testAdaptorInitWithInvalidCustomSamlManagerIntance()
+      throws Exception {
+    SoapFactory siteDataFactory = MockSoapFactory.blank()
+        .endpoint(VS_ENDPOINT, MockSiteData.blank()
+            .register(VS_CONTENT_EXCHANGE)
+            .register(CD_CONTENT_EXCHANGE))
+        .endpoint("http://localhost:1/_vti_bin/People.asmx",
+            new MockPeopleSoap())
+        .endpoint("http://localhost:1/_vti_bin/UserGroup.asmx",
+            new MockUserGroupSoap(null));
+    
+    adaptor = new SharePointAdaptor(siteDataFactory,
+        new UnsupportedHttpClient(), executorFactory,
+        new AuthenticationClientFactoryImpl(),
+        new UnsupportedActiveDirectoryClientFactory());
+    String factoryMethod = MockCustomSamlHandshakeManager.class
+        .getName() + ".getStringIntance";
+    config.overrideKey("sharepoint.customSamlManager", factoryMethod);
+    config.overrideKey("gsa.version", "7.4.0-0");
+    config.overrideKey("test.token", "test token");
+    config.overrideKey("test.cookie", "test cookie");
+    thrown.expect(ClassCastException.class);
+    adaptor.init(new MockAdaptorContext(config, pusher));
+    adaptor.destroy();
+    adaptor = null;
+  }
+  
+  @Test
+  public void testAdaptorInitWithCustomSamlManager() throws Exception {
+    SoapFactory siteDataFactory = MockSoapFactory.blank()
+        .endpoint(VS_ENDPOINT, MockSiteData.blank()
+            .register(VS_CONTENT_EXCHANGE)
+            .register(CD_CONTENT_EXCHANGE))
+        .endpoint("http://localhost:1/_vti_bin/People.asmx",
+            new MockPeopleSoap())
+        .endpoint("http://localhost:1/_vti_bin/UserGroup.asmx",
+            new MockUserGroupSoap(null));
+    
+    adaptor = new SharePointAdaptor(siteDataFactory,
+        new UnsupportedHttpClient(), executorFactory,
+        new AuthenticationClientFactoryImpl(),
+        new UnsupportedActiveDirectoryClientFactory());
+    String factoryMethod = MockCustomSamlHandshakeManager.class
+        .getName() + ".getInstance";
+    config.overrideKey("sharepoint.customSamlManager", factoryMethod);
+    config.overrideKey("gsa.version", "7.4.0-0");
+    config.overrideKey("test.token", "test token");
+    config.overrideKey("test.cookie", "test cookie");
+    adaptor.init(new MockAdaptorContext(config, pusher));
+    adaptor.destroy();
+    adaptor = null;
+  }
 
   @Test
   public void testInitDestroyInitDestroy() throws Exception {
@@ -4311,6 +4417,13 @@ public class SharePointAdaptorTest {
       throw new UnsupportedOperationException();
     }
     
+    @Override
+    public SamlHandshakeManager newCustomSamlAuthentication(
+        String factoryMethodName, Map<String, String> config)
+        throws IOException {      
+      return null;
+    }
+    
   }
   
   private static class MockAuthenticationClientFactoryForms 
@@ -4363,6 +4476,36 @@ public class SharePointAdaptorTest {
       return cookie;
     }
   }
+  
+  private static class MockCustomSamlHandshakeManager
+      implements SamlHandshakeManager {
+    private String token;
+    private String cookie;
+    private MockCustomSamlHandshakeManager(String token, String cookie) {
+      this.token = token;
+      this.cookie = cookie;      
+    }
+
+    @Override
+    public String requestToken() throws IOException {
+      return token;
+    }
+
+    @Override
+    public String getAuthenticationCookie(String token) throws IOException {
+      return cookie;
+    }
+    
+    public static SamlHandshakeManager getInstance(Map<String, String> config) {
+      return new MockCustomSamlHandshakeManager(
+          config.get("test.token"), config.get("test.cookie"));
+    }
+    
+    public static String getStringIntance(Map<String, String> config) {
+      return "wrong object";
+    }
+  }
+  
   
   private static class MockHttpURLConnection extends HttpURLConnection {
     private final int responseCodeToReturn;

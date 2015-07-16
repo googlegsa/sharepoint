@@ -19,6 +19,7 @@ import com.google.enterprise.adaptor.sharepoint.SamlAuthenticationHandler.SamlHa
 import com.microsoft.schemas.sharepoint.soap.authentication.AuthenticationSoap;
 
 import java.io.IOException;
+import java.util.Map;
 
 /**
  * Authentication Factory to return appropriate authentication client for
@@ -35,4 +36,7 @@ public interface AuthenticationClientFactory {
 
   public SamlHandshakeManager newLiveAuthentication(String virtualServer,
       String username, String password) throws IOException;
+  
+  public SamlHandshakeManager newCustomSamlAuthentication(
+      String factoryMethodName, Map<String, String> config) throws IOException;
 }

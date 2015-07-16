@@ -97,20 +97,20 @@ public class SamlAuthenticationHandler extends FormsAuthenticationHandler {
   }
 
   @VisibleForTesting
-  interface SamlHandshakeManager {
+  public interface SamlHandshakeManager {
     public String requestToken() throws IOException;
     public String getAuthenticationCookie(String token) throws IOException;
   }
 
   @VisibleForTesting
-  interface HttpPostClient {
+  public interface HttpPostClient {
     public PostResponseInfo issuePostRequest(URL url,
         Map<String, String> connectionProperties, String requestBody)
         throws IOException;
   }
 
   @VisibleForTesting
-  static class HttpPostClientImpl implements HttpPostClient{
+  public static class HttpPostClientImpl implements HttpPostClient{
     @Override
     public PostResponseInfo issuePostRequest(URL url,
         Map<String, String> connectionProperties, String requestBody)
@@ -158,7 +158,7 @@ public class SamlAuthenticationHandler extends FormsAuthenticationHandler {
   }
 
   @VisibleForTesting
-  static class PostResponseInfo {
+  public static class PostResponseInfo {
     /** Non-null contents. */
     private final String contents;
     /** Non-null headers. */

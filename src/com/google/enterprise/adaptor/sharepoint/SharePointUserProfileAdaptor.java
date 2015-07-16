@@ -223,6 +223,9 @@ public class SharePointUserProfileAdaptor extends AbstractAdaptor
     // Set this to specific user-agent value to be used by adaptor while making
     // request to SharePoint
     config.addKey("adaptor.userAgent", "");
+    // Set this to static factor method name which will return 
+    // custom SamlHandshakeManager object
+    config.addKey("sharepoint.customSamlManager", "");
   }
 
   @Override
@@ -243,6 +246,7 @@ public class SharePointUserProfileAdaptor extends AbstractAdaptor
     String stsrealm = config.getValue("sharepoint.sts.realm");
     boolean useLiveAuthentication = Boolean.parseBoolean(
         config.getValue("sharepoint.useLiveAuthentication"));
+    String customSamlManager = config.getValue("sharepoint.customSamlManager");
     adaptorUserAgent = config.getValue("adaptor.userAgent").trim();
 
     socketTimeoutMillis = Integer.parseInt(
@@ -258,6 +262,7 @@ public class SharePointUserProfileAdaptor extends AbstractAdaptor
     log.log(Level.CONFIG, "STS Realm: {0}", stsrealm);
     log.log(Level.CONFIG, "Use Live Authentication: {0}",
         useLiveAuthentication);
+    log.log(Level.CONFIG, "Custom SAML provider: {0}", customSamlManager);
     log.log(Level.CONFIG, "Adaptor user agent: {0}",
         adaptorUserAgent);
     
@@ -278,7 +283,18 @@ public class SharePointUserProfileAdaptor extends AbstractAdaptor
     Authenticator.setDefault(ntlmAuthenticator);
      
     String authenticationType;
-    if (useLiveAuthentication)  {
+    if (!"".equals(customSamlManager)) {
+      authenticationType = "Custom SAML Provider";
+      Map<String, String> adaptorConfig = new HashMap<String, String>();
+      for(String configKey : config.getAllKeys()) {
+        adaptorConfig.put(configKey, context.getSensitiveValueDecoder()
+            .decodeValue(config.getValue(configKey)));
+      }
+      SamlHandshakeManager manager = authenticationClientFactory
+          .newCustomSamlAuthentication(customSamlManager, adaptorConfig);          
+      authenticationHandler = new SamlAuthenticationHandler.Builder(username,
+          password, scheduledExecutor, manager).build();      
+    } else if (useLiveAuthentication)  {
       if ("".equals(username) || "".equals(password)) {
         throw new InvalidConfigurationException("Adaptor is configured to "
             + "use Live authentication. Please specify valid username "

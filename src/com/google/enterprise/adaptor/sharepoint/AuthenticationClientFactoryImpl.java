@@ -15,13 +15,16 @@
 package com.google.enterprise.adaptor.sharepoint;
 
 import com.google.common.base.Strings;
+import com.google.enterprise.adaptor.InvalidConfigurationException;
 import com.google.enterprise.adaptor.sharepoint.SamlAuthenticationHandler.SamlHandshakeManager;
 
 import com.microsoft.schemas.sharepoint.soap.authentication.AuthenticationSoap;
 
 import java.io.IOException;
+import java.lang.reflect.Method;
 import java.net.URI;
 import java.net.URISyntaxException;
+import java.util.Map;
 import java.util.logging.Level;
 import java.util.logging.Logger;
 
@@ -119,5 +122,48 @@ public class AuthenticationClientFactoryImpl
         String username, String password) throws IOException {   
       return new LiveAuthenticationHandshakeManager.Builder(
               virtualServer, username, password).build();
+    }
+    
+    @Override
+    public SamlHandshakeManager newCustomSamlAuthentication(
+        String factoryMethodName, Map<String, String> config) 
+        throws IOException {
+      int sepIndex = factoryMethodName.lastIndexOf(".");
+      if (sepIndex == -1) {
+        throw new InvalidConfigurationException("Could not separate method "
+            + "name from class name: " + factoryMethodName);
+      }
+      String className = factoryMethodName.substring(0, sepIndex);
+      String methodName = factoryMethodName.substring(sepIndex + 1);
+      log.log(Level.FINE, "Split {0} into class {1} and method {2}",
+          new Object[] {factoryMethodName, className, methodName});
+      Class<?> klass;
+      try {
+        klass = Class.forName(className);
+      } catch (ClassNotFoundException ex) {
+        throw new InvalidConfigurationException(
+            "Could not load class for SamlHandler: " + className, ex);
+      }
+      Method method;
+      try {
+        method = klass.getDeclaredMethod(methodName, Map.class);
+      } catch (NoSuchMethodException ex) {
+        throw new InvalidConfigurationException("Could not find method: "
+            + methodName + " on class: " + className, ex);
+      }
+      log.log(Level.FINE, "Found method {0}", new Object[] {method});
+      Object o;
+      try {
+        o = method.invoke(null, config);
+      } catch (Exception ex) {
+        throw new RuntimeException("Failure while running factory method: "
+            + factoryMethodName, ex);
+      }
+      
+      if (!(o instanceof SamlHandshakeManager)) {
+        throw new ClassCastException(o.getClass().getName()
+            + " is not an instance of SamlHandshakeManager");      
+      }
+      return (SamlHandshakeManager) o;
     }
 }
