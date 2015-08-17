@@ -105,6 +105,7 @@ import java.io.ByteArrayInputStream;
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;
 import java.io.InputStream;
+import java.io.OutputStream;
 import java.math.BigInteger;
 import java.net.HttpURLConnection;
 import java.net.URI;
@@ -2129,7 +2130,7 @@ public class SharePointAdaptorTest {
     ByteArrayOutputStream baos = new ByteArrayOutputStream();
     GetContentsRequest request = new GetContentsRequest(
         new DocId("http://localhost:1/sites/SiteCollection/Lists/Custom List/"
-          + "Test Folder/2_.000"));
+          + "Test Folder/2_.000"), new Date(1336166662000L));
     GetContentsResponse response = new GetContentsResponse(baos);
     adaptor.new SiteAdaptor("http://localhost:1/sites/SiteCollection",
           "http://localhost:1/sites/SiteCollection", siteData,
@@ -2259,6 +2260,107 @@ public class SharePointAdaptorTest {
           + "Custom%20List/DispForm.aspx?ID=2"),
         response.getDisplayUrl());
     assertEquals(new Date(1336166672000L), response.getLastModified());
+  }
+  
+  
+  @Test
+  public void testGetDocContentListItemWithNoContent() throws Exception {
+    SiteDataSoap siteData = MockSiteData.blank()
+        .register(SITES_SITECOLLECTION_S_CONTENT_EXCHANGE)
+        .register(SITES_SITECOLLECTION_LISTS_CUSTOMLIST_1_URLSEG_EXCHANGE)
+        .register(SITES_SITECOLLECTION_LISTS_CUSTOMLIST_2_URLSEG_EXCHANGE)
+        .register(SITES_SITECOLLECTION_LISTS_CUSTOMLIST_L_CONTENT_EXCHANGE)
+        .register(SITES_SITECOLLECTION_LISTS_CUSTOMLIST_1_LI_CONTENT_EXCHANGE)
+        .register(SITES_SITECOLLECTION_LISTS_CUSTOMLIST_2_LI_CONTENT_EXCHANGE)
+        .register(SITES_SITECOLLECTION_LISTS_CUSTOMLIST_2_A_CONTENT_EXCHANGE);
+
+    adaptor = new SharePointAdaptor(initableSoapFactory,
+        new UnsupportedHttpClient(), executorFactory,
+        new MockAuthenticationClientFactoryForms(),
+        new UnsupportedActiveDirectoryClientFactory());
+    adaptor.init(new MockAdaptorContext(config, pusher));
+    ByteArrayOutputStream baos = new ByteArrayOutputStream() {      
+      @Override
+      public void write(byte[] b) throws IOException {       
+        throw new UnsupportedOperationException("No response expected");
+      } 
+      @Override
+      public synchronized void write(byte[] b, int off, int len) {
+        throw new UnsupportedOperationException("No response expected");
+      }      
+    };
+    GetContentsRequest request = new GetContentsRequest(
+        new DocId("http://localhost:1/sites/SiteCollection/Lists/Custom List/"
+          + "Test Folder/2_.000"), new Date(1336166672000L));    
+    GetContentsResponse response = new GetContentsResponse(baos);
+    adaptor.new SiteAdaptor("http://localhost:1/sites/SiteCollection",
+          "http://localhost:1/sites/SiteCollection", siteData,
+          new UnsupportedUserGroupSoap(), new UnsupportedPeopleSoap(),
+          Callables.returning(SITES_SITECOLLECTION_MEMBER_MAPPING),
+          new UnsupportedCallable<MemberIdMapping>())
+        .getDocContent(request, response);
+    String responseString = new String(baos.toByteArray(), charset);   
+    final Metadata goldenMetadata;
+    {
+      Metadata meta = new Metadata();
+      meta.add("Attachments", "1");
+      meta.add("Author", "System Account");
+      meta.add("BaseName", "2_");
+      meta.add("ContentType", "Item");
+      meta.add("ContentTypeId", "0x0100442459C9B5E59C4F9CFDC789A220FC92");
+      meta.add("Created", "2012-05-01T22:14:06Z");
+      meta.add("Created Date", "2012-05-01T22:14:06Z");
+      meta.add("Editor", "System Account");
+      meta.add("EncodedAbsUrl", "http://localhost:1/sites/SiteCollection/Lists/"
+          + "Custom%20List/Test%20Folder/2_.000");
+      meta.add("FSObjType", "0");
+      meta.add("FileDirRef",
+          "sites/SiteCollection/Lists/Custom List/Test Folder");
+      meta.add("FileLeafRef", "2_.000");
+      meta.add("FileRef",
+          "sites/SiteCollection/Lists/Custom List/Test Folder/2_.000");
+      meta.add("GUID", "{2C5BEF60-18FA-42CA-B472-7B5E1EC405A5}");
+      meta.add("ID", "2");
+      meta.add("Last Modified", "2012-05-01T22:14:06Z");
+      meta.add("LinkFilename", "2_.000");
+      meta.add("LinkFilenameNoMenu", "2_.000");
+      meta.add("LinkTitle", "Inside Folder");
+      meta.add("LinkTitleNoMenu", "Inside Folder");
+      meta.add("Modified", "2012-05-04T21:24:32Z");
+      meta.add("Order", "200.000000000000");
+      meta.add("PermMask", "0x7fffffffffffffff");
+      meta.add("ScopeId", "{2E29615C-59E7-493B-B08A-3642949CC069}");
+      meta.add("SelectTitle", "2");
+      meta.add("ServerRedirected", "0");
+      meta.add("ServerUrl",
+          "/sites/SiteCollection/Lists/Custom List/Test Folder/2_.000");
+      meta.add("Title", "Inside Folder");
+      meta.add("UniqueId", "{E7156244-AC2F-4402-AA74-7A365726CD02}");
+      meta.add("WorkflowVersion", "1");
+      meta.add("_EditMenuTableEnd", "2");
+      meta.add("_EditMenuTableStart", "2_.000");
+      meta.add("_IsCurrentVersion", "1");
+      meta.add("_Level", "1");
+      meta.add("_ModerationStatus", "0");
+      meta.add("_UIVersion", "512");
+      meta.add("_UIVersionString", "1.0");
+      meta.add("owshiddenversion", "4");
+      meta.add("sharepoint:parentwebtitle", "chinese1");
+      meta.add("sharepoint:listguid", "{6F33949A-B3FF-4B0C-BA99-93CB518AC2C0}");
+      meta.add("google:objecttype", "ListItem");
+      goldenMetadata = meta.unmodifiableView();
+    }   
+    assertEquals(goldenMetadata, response.getMetadata());
+    assertEquals(new Acl.Builder()
+        .setInheritFrom(new DocId("http://localhost:1/sites/SiteCollection/"
+            + "Lists/Custom List/Test Folder"))
+        .setInheritanceType(Acl.InheritanceType.PARENT_OVERRIDES).build(),
+        response.getAcl());
+    assertEquals(URI.create("http://localhost:1/sites/SiteCollection/Lists/"
+          + "Custom%20List/DispForm.aspx?ID=2"),
+        response.getDisplayUrl());
+    assertEquals(new Date(1336166672000L), response.getLastModified());
+    assertTrue(response.isNoContent());
   }
 
   @Test

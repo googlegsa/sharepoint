@@ -21,19 +21,34 @@ import java.util.Date;
 
 class GetContentsRequest implements Request {
   private DocId docId;
+  Date lastAccessTime;
 
   public GetContentsRequest(DocId docId) {
-    this.docId = docId;
+    this(docId, null);
   }
+  
+  public GetContentsRequest(DocId docId, Date lastAccessTime) {
+    this.docId = docId;
+    this.lastAccessTime = lastAccessTime;
+  } 
 
   @Override
   public boolean hasChangedSinceLastAccess(Date lastModified) {
-    return true;
+    if (lastAccessTime == null) {
+      return true;
+    }
+    if (lastModified == null) {
+      throw new NullPointerException("last modified is null");
+    }
+    Date lastModifiedAdjusted
+        = new Date(1000 * (lastModified.getTime() / 1000));
+    return lastAccessTime.before(lastModifiedAdjusted);
+    
   }
 
   @Override
   public Date getLastAccessTime() {
-    return null;
+    return lastAccessTime;
   }
 
   @Override
@@ -42,7 +57,7 @@ class GetContentsRequest implements Request {
   }
   
   @Override
-  public boolean canRespondWithNoContent(Date lastModified) {    
-    return false;
+  public boolean canRespondWithNoContent(Date lastModified) {
+    return !hasChangedSinceLastAccess(lastModified);
   }
 }

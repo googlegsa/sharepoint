@@ -112,6 +112,7 @@ import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collection;
 import java.util.Collections;
+import java.util.Date;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.LinkedList;
@@ -2727,12 +2728,13 @@ public class SharePointAdaptor extends AbstractAdaptor
       Element row = getChildrenWithName(data, ROW_ELEMENT).get(0);
 
       String modifiedString = row.getAttribute(OWS_MODIFIED_ATTRIBUTE);
+      Date lastModified = null;
       if (modifiedString == null) {
         log.log(Level.FINE, "No last modified information for list item");
       } else {
         try {
-          response.setLastModified(
-              modifiedDateFormat.get().parse(modifiedString));
+          lastModified = modifiedDateFormat.get().parse(modifiedString);
+          response.setLastModified(lastModified);
         } catch (ParseException ex) {
           log.log(Level.INFO, "Could not parse ows_Modified: {0}",
               modifiedString);
@@ -2868,7 +2870,6 @@ public class SharePointAdaptor extends AbstractAdaptor
       boolean isFolder = "1".equals(type);
       String title = row.getAttribute(OWS_TITLE_ATTRIBUTE);
       String serverUrl = row.getAttribute(OWS_SERVERURL_ATTRIBUTE);
-
       Multimap<String, String> metadata = TreeMultimap.create();
       long metadataLength = 0;
       for (Attr attribute : getAllAttributes(row)) {
@@ -2877,7 +2878,9 @@ public class SharePointAdaptor extends AbstractAdaptor
       }
       metadataLength += addMetadata(response,
           METADATA_PARENT_WEB_TITLE, w.webTitle);
-      metadataLength += addMetadata(response, METADATA_LIST_GUID, listId); 
+      metadataLength += addMetadata(response, METADATA_LIST_GUID, listId);
+      boolean canRespondWithNoContent = lastModified != null
+          && request.canRespondWithNoContent(lastModified);
       
       if (isFolder) {
         String root = encodeDocId(l.rootFolder).getUniqueId();
@@ -2903,7 +2906,16 @@ public class SharePointAdaptor extends AbstractAdaptor
           throw new IOException(ex);
         }
         metadataLength += addMetadata(
-            response, METADATA_OBJECT_TYPE, ObjectType.FOLDER.value());
+            response, METADATA_OBJECT_TYPE, ObjectType.FOLDER.value());      
+        if (canRespondWithNoContent) {
+          log.log(Level.FINER, "Folder: Responding with 204 as Last-Modified "
+              + "is {0} and last access time is {1}",
+              new Object[] {lastModified, request.getLastAccessTime()});
+          response.respondNoContent();
+          log.exiting("SiteAdaptor", "getListItemDocContent");
+          return;
+        }
+        
         HtmlResponseWriter writer
             = createHtmlResponseWriter(response, metadataLength);
         writer.start(request.getDocId(), ObjectType.FOLDER, null);
@@ -2921,6 +2933,14 @@ public class SharePointAdaptor extends AbstractAdaptor
         // contents.
         metadataLength += addMetadata(
             response, METADATA_OBJECT_TYPE, "Document");
+        if (canRespondWithNoContent) {
+          log.log(Level.FINER, "Document: Responding with 204 as Last-Modified "
+              + "is {0} and last access time is {1}",
+              new Object[] {lastModified, request.getLastAccessTime()});
+          response.respondNoContent();
+          log.exiting("SiteAdaptor", "getListItemDocContent");
+          return;
+        }
         getFileDocContent(request, response, false);
       } else {
         // Some list item.
@@ -2934,6 +2954,14 @@ public class SharePointAdaptor extends AbstractAdaptor
         }
         metadataLength += addMetadata(
             response, METADATA_OBJECT_TYPE, ObjectType.LIST_ITEM.value());
+        if (canRespondWithNoContent) {
+          log.log(Level.FINER, "ListItem: Responding with 204 as Last-Modified"
+              + " is {0} and last access time is {1}",
+              new Object[] {lastModified, request.getLastAccessTime()});
+          response.respondNoContent();
+          log.exiting("SiteAdaptor", "getListItemDocContent");
+          return;
+        }
         HtmlResponseWriter writer
             = createHtmlResponseWriter(response, metadataLength);
         writer.start(request.getDocId(), ObjectType.LIST_ITEM, title);
