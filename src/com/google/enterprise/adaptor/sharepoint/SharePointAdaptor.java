@@ -400,7 +400,8 @@ public class SharePointAdaptor extends AbstractAdaptor
    * value is used in case of error in certain situations.
    */
   private boolean isSp2007;
-  private NtlmAuthenticator ntlmAuthenticator;  
+  private NtlmAuthenticator ntlmAuthenticator;
+  private boolean needToResetDefaultAuthenticator;
   
   private FormsAuthenticationHandler authenticationHandler;
   private ActiveDirectoryClient adClient;
@@ -624,10 +625,14 @@ public class SharePointAdaptor extends AbstractAdaptor
           + "ACLs and anonymous access settings at web application policy "
           + "level will be ignored.");
     }
-
+    
     ntlmAuthenticator = new NtlmAuthenticator(username, password);
-    // Unfortunately, this is a JVM-wide modification.
-    Authenticator.setDefault(ntlmAuthenticator);
+    if (!"".equals(username) && !"".equals(password)) {      
+      // Unfortunately, this is a JVM-wide modification.
+      Authenticator.setDefault(ntlmAuthenticator);
+      needToResetDefaultAuthenticator = true;
+    }
+    
     URL virtualServerUrl =
         new URL(configuredSharePointUrl.getVirtualServerUrl());
     ntlmAuthenticator.addPermitForHost(virtualServerUrl);
@@ -858,7 +863,10 @@ public class SharePointAdaptor extends AbstractAdaptor
     executor = null;
     scheduledExecutor = null;
     rareModCache = null;
-    Authenticator.setDefault(null);
+    if (needToResetDefaultAuthenticator) {
+      // Reset authenticator
+      Authenticator.setDefault(null);     
+    }
     ntlmAuthenticator = null;
   }
   /**
