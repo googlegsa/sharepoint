@@ -1010,8 +1010,10 @@ public class SharePointAdaptor extends AbstractAdaptor
         sharePointUrl.getSharePointUrl());
     SiteDataClient scClient = scAdaptor.getSiteDataClient();
     Site site = scClient.getContentSite();
-    DocId siteCollectionDocId = scAdaptor.encodeDocId(
-        site.getMetadata().getURL());
+    String siteCollectionUrl = getCanonicalUrl(site.getMetadata().getURL());
+    // Reset site collection URL instance to use correct URL.
+    scAdaptor = getSiteAdaptor(siteCollectionUrl, siteCollectionUrl);
+    DocId siteCollectionDocId = scAdaptor.encodeDocId(siteCollectionUrl);
     pusher.pushDocIds(Arrays.asList(siteCollectionDocId));
     Map<GroupPrincipal, Collection<Principal>> groupDefs 
         = new HashMap<GroupPrincipal, Collection<Principal>>();
@@ -1046,6 +1048,7 @@ public class SharePointAdaptor extends AbstractAdaptor
       for (Sites.Site siteListing : cd.getSites().getSite()) {
         String siteString
             = vsAdaptor.encodeDocId(siteListing.getURL()).getUniqueId();
+        siteString = getCanonicalUrl(siteString);
         ntlmAuthenticator.addPermitForHost(spUrlToUri(siteString).toURL());           
         SiteAdaptor siteAdaptor = getSiteAdaptor(siteString, siteString);
         Site site;
@@ -1313,10 +1316,8 @@ public class SharePointAdaptor extends AbstractAdaptor
     log.entering("SharePointAdaptor", "getModifiedDocIdsSite",
         new Object[] {changes, docIds});
     if (isModified(changes.getChange())) {
-      String siteUrl = changes.getServerUrl() + changes.getDisplayUrl();      
-      if (siteUrl.endsWith("/")) {
-        siteUrl = siteUrl.substring(0, siteUrl.length() - 1);
-      }
+      String siteUrl = changes.getServerUrl() + changes.getDisplayUrl();
+      siteUrl = getCanonicalUrl(siteUrl);
       docIds.add(new DocId(siteUrl));
       // Add modified site to whitelist for authenticator as this might be new
       // host name site collection.
@@ -1341,9 +1342,7 @@ public class SharePointAdaptor extends AbstractAdaptor
         new Object[] {changes, docIds});
     if (isModified(changes.getChange())) {
       String webUrl = changes.getServerUrl() + changes.getDisplayUrl();
-      if (webUrl.endsWith("/")) {
-        webUrl = webUrl.substring(0, webUrl.length() - 1);
-      }
+      webUrl = getCanonicalUrl(webUrl);
       docIds.add(new DocId(webUrl));
     }
     
@@ -1418,16 +1417,10 @@ public class SharePointAdaptor extends AbstractAdaptor
 
   private SiteAdaptor getSiteAdaptor(String site, String web)
       throws IOException {
-    if (web.endsWith("/")) {
-      // Always end without a '/' for a canonical form.
-      web = web.substring(0, web.length() - 1);
-    }
+    web = getCanonicalUrl(web);
     SiteAdaptor siteAdaptor = siteAdaptors.get(web);
     if (siteAdaptor == null) {
-      if (site.endsWith("/")) {
-        // Always end without a '/' for a canonical form.
-        site = site.substring(0, site.length() - 1);
-      }
+      site = getCanonicalUrl(site);
       ntlmAuthenticator.addPermitForHost(new URL(web));
       String endpoint = spUrlToUri(web + "/_vti_bin/SiteData.asmx").toString();
       SiteDataSoap siteDataSoap = soapFactory.newSiteData(endpoint);
@@ -1551,6 +1544,15 @@ public class SharePointAdaptor extends AbstractAdaptor
     } catch (URISyntaxException ex) {
       throw new IOException(ex);
     }
+  }
+  
+  // Remove trailing slash from URLs as SharePoint doesn't like trailing slash
+  // in SiteData.GetUrlSegments
+  static String getCanonicalUrl(String url) {
+    if (!url.endsWith("/")) {
+      return url;
+    }
+    return url.substring(0, url.length() - 1);
   }
 
   /**
@@ -1736,13 +1738,8 @@ public class SharePointAdaptor extends AbstractAdaptor
       }
       sharePointUrl = sharePointUrl.trim();
       siteCollectionOnlyModeConfig = siteCollectionOnlyModeConfig.trim();
-
-      if (sharePointUrl.endsWith("/")) {
-        this.sharePointUrl 
-            = sharePointUrl.substring(0, sharePointUrl.length() - 1);
-      } else {
-        this.sharePointUrl = sharePointUrl;
-      }
+      
+      this.sharePointUrl = getCanonicalUrl(sharePointUrl);
       
       if (!"".equals(siteCollectionOnlyModeConfig)) {
         this.siteCollectionOnly = Boolean.parseBoolean(
@@ -1786,6 +1783,13 @@ public class SharePointAdaptor extends AbstractAdaptor
     }
     public String getSharePointUrl() {
       return this.sharePointUrl;
+    }
+    
+    @Override
+    public String toString() {
+      return "SharePointUrl(sharePointUrl = " + sharePointUrl
+          + ", virtualServerUrl = " + virtualServerUrl
+          + ", siteCollectionOnly = " + siteCollectionOnly + ")";
     }
   }
 
@@ -1910,6 +1914,15 @@ public class SharePointAdaptor extends AbstractAdaptor
       log.entering("SiteAdaptor", "getDocContent",
           new Object[] {request, response});
       String url = request.getDocId().getUniqueId();
+      // SiteData.GetUrlSegment call fails for URLs with trailing slash.
+      // Responding not found as DocId ends with trailing slash.
+      if (url.endsWith("/")) {
+        log.log(Level.WARNING,
+            "Responding not found as DocId {0} ends with trailing slash", url);
+        response.respondNotFound();
+        log.exiting("SiteAdaptor", "getDocContent");
+        return;
+      }
       if (getAttachmentDocContent(request, response)) {
         // Success, it was an attachment.
         log.exiting("SiteAdaptor", "getDocContent");
@@ -2062,7 +2075,9 @@ public class SharePointAdaptor extends AbstractAdaptor
               = siteDataClient.getContentContentDatabase(cdcd.getID(), true);
           if (cd.getSites() != null) {
             for (Sites.Site site : cd.getSites().getSite()) {
-              writer.addLink(encodeDocId(site.getURL()), null);
+              String siteUrl = site.getURL();
+              siteUrl = getCanonicalUrl(siteUrl);
+              writer.addLink(encodeDocId(siteUrl), null);
             }
           }
         } catch (IOException ex) {
@@ -2219,7 +2234,8 @@ public class SharePointAdaptor extends AbstractAdaptor
       if (w.getWebs() != null) {
         writer.startSection(ObjectType.SITE);
         for (Webs.Web web : w.getWebs().getWeb()) {
-          writer.addLink(encodeDocId(web.getURL()), web.getURL());
+          String childWebUrl = getCanonicalUrl(web.getURL());          
+          writer.addLink(encodeDocId(childWebUrl), childWebUrl);
         }
       }
       if (w.getLists() != null) {
@@ -2361,7 +2377,7 @@ public class SharePointAdaptor extends AbstractAdaptor
         for (Element row : getChildrenWithName(data, ROW_ELEMENT)) {
           String rowUrl = row.getAttribute(OWS_SERVERURL_ATTRIBUTE);
           String rowTitle = row.getAttribute(OWS_TITLE_ATTRIBUTE);
-          writer.addLink(encodeDocId(rowUrl), rowTitle);
+          writer.addLink(encodeDocId(getCanonicalUrl(rowUrl)), rowTitle);
         }
       }
       log.exiting("SiteAdaptor", "processFolder");

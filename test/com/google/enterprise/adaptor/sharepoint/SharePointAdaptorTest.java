@@ -985,6 +985,53 @@ public class SharePointAdaptorTest {
   }
   
   @Test
+  public void testGetDocContentVirtualServerWithTrailingSlashSC()
+      throws Exception {
+    MockPeopleSoap mockPeople = new MockPeopleSoap();    
+    mockPeople.addToResult("NT AUTHORITY\\LOCAL SERVICE", 
+        "NT AUTHORITY\\LOCAL SERVICE", SPPrincipalType.USER);
+    mockPeople.addToResult(
+        "GDC-PSL\\spuser1", "spuser1", SPPrincipalType.USER);
+    mockPeople.addToResult(
+        "GDC-PSL\\Administrator", "dministrator", SPPrincipalType.USER);
+    SoapFactory siteDataFactory = MockSoapFactory.blank()
+        .endpoint(VS_ENDPOINT, MockSiteData.blank()
+            .register(VS_CONTENT_EXCHANGE)
+            .register(CD_CONTENT_EXCHANGE.
+                replaceInContent("http://localhost:1/sites/SiteCollection",
+                    "http://localhost:1/sites/SiteCollection/")))
+        .endpoint("http://localhost:1/_vti_bin/People.asmx", mockPeople);
+
+    adaptor = new SharePointAdaptor(siteDataFactory,
+        new UnsupportedHttpClient(), executorFactory,
+        new MockAuthenticationClientFactoryForms(),
+        new UnsupportedActiveDirectoryClientFactory());
+    adaptor.init(new MockAdaptorContext(config, pusher));
+    ByteArrayOutputStream baos = new ByteArrayOutputStream();
+    GetContentsResponse response = new GetContentsResponse(baos);
+    adaptor.getDocContent(new GetContentsRequest(new DocId("")), response);
+    String responseString = new String(baos.toByteArray(), charset);
+    final String golden = "<!DOCTYPE html>\n"
+        + "<html><head><title>http://localhost:1/</title></head>"
+        + "<body><h1><!--googleoff: index-->Virtual Server"
+        +   "<!--googleon: index--> http://localhost:1/</h1>"
+        + "<p><!--googleoff: index-->Sites<!--googleon: index--></p><ul>"
+        // These are relative URLs to DocIds that are URLs, and thus the "./"
+        // prefix is correct.
+        + "<li><a href=\"./http://localhost:1\">localhost:1</a></li>"
+        + "<li><a href=\"./http://localhost:1/sites/SiteCollection\">"
+        + "SiteCollection</a></li>"
+        + "</ul></body></html>";
+    assertEquals(golden, responseString);
+    assertEquals(new Acl.Builder()
+        .setEverythingCaseInsensitive()
+        .setInheritanceType(Acl.InheritanceType.PARENT_OVERRIDES)
+        .setPermitUsers(Arrays.asList(GDC_PSL_ADMINISTRATOR, GDC_PSL_SPUSER1,
+            NT_AUTHORITY_LOCAL_SERVICE)).build(), response.getAcl());
+    assertNull(response.getDisplayUrl());
+  }
+  
+  @Test
   public void testGetDocContentVirtualServerContentDBError()
       throws Exception {
     MockPeopleSoap mockPeople = new MockPeopleSoap();    
