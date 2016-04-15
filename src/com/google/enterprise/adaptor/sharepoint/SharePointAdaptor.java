@@ -3505,6 +3505,19 @@ public class SharePointAdaptor extends AbstractAdaptor
         }
         log.log(Level.FINE, "Redirected to URL {0} from URL {1}",
             new Object[] {redirectLocation, url});
+        if (!redirectLocation.startsWith("http://")
+            && !redirectLocation.startsWith("https://")) {
+          log.log(Level.FINE, "Redirected to relative URL {0}",
+              redirectLocation);
+          if (!redirectLocation.startsWith("/")) {
+            throw new IOException(
+                "Redirect location is not relative to root : " + url);
+          }
+         redirectLocation = String.format("%s://%s%s", url.getProtocol(),
+             url.getAuthority(), redirectLocation);
+         log.log(Level.FINE, "Resolved redirection URL as {0}",
+             redirectLocation);
+        }
         url = encodeSharePointUrl(redirectLocation, performBrowserLeniency);
       } while (redirectAttempt <= maxRedirectsToFollow);
       if (conn.getResponseCode() != HttpURLConnection.HTTP_OK) {

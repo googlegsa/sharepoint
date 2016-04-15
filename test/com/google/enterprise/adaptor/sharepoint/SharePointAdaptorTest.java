@@ -3475,7 +3475,99 @@ public class SharePointAdaptorTest {
     assertEquals("Golden Content", content.toString());
     output.getContents().close();
   }
-  
+
+  @Test
+  public void testIssueGetRequestWithRelativeRedirect() throws Exception {
+    HttpClient client = new SharePointAdaptor.HttpClientImpl() {
+      @Override
+      public HttpURLConnection getHttpURLConnection(URL url)
+          throws IOException {
+        String urlToServe = url.toString();
+        if ("http://localhost:8080/default.aspx"
+            .equalsIgnoreCase(urlToServe)) {
+          return new MockHttpURLConnection(url,
+              HttpURLConnection.HTTP_MOVED_TEMP,
+              "/Redirect1.aspx", null);
+        } else if ("http://localhost:8080/Redirect1.aspx"
+            .equalsIgnoreCase(urlToServe)) {
+          return new MockHttpURLConnection(url,
+              HttpURLConnection.HTTP_MOVED_PERM,
+              "/test/Final Document.aspx?q={data}", null);
+        } else if (
+            "http://localhost:8080/test/Final%20Document.aspx?q=%7Bdata%7D"
+            .equalsIgnoreCase(urlToServe)) {
+          return new MockHttpURLConnection(url, HttpURLConnection.HTTP_OK, null,
+              "Golden Content");
+        }
+        throw new UnsupportedOperationException();
+      }
+    };
+    FileInfo output
+        = client.issueGetRequest(new URL("http://localhost:8080/default.aspx"),
+            new ArrayList<String>(), "", 20, true);
+    ByteArrayOutputStream content = new ByteArrayOutputStream();
+    IOHelper.copyStream(output.getContents(), content);
+    assertEquals("Golden Content", content.toString());
+    output.getContents().close();
+  }
+
+  @Test
+  public void testIssueGetRequestWithSecuredUrlRedirect() throws Exception {
+    HttpClient client = new SharePointAdaptor.HttpClientImpl() {
+      @Override
+      public HttpURLConnection getHttpURLConnection(URL url)
+          throws IOException {
+        String urlToServe = url.toString();
+        if ("https://localhost:8080/default.aspx"
+            .equalsIgnoreCase(urlToServe)) {
+          return new MockHttpURLConnection(url,
+              HttpURLConnection.HTTP_MOVED_PERM,
+              "/Redirect1.aspx", null);
+        } else if ("https://localhost:8080/Redirect1.aspx"
+            .equalsIgnoreCase(urlToServe)) {
+          return new MockHttpURLConnection(url,
+              HttpURLConnection.HTTP_MOVED_PERM,
+              "/Final Document.aspx?q={data}", null);
+        } else if ("https://localhost:8080/Final%20Document.aspx?q=%7Bdata%7D"
+            .equalsIgnoreCase(urlToServe)) {
+          return new MockHttpURLConnection(url, HttpURLConnection.HTTP_OK, null,
+              "Golden Content");
+        }
+        throw new UnsupportedOperationException();
+      }
+    };
+    FileInfo output
+        = client.issueGetRequest(new URL("https://localhost:8080/default.aspx"),
+            new ArrayList<String>(), "", 20, true);
+    ByteArrayOutputStream content = new ByteArrayOutputStream();
+    IOHelper.copyStream(output.getContents(), content);
+    assertEquals("Golden Content", content.toString());
+    output.getContents().close();
+  }
+
+  @Test
+  public void testIssueGetRequestWithNonRootRelative() throws Exception {
+    HttpClient client = new SharePointAdaptor.HttpClientImpl() {
+      @Override
+      public HttpURLConnection getHttpURLConnection(URL url)
+          throws IOException {
+        String urlToServe = url.toString();
+        if ("http://localhost:8080/default.aspx"
+            .equalsIgnoreCase(urlToServe)) {
+          return new MockHttpURLConnection(url,
+              HttpURLConnection.HTTP_MOVED_TEMP,
+              "test/Final Document.aspx?q={data}", null);
+        } else {
+          throw new UnsupportedOperationException(
+              "Unexpected redirect location");
+        }
+      }
+    };
+    thrown.expect(IOException.class);
+    client.issueGetRequest(new URL("http://localhost:8080/default.aspx"),
+        new ArrayList<String>(), "", 20, true);
+  }
+
   @Test
   public void testEncodeSharePointUrl() throws Exception {
     //Just host
