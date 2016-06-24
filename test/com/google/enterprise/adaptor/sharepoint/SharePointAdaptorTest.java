@@ -1030,7 +1030,175 @@ public class SharePointAdaptorTest {
             NT_AUTHORITY_LOCAL_SERVICE)).build(), response.getAcl());
     assertNull(response.getDisplayUrl());
   }
-  
+
+ @Test
+  public void testGetDocContentWithMultipleSC() throws Exception {
+    MockPeopleSoap mockPeople = new MockPeopleSoap();
+    mockPeople.addToResult("NT AUTHORITY\\LOCAL SERVICE",
+        "NT AUTHORITY\\LOCAL SERVICE", SPPrincipalType.USER);
+    mockPeople.addToResult("GDC-PSL\\spuser1", "spuser1", SPPrincipalType.USER);
+    mockPeople.addToResult("GDC-PSL\\Administrator", "administrator",
+        SPPrincipalType.USER);
+    SoapFactory siteDataFactory = MockSoapFactory.blank()
+        .endpoint(VS_ENDPOINT, MockSiteData.blank()
+            .register(SITES_SITECOLLECTION_SAW_EXCHANGE))
+        .endpoint(VS_ENDPOINT, MockSiteData.blank()
+            .register(new SiteAndWebExchange(
+                "http://localhost:1/sites/SiteCollection/web", 0,
+                "http://localhost:1/sites/SiteCollection",
+                "http://localhost:1/sites/SiteCollection/web"))
+            .register(VS_CONTENT_EXCHANGE)
+            .register(CD_CONTENT_EXCHANGE
+                .replaceInContent("</Sites>", "<Site "
+                    + "URL=\"http://localhost:1/sites/SiteCollectionOneMore\" "
+                    + "ID=\"{5cbcd3b1-fca9-48b2-92db-OneMore}\" />"
+                    + "</Sites>")))
+        .endpoint("http://localhost:1/_vti_bin/People.asmx", mockPeople);
+    
+    adaptor = new SharePointAdaptor(siteDataFactory,
+        new UnsupportedHttpClient(), executorFactory,
+        new MockAuthenticationClientFactoryForms(),
+        new UnsupportedActiveDirectoryClientFactory());
+    config.overrideKey("sharepoint.server", "http://localhost:1/");
+    config.overrideKey("sharepoint.siteCollectionsToInclude",
+        "http://localhost:1,http://localhost:1/sites/SiteCollectionOneMore,");
+    adaptor.init(new MockAdaptorContext(config, pusher));
+    ByteArrayOutputStream baos = new ByteArrayOutputStream();
+
+    GetContentsResponse response = new GetContentsResponse(baos);
+    adaptor.getDocContent(new GetContentsRequest(new DocId("")), response);
+    String responseString = new String(baos.toByteArray(), charset);
+    final String golden = "<!DOCTYPE html>\n"
+        + "<html><head><title>http://localhost:1/</title></head>"
+        + "<body><h1><!--googleoff: index-->Virtual Server"
+        +   "<!--googleon: index--> http://localhost:1/</h1>"
+        + "<p><!--googleoff: index-->Sites<!--googleon: index--></p><ul>"
+        // These are relative URLs to DocIds that are URLs, and thus the "./"
+        // prefix is correct.
+        + "<li><a href=\"./http://localhost:1\">localhost:1</a></li>"
+        + "<li><a href=\"./http://localhost:1/sites/SiteCollectionOneMore\">"
+        + "SiteCollectionOneMore</a></li>"
+        + "</ul></body></html>";
+    assertEquals(golden, responseString);
+    assertEquals(new Acl.Builder()
+        .setEverythingCaseInsensitive()
+        .setInheritanceType(Acl.InheritanceType.PARENT_OVERRIDES)
+        .setPermitUsers(Arrays.asList(GDC_PSL_ADMINISTRATOR, GDC_PSL_SPUSER1,
+            NT_AUTHORITY_LOCAL_SERVICE)).build(), response.getAcl());
+    assertNull(response.getDisplayUrl());
+    // Request to fetch doc content from excluded site collection
+    GetContentsRequest requestOtherSC = new GetContentsRequest(
+        new DocId("http://localhost:1/sites/SiteCollection/web"));
+    GetContentsResponse responseOtherSC = new GetContentsResponse(baos);
+    adaptor.getDocContent(requestOtherSC, responseOtherSC);
+    assertTrue(responseOtherSC.isNotFound());
+  }
+
+  @Test
+  public void testGetDocContentMultipleSCInvalidServerURL() throws Exception {
+    MockPeopleSoap mockPeople = new MockPeopleSoap();
+    mockPeople.addToResult("NT AUTHORITY\\LOCAL SERVICE",
+        "NT AUTHORITY\\LOCAL SERVICE", SPPrincipalType.USER);
+    mockPeople.addToResult("GDC-PSL\\spuser1", "spuser1", SPPrincipalType.USER);
+    mockPeople.addToResult("GDC-PSL\\Administrator", "administrator",
+        SPPrincipalType.USER);
+    SoapFactory siteDataFactory = MockSoapFactory.blank()
+        .endpoint(VS_ENDPOINT, MockSiteData.blank()
+            .register(VS_CONTENT_EXCHANGE)
+            .register(CD_CONTENT_EXCHANGE
+                .replaceInContent("</Sites>", "<Site "
+                    + "URL=\"http://localhost:1/sites/SiteCollectionOneMore\" "
+                    + "ID=\"{5cbcd3b1-fca9-48b2-92db-OneMore}\" />"
+                    + "</Sites>")))
+        .endpoint("http://localhost:1/_vti_bin/People.asmx", mockPeople);
+
+    adaptor = new SharePointAdaptor(siteDataFactory,
+        new UnsupportedHttpClient(), executorFactory,
+        new MockAuthenticationClientFactoryForms(),
+        new UnsupportedActiveDirectoryClientFactory());
+    config.overrideKey("sharepoint.server",
+        "http://localhost:1/sites/siteCollections");
+    config.overrideKey("sharepoint.siteCollectionsToInclude",
+        "http://localhost:1,http://localhost:1/sites/SiteCollectionOneMore,");
+    thrown.expect(InvalidConfigurationException.class);
+    adaptor.init(new MockAdaptorContext(config, pusher));
+    adaptor = null;
+  }
+
+  @Test
+  public void testGetDocContentMultipleSCWithSCOnlyFlag() throws Exception {
+    MockPeopleSoap mockPeople = new MockPeopleSoap();
+    mockPeople.addToResult("NT AUTHORITY\\LOCAL SERVICE",
+        "NT AUTHORITY\\LOCAL SERVICE", SPPrincipalType.USER);
+    mockPeople.addToResult("GDC-PSL\\spuser1", "spuser1", SPPrincipalType.USER);
+    mockPeople.addToResult("GDC-PSL\\Administrator", "administrator",
+        SPPrincipalType.USER);
+    SoapFactory siteDataFactory = MockSoapFactory.blank()
+        .endpoint(VS_ENDPOINT, MockSiteData.blank()
+            .register(SITES_SITECOLLECTION_SAW_EXCHANGE))
+        .endpoint(VS_ENDPOINT, MockSiteData.blank()
+            .register(VS_CONTENT_EXCHANGE)
+            .register(CD_CONTENT_EXCHANGE
+                .replaceInContent("</Sites>", "<Site "
+                    + "URL=\"http://localhost:1/sites/SiteCollectionOneMore\" "
+                    + "ID=\"{5cbcd3b1-fca9-48b2-92db-OneMore}\" />"
+                    + "</Sites>")))
+        .endpoint("http://localhost:1/_vti_bin/People.asmx", mockPeople);
+
+    adaptor = new SharePointAdaptor(siteDataFactory,
+        new UnsupportedHttpClient(), executorFactory,
+        new MockAuthenticationClientFactoryForms(),
+        new UnsupportedActiveDirectoryClientFactory());
+    config.overrideKey("sharepoint.siteCollectionOnly", "true");
+    config.overrideKey("sharepoint.siteCollectionsToInclude",
+        "http://localhost:1/sites/SiteCollectionOneMore,");
+    thrown.expect(InvalidConfigurationException.class);
+    adaptor.init(new MockAdaptorContext(config, pusher));
+    adaptor = null;
+  }
+
+  @Test
+  public void testGetDocContentMultipleSCExcludeRootSC() throws Exception {
+    MockPeopleSoap mockPeople = new MockPeopleSoap();
+    mockPeople.addToResult("NT AUTHORITY\\LOCAL SERVICE",
+        "NT AUTHORITY\\LOCAL SERVICE", SPPrincipalType.USER);
+    mockPeople.addToResult("GDC-PSL\\spuser1", "spuser1", SPPrincipalType.USER);
+    mockPeople.addToResult("GDC-PSL\\Administrator", "administrator",
+        SPPrincipalType.USER);
+    SoapFactory siteDataFactory = MockSoapFactory.blank()
+        .endpoint(VS_ENDPOINT, MockSiteData.blank()
+            .register(SITES_SITECOLLECTION_SAW_EXCHANGE))
+        .endpoint(VS_ENDPOINT, MockSiteData.blank()
+            .register(new SiteAndWebExchange(
+                "http://localhost:1/web", 0,
+                "http://localhost:1",
+                "http://localhost:1/web"))
+            .register(VS_CONTENT_EXCHANGE)
+            .register(CD_CONTENT_EXCHANGE
+                .replaceInContent("</Sites>", "<Site "
+                    + "URL=\"http://localhost:1/sites/SiteCollectionOneMore\" "
+                    + "ID=\"{5cbcd3b1-fca9-48b2-92db-OneMore}\" />"
+                    + "</Sites>")))
+        .endpoint("http://localhost:1/_vti_bin/People.asmx", mockPeople);
+
+    adaptor = new SharePointAdaptor(siteDataFactory,
+        new UnsupportedHttpClient(), executorFactory,
+        new MockAuthenticationClientFactoryForms(),
+        new UnsupportedActiveDirectoryClientFactory());
+    config.overrideKey("sharepoint.server", "http://localhost:1/");
+    config.overrideKey("sharepoint.siteCollectionsToInclude",
+        "http://localhost:1/sites/SiteCollectionOneMore,");
+    adaptor.init(new MockAdaptorContext(config, pusher));
+    ByteArrayOutputStream baos = new ByteArrayOutputStream();
+
+    GetContentsResponse response = new GetContentsResponse(baos);
+    GetContentsRequest requestOtherSC = new GetContentsRequest(
+        new DocId("http://localhost:1/web"));
+    GetContentsResponse responseOtherSC = new GetContentsResponse(baos);
+    adaptor.getDocContent(requestOtherSC, responseOtherSC);
+    assertTrue(responseOtherSC.isNotFound());
+  }
+
   @Test
   public void testGetDocContentVirtualServerContentDBError()
       throws Exception {
@@ -3594,34 +3762,34 @@ public class SharePointAdaptorTest {
   public void testSharePointUrlNullInputUrl() {
     SharePointAdaptor adaptor = new SharePointAdaptor();
     thrown.expect(NullPointerException.class);
-    adaptor.new SharePointUrl(null, "");
+    adaptor.new SharePointUrl(null, "", "");
   }
   
   @Test
   public void testSharePointUrlConstructor() {
     SharePointAdaptor adaptor = new SharePointAdaptor();
-    adaptor.new SharePointUrl("http://sharepoint.intranet.com", "");
+    adaptor.new SharePointUrl("http://sharepoint.intranet.com", "", "");
   }
   
   @Test
   public void testSharePointUrlConstructorWithSpaceInUrl() {
     SharePointAdaptor adaptor = new SharePointAdaptor();
     adaptor.new SharePointUrl(
-        "http://sharepoint.intranet.com/sites/new site collection", "");
+        "http://sharepoint.intranet.com/sites/new site collection", "", "");
   }
   
   @Test
   public void testSharePointUrlMalformedInput() {
     SharePointAdaptor adaptor = new SharePointAdaptor();
     thrown.expect(InvalidConfigurationException.class);
-    adaptor.new SharePointUrl("malformed.sharepoint.com", "");
+    adaptor.new SharePointUrl("malformed.sharepoint.com", "", "");
   }
   
   @Test
   public void testSharePointUrlAndRootUrl() {
     SharePointAdaptor adaptor = new SharePointAdaptor();
     SharePointUrl sharePointUrl = adaptor.new SharePointUrl(
-        "http://localhost:1000/sites/collection/", "");
+        "http://localhost:1000/sites/collection/", "", "");
     assertEquals("http://localhost:1000/sites/collection",
         sharePointUrl.getSharePointUrl());
     assertEquals("http://localhost:1000", sharePointUrl.getVirtualServerUrl());
@@ -3631,20 +3799,25 @@ public class SharePointAdaptorTest {
   public void testSharePointUrlIsSiteCollectionUrl() {
     SharePointAdaptor adaptor = new SharePointAdaptor();
     SharePointUrl sharePointUrl = adaptor.new SharePointUrl(
-        "http://localhost:1000/sites/collection/", "");
+        "http://localhost:1000/sites/collection/", "", "");
     assertTrue(sharePointUrl.isSiteCollectionUrl());
     
     SharePointUrl virtualServer 
-        = adaptor.new SharePointUrl("http://localhost:1000/", "");
+        = adaptor.new SharePointUrl("http://localhost:1000/", "", "");
     assertFalse(virtualServer.isSiteCollectionUrl());
     
     SharePointUrl sharePointUrlWithMode = adaptor.new SharePointUrl(
-        "http://localhost:1000/sites/collection/", "false");
+        "http://localhost:1000/sites/collection/", "false", "");
     assertFalse(sharePointUrlWithMode.isSiteCollectionUrl());
     
     SharePointUrl virtualServerWithMode 
-        = adaptor.new SharePointUrl("http://localhost:1000/", "true");
+        = adaptor.new SharePointUrl("http://localhost:1000/", "true", "");
     assertTrue(virtualServerWithMode.isSiteCollectionUrl());
+
+    thrown.expect(InvalidConfigurationException.class);
+    SharePointUrl sharePointUrlWithSCWrongVirtualServerUrl
+        = adaptor.new SharePointUrl("http://localhost:1000/sites/other", "true",
+            "http://localhost:1000/sites/collection/");
   }
 
   private static <T> void setValue(Holder<T> holder, T value) {

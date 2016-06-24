@@ -15,8 +15,11 @@
 package com.google.enterprise.adaptor.sharepoint;
 
 import com.google.common.annotations.VisibleForTesting;
+import com.google.common.base.Preconditions;
+import com.google.common.base.Splitter;
 import com.google.common.base.Strings;
 import com.google.common.cache.CacheBuilder;
+import com.google.common.collect.ImmutableSet;
 import com.google.common.cache.LoadingCache;
 import com.google.common.collect.Multimap;
 import com.google.common.collect.TreeMultimap;
@@ -115,12 +118,14 @@ import java.util.Collections;
 import java.util.Date;
 import java.util.HashMap;
 import java.util.HashSet;
+import java.util.Iterator;
 import java.util.LinkedList;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 import java.util.Set;
 import java.util.TimeZone;
+import java.util.TreeSet;
 import java.util.concurrent.Callable;
 import java.util.concurrent.ConcurrentMap;
 import java.util.concurrent.ConcurrentSkipListMap;
@@ -383,7 +388,6 @@ public class SharePointAdaptor extends AbstractAdaptor
 
   private final AuthenticationClientFactory authenticationClientFactory;
   private final ActiveDirectoryClientFactory adClientFactory;
-  
   /** Executor service to perform background tasks */
   private ExecutorService executor;
   private boolean xmlValidation;
@@ -504,7 +508,14 @@ public class SharePointAdaptor extends AbstractAdaptor
     // request to SharePoint
     config.addKey("adaptor.userAgent", "");
     // Set this to true when you want to index only single site collection
+    // and anonymous access settings at web application policy level will 
+    // be ignored.
     config.addKey("sharepoint.siteCollectionOnly", "");
+    // Set this to comma separated list of urls for site collections to be 
+    // included for indexing.
+    // When specified, sharepoint.server should point to virtual server URL
+    // and sharepoint.siteCollectionOnly should be false.
+    config.addKey("sharepoint.siteCollectionsToInclude", "");
     // Set this to positive integer value to configure maximum number of 
     // URL redirects allowed to download document contents.
     config.addKey("adaptor.maxRedirectsToFollow", "");
@@ -528,7 +539,8 @@ public class SharePointAdaptor extends AbstractAdaptor
     Config config = context.getConfig();
     SharePointUrl configuredSharePointUrl =
         new SharePointUrl(config.getValue("sharepoint.server"),
-            config.getValue("sharepoint.siteCollectionOnly"));
+            config.getValue("sharepoint.siteCollectionOnly"),
+            config.getValue("sharepoint.siteCollectionsToInclude"));
     String username = config.getValue("sharepoint.username");
     String password = context.getSensitiveValueDecoder().decodeValue(
         config.getValue("sharepoint.password"));
@@ -576,7 +588,6 @@ public class SharePointAdaptor extends AbstractAdaptor
     } else if (!performBrowserLeniency && "".equals(maxRedirectsToFollowStr)) {
       maxRedirectsToFollow = -1;
     }
-    
     String sidLookupHost = config.getValue("sidLookup.host");
     String sidLookupUsername = null;
     String sidLookupPassword = null;
@@ -619,13 +630,11 @@ public class SharePointAdaptor extends AbstractAdaptor
       log.log(Level.CONFIG, "SID Lookup Password: {0}", sidLookupPassword);
       log.log(Level.CONFIG, "SID Lookup Port: {0}", sidLookupPort);
     }
-
     if (configuredSharePointUrl.isSiteCollectionUrl()) {
       log.info("Adaptor is configured to use site collection only mode. "
           + "ACLs and anonymous access settings at web application policy "
           + "level will be ignored.");
     }
-    
     ntlmAuthenticator = new NtlmAuthenticator(username, password);
     if (!"".equals(username) && !"".equals(password)) {      
       // Unfortunately, this is a JVM-wide modification.
@@ -770,7 +779,8 @@ public class SharePointAdaptor extends AbstractAdaptor
           siteCollectionUrl = site.getMetadata().getURL();
         }
         sharePointUrl = new SharePointUrl(siteCollectionUrl,
-            config.getValue("sharepoint.siteCollectionOnly"));
+            config.getValue("sharepoint.siteCollectionOnly"),
+            config.getValue("sharepoint.siteCollectionsToInclude"));
         return;
       }
       // Test out configuration.
@@ -1045,10 +1055,15 @@ public class SharePointAdaptor extends AbstractAdaptor
       if (cd.getSites() == null) {
         continue;
       }
+      Set<String> excluded = new TreeSet<>();
       for (Sites.Site siteListing : cd.getSites().getSite()) {
         String siteString
             = vsAdaptor.encodeDocId(siteListing.getURL()).getUniqueId();
         siteString = getCanonicalUrl(siteString);
+        if (!sharePointUrl.isSiteCollectionIncluded(siteString)) {
+          excluded.add(siteString);
+          continue;
+        }
         ntlmAuthenticator.addPermitForHost(spUrlToUri(siteString).toURL());           
         SiteAdaptor siteAdaptor = getSiteAdaptor(siteString, siteString);
         Site site;
@@ -1069,6 +1084,11 @@ public class SharePointAdaptor extends AbstractAdaptor
             defs.clear();
           }
         }
+      }
+      if (excluded.size() > 0) {
+        log.log(Level.INFO,
+            "List of site collections excluded from index in "
+                + "getDocIds: {0}", excluded);
       }
     }
     pusher.pushGroupDefinitions(defs, false);
@@ -1315,9 +1335,13 @@ public class SharePointAdaptor extends AbstractAdaptor
       Collection<String> updatedSiteSecurity) throws IOException {
     log.entering("SharePointAdaptor", "getModifiedDocIdsSite",
         new Object[] {changes, docIds});
+    String siteUrl = changes.getServerUrl() + changes.getDisplayUrl();
+    siteUrl = getCanonicalUrl(siteUrl);
+    if (!sharePointUrl.isSiteCollectionIncluded(siteUrl)) {
+      log.exiting("SharePointAdaptor", "getModifiedDocIdsSite");
+      return;
+    }
     if (isModified(changes.getChange())) {
-      String siteUrl = changes.getServerUrl() + changes.getDisplayUrl();
-      siteUrl = getCanonicalUrl(siteUrl);
       docIds.add(new DocId(siteUrl));
       // Add modified site to whitelist for authenticator as this might be new
       // host name site collection.
@@ -1615,7 +1639,12 @@ public class SharePointAdaptor extends AbstractAdaptor
           sharePointUrl.getSharePointUrl()});
       return null;
     }
-    return adaptorForUrl;    
+    if (!sharePointUrl.isSiteCollectionIncluded(adaptorForUrl.siteUrl)) {
+      log.log(Level.FINE, "Returning null SiteAdaptor as DocId {0} does not "
+          + "belong to included site collection.", docId.getUniqueId());
+      return null;
+    }
+    return adaptorForUrl;
   }
   
   private String getRootUrl(URI uri) throws URISyntaxException {
@@ -1729,25 +1758,56 @@ public class SharePointAdaptor extends AbstractAdaptor
     private final String sharePointUrl;
     private final String virtualServerUrl;
     private final boolean siteCollectionOnly;
-    
+    private final Set<String> siteCollectionsToInclude;
+
     public SharePointUrl(String sharePointUrl,
-        String siteCollectionOnlyModeConfig)
+        String siteCollectionOnlyModeConfig,
+        String siteCollectionsToIncludeConfig)
         throws InvalidConfigurationException {
-      if (sharePointUrl == null || siteCollectionOnlyModeConfig == null) {
+      if (sharePointUrl == null || siteCollectionOnlyModeConfig == null ||
+          siteCollectionsToIncludeConfig == null) {
         throw new NullPointerException();
       }
       sharePointUrl = sharePointUrl.trim();
       siteCollectionOnlyModeConfig = siteCollectionOnlyModeConfig.trim();
-      
+
+      Iterable<String> siteCollections = Splitter.on(',')
+          .trimResults().omitEmptyStrings()
+          .split(siteCollectionsToIncludeConfig.toLowerCase(Locale.ENGLISH));
+      Set<String> processed = new HashSet<String>();
+      for (String url : siteCollections) {
+        processed.add(getCanonicalUrl(url));
+      }
+      siteCollectionsToInclude = ImmutableSet.copyOf(processed);
+      if (!siteCollectionsToInclude.isEmpty()) {
+        log.log(Level.CONFIG, "List of site collections to index: {0}",
+            siteCollectionsToInclude);
+      }
+
       this.sharePointUrl = getCanonicalUrl(sharePointUrl);
-      
+      if (!siteCollectionsToInclude.isEmpty()
+          && this.sharePointUrl.split("/").length > 3) {
+        throw new InvalidConfigurationException("sharepoint.server value "
+            + "should point to virtual server when "
+            + "sharepoint.siteCollectionsToInclude property is specified.");
+      }
+      // TODO(lchandramouli): Support site collection only mode with
+      // sharepoint.siteCollectionsToInclude filter.
       if (!"".equals(siteCollectionOnlyModeConfig)) {
-        this.siteCollectionOnly = Boolean.parseBoolean(
+        boolean siteCollectionOnlyModeConfigFlag = Boolean.parseBoolean(
             siteCollectionOnlyModeConfig);
+        if (siteCollectionOnlyModeConfigFlag
+            && !siteCollectionsToInclude.isEmpty()) {
+          throw new InvalidConfigurationException(
+              "sharepoint.siteCollectionsToInclude can not be specified with "
+              + "sharepoint.siteCollectionOnly = true.");
+        }
+        this.siteCollectionOnly = siteCollectionOnlyModeConfigFlag
+            && siteCollectionsToInclude.isEmpty();
       } else {
         this.siteCollectionOnly =  this.sharePointUrl.split("/").length > 3;
-      }      
-      
+      }
+
       try {
         this.virtualServerUrl = getRootUrl(encodeSharePointUrl(
                 this.sharePointUrl, performBrowserLeniency).toURI());
@@ -1790,6 +1850,14 @@ public class SharePointAdaptor extends AbstractAdaptor
       return "SharePointUrl(sharePointUrl = " + sharePointUrl
           + ", virtualServerUrl = " + virtualServerUrl
           + ", siteCollectionOnly = " + siteCollectionOnly + ")";
+    }
+
+    public boolean isSiteCollectionIncluded(String siteCollectionUrl) {
+      Preconditions.checkNotNull(siteCollectionUrl,
+          "Site Collection URL may not be null.");
+      String url = getCanonicalUrl(siteCollectionUrl);
+      return siteCollectionsToInclude.isEmpty() ||
+          siteCollectionsToInclude.contains(url.toLowerCase(Locale.ENGLISH));
     }
   }
 
@@ -2068,6 +2136,7 @@ public class SharePointAdaptor extends AbstractAdaptor
 
       writer.startSection(ObjectType.SITE);
       DocIdEncoder encoder = context.getDocIdEncoder();
+      Set<String> excluded = new TreeSet<String>();
       for (ContentDatabases.ContentDatabase cdcd
           : vs.getContentDatabases().getContentDatabase()) {
         try {
@@ -2077,6 +2146,10 @@ public class SharePointAdaptor extends AbstractAdaptor
             for (Sites.Site site : cd.getSites().getSite()) {
               String siteUrl = site.getURL();
               siteUrl = getCanonicalUrl(siteUrl);
+              if (!sharePointUrl.isSiteCollectionIncluded(siteUrl)) {
+                excluded.add(siteUrl);
+                continue;
+              }
               writer.addLink(encodeDocId(siteUrl), null);
             }
           }
@@ -2085,6 +2158,11 @@ public class SharePointAdaptor extends AbstractAdaptor
               "Error retriving sites from content database " + cdcd.getID(),
               ex);          
         }
+      }
+      if (excluded.size() > 0) {
+        log.log(Level.INFO,
+            "List of site collections excluded from index in "
+                + "getVirtualServerDocContent: {0}", excluded);
       }
       writer.finish();
       log.exiting("SiteAdaptor", "getVirtualServerDocContent");
@@ -3305,6 +3383,11 @@ public class SharePointAdaptor extends AbstractAdaptor
 
       if (result != 0) {
         log.exiting("SiteAdaptor", "getAdaptorForUrl", null);
+        return null;
+      }
+      // Verify if resolved site collection url is included for indexing.
+      if (!sharePointUrl.isSiteCollectionIncluded(site.value)) {
+        log.exiting("SiteAdaptor", "getAdaptorForSCUrl", null);
         return null;
       }
       SiteAdaptor siteAdaptor = getSiteAdaptor(site.value, web.value);
