@@ -1055,7 +1055,7 @@ public class SharePointAdaptor extends AbstractAdaptor
       if (cd.getSites() == null) {
         continue;
       }
-      Set<String> excluded = new TreeSet<>();
+      Set<String> excluded = new TreeSet<String>();
       for (Sites.Site siteListing : cd.getSites().getSite()) {
         String siteString
             = vsAdaptor.encodeDocId(siteListing.getURL()).getUniqueId();
