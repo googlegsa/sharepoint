@@ -71,6 +71,7 @@ import java.util.Map;
 
 import javax.xml.parsers.DocumentBuilder;
 import javax.xml.parsers.DocumentBuilderFactory;
+import javax.xml.stream.XMLStreamException;
 import javax.xml.ws.Binding;
 import javax.xml.ws.BindingProvider;
 import javax.xml.ws.EndpointReference;
@@ -210,6 +211,76 @@ public class SharePointUserProfileAdaptorTest {
     assertEquals(0, pusher.getRecords().size());
     adaptor.getDocIds(pusher);
     assertEquals(3, pusher.getRecords().size());
+  }
+
+  @Test
+  public void testGetDocIdsWithParseException() throws Exception {
+    MockUserProfileServiceFactoryImpl serviceFactory =
+        new MockUserProfileServiceFactoryImpl(null);
+    ArrayOfPropertyData profile = new ArrayOfPropertyData();
+    populateProfileProperties(profile,
+        SharePointUserProfileAdaptor.PROFILE_ACCOUNTNAME_PROPERTY,
+        new String[] {"user1"});
+    serviceFactory.addUserProfileToCollection(1, 2, "user1", profile, null);
+
+    profile = new ArrayOfPropertyData();
+    populateProfileProperties(profile,
+        SharePointUserProfileAdaptor.PROFILE_ACCOUNTNAME_PROPERTY,
+        new String[] {"user2"});
+    serviceFactory.addUserProfileToCollection(2, 4, "user2", profile, null);
+
+    WebServiceException toThrow = new WebServiceException(
+        new XMLStreamException("ParseError"));
+    serviceFactory.addExceptionForIndex(4, toThrow);
+
+    profile = new ArrayOfPropertyData();
+    populateProfileProperties(profile,
+        SharePointUserProfileAdaptor.PROFILE_ACCOUNTNAME_PROPERTY,
+        new String[] {"user5"});
+    serviceFactory.addUserProfileToCollection(5, 6, "user5", profile, null);
+
+    adaptor = new SharePointUserProfileAdaptor(serviceFactory,
+        authenticationFactory);
+    AccumulatingDocIdPusher pusher = new AccumulatingDocIdPusher();
+    adaptor.init(new MockAdaptorContext(config, pusher));
+    assertEquals(0, pusher.getRecords().size());
+    adaptor.getDocIds(pusher);
+    assertEquals(3, pusher.getRecords().size());
+  }
+
+  @Test
+  public void testGetDocIdsWithException() throws Exception {
+    MockUserProfileServiceFactoryImpl serviceFactory =
+        new MockUserProfileServiceFactoryImpl(null);
+    ArrayOfPropertyData profile = new ArrayOfPropertyData();
+    populateProfileProperties(profile,
+        SharePointUserProfileAdaptor.PROFILE_ACCOUNTNAME_PROPERTY,
+        new String[] {"user1"});
+    serviceFactory.addUserProfileToCollection(1, 2, "user1", profile, null);
+
+    profile = new ArrayOfPropertyData();
+    populateProfileProperties(profile,
+        SharePointUserProfileAdaptor.PROFILE_ACCOUNTNAME_PROPERTY,
+        new String[] {"user2"});
+    serviceFactory.addUserProfileToCollection(2, 4, "user2", profile, null);
+
+    WebServiceException toThrow = new WebServiceException(
+        new Exception("non parse exception"));
+    serviceFactory.addExceptionForIndex(4, toThrow);
+
+    profile = new ArrayOfPropertyData();
+    populateProfileProperties(profile,
+        SharePointUserProfileAdaptor.PROFILE_ACCOUNTNAME_PROPERTY,
+        new String[] {"user5"});
+    serviceFactory.addUserProfileToCollection(5, 6, "user5", profile, null);
+
+    adaptor = new SharePointUserProfileAdaptor(serviceFactory,
+        authenticationFactory);
+    AccumulatingDocIdPusher pusher = new AccumulatingDocIdPusher();
+    adaptor.init(new MockAdaptorContext(config, pusher));
+    assertEquals(0, pusher.getRecords().size());
+    thrown.expect(WebServiceException.class);
+    adaptor.getDocIds(pusher);
   }
 
   @Test
@@ -569,15 +640,20 @@ public class SharePointUserProfileAdaptorTest {
 
     String newChangeToken;
     List<UserProfileChangeData> changes;
+    Map<Integer, WebServiceException> exceptionsToThrow;
 
     public MockUserProfileServiceWS(String changeToken) {
       this.newChangeToken = changeToken;
       changes = new ArrayList<UserProfileChangeData>();
+      exceptionsToThrow = new HashMap<Integer, WebServiceException>();
     }
 
     @Override
     public GetUserProfileByIndexResult getUserProfileByIndex(int index)
         throws WebServiceException {
+      if (exceptionsToThrow.containsKey(index)) {
+        throw exceptionsToThrow.get(index);
+      }
       Integer[] indexArray =
           userProfileCollectionByIndex.keySet().toArray(new Integer[0]);
       Arrays.sort(indexArray);
@@ -670,6 +746,10 @@ public class SharePointUserProfileAdaptorTest {
       change.setUserAccountName(userName);
       changes.add(change);
     }
+
+    public void addExceptionForIndex(int index, WebServiceException toThrow) {
+      exceptionsToThrow.put(index, toThrow);
+    }
   }
 
   private static class MockUserProfileServiceFactoryImpl
@@ -692,6 +772,10 @@ public class SharePointUserProfileAdaptorTest {
         ArrayOfContactData colleagues) {
       proxy.addUserProfileToCollection(index, nextIndex,
           userAccountName, profileProperties, colleagues);
+    }
+
+    public void addExceptionForIndex(int index, WebServiceException toThrow) {
+      proxy.addExceptionForIndex(index, toThrow);
     }
 
     public void addChangeLogForUser(String userName) {

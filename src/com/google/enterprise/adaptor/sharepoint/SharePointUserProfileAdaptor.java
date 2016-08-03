@@ -84,6 +84,7 @@ import javax.xml.namespace.QName;
 import javax.xml.parsers.DocumentBuilder;
 import javax.xml.parsers.DocumentBuilderFactory;
 import javax.xml.parsers.ParserConfigurationException;
+import javax.xml.stream.XMLStreamException;
 import javax.xml.ws.BindingProvider;
 import javax.xml.ws.EndpointReference;
 import javax.xml.ws.Service;
@@ -437,6 +438,16 @@ public class SharePointUserProfileAdaptor extends AbstractAdaptor
         readTimeOutMillis);
   }
 
+  private static boolean isDueToXmlParseException(Throwable e) {
+    if (e == null) {
+      return false;
+    }
+    if (e instanceof XMLStreamException) {
+      return true;
+    }
+    return isDueToXmlParseException(e.getCause());
+  }
+
   private static class NtlmAuthenticator extends Authenticator {
     private final String username;
     private final char[] password;
@@ -633,6 +644,13 @@ public class SharePointUserProfileAdaptor extends AbstractAdaptor
               "Error fetching user profile at index {0}", index);
           log.log(Level.WARNING,
               "Exception for getUserProfileByIndex : ", e);
+          if (isDueToXmlParseException(e)) {
+            log.log(Level.WARNING,
+              "Skipping user profile at index {0} due to "
+                  + "XML parsing error", index);            
+            index = index + 1;
+            continue;
+          }
           // Flushing available docids
           pusher.pushDocIds(profilesToPush);
           throw e;
