@@ -204,10 +204,12 @@ public class SharePointAdaptor extends AbstractAdaptor
    */
   private static final String OWS_SCOPEID_ATTRIBUTE = "ows_ScopeId";
   private static final String OWS_FILEDIRREF_ATTRIBUTE = "ows_FileDirRef";
+  private static final String OWS_FILEREF_ATTRIBUTE = "ows_FileRef";
   /**
    * As described at http://msdn.microsoft.com/en-us/library/aa543822.aspx .
    */
   private static final String CONTENTTYPEID_DOCUMENT_PREFIX = "0x0101";
+  private static final String FILEREF_LISTITEM_PREFIX = "_.000";
   /** Provides the number of attachments the list item has. */
   private static final String OWS_ATTACHMENTS_ATTRIBUTE = "ows_Attachments";
   /** The last time metadata or content was modified. */
@@ -3029,8 +3031,11 @@ public class SharePointAdaptor extends AbstractAdaptor
         return;
       }
       String contentTypeId = row.getAttribute(OWS_CONTENTTYPEID_ATTRIBUTE);
-      if (contentTypeId != null
-          && contentTypeId.startsWith(CONTENTTYPEID_DOCUMENT_PREFIX)) {
+      String fileRef = row.getAttribute(OWS_FILEREF_ATTRIBUTE);
+      boolean isFile = ((contentTypeId != null
+              && contentTypeId.startsWith(CONTENTTYPEID_DOCUMENT_PREFIX))
+          || fileRef != null && !fileRef.endsWith(FILEREF_LISTITEM_PREFIX));
+      if (isFile) {
         // This is a file (or "Document" in SharePoint-speak), so display its
         // contents.
         metadataLength += addMetadata(
