@@ -3567,12 +3567,7 @@ public class SharePointAdaptor extends AbstractAdaptor
         }
         if (responseCode != HttpURLConnection.HTTP_MOVED_TEMP
             && responseCode != HttpURLConnection.HTTP_MOVED_PERM) {
-          InputStream inputStream =
-              responseCode >= HttpURLConnection.HTTP_BAD_REQUEST
-              ? conn.getErrorStream() : conn.getInputStream();
-          inputStream.close();
-          throw new IOException(String.format("Got status code %d for URL %s",
-                  responseCode, url));
+          getAndCloseStream(conn, url);
         }
         if (maxRedirectsToFollow < 0) {
           throw new AssertionError();
@@ -3585,8 +3580,7 @@ public class SharePointAdaptor extends AbstractAdaptor
         redirectAttempt++;
         String redirectLocation = conn.getHeaderField("Location");
         // Close input stream
-        InputStream inputStream = conn.getInputStream();
-        inputStream.close();
+        getAndCloseStream(conn, url);
         if (Strings.isNullOrEmpty(redirectLocation)) {
           throw new IOException(
               "No redirect location available for URL " + url);
@@ -3681,15 +3675,27 @@ public class SharePointAdaptor extends AbstractAdaptor
         }
         return conn.getHeaderField("Location");
       } finally {
-        InputStream inputStream = conn.getResponseCode() >= 400
-            ? conn.getErrorStream() : conn.getInputStream();
-        inputStream.close();
+        getAndCloseStream(conn, url);
       }
     }
 
     @Override
     public HttpURLConnection getHttpURLConnection(URL url) throws IOException {
       return (HttpURLConnection)url.openConnection();
+    }
+
+    private void getAndCloseStream(HttpURLConnection conn, URL url) {
+      try {
+        InputStream inputStream =
+          conn.getResponseCode() >= HttpURLConnection.HTTP_BAD_REQUEST
+          ? conn.getErrorStream() : conn.getInputStream();
+      if (inputStream != null) {
+          inputStream.close();
+        }
+      } catch (IOException e) {
+        log.log(Level.WARNING, String.format("Error terminating Input stream"
+            + "for URL {0}", url), e);
+      }
     }
   }
 

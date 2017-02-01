@@ -3612,8 +3612,23 @@ public class SharePointAdaptorTest {
     thrown.expect(IOException.class);
     client.issueGetRequest(new URL("http://localshost:8080/default.aspx"),
         new ArrayList<String>(), "", 10, true);
+  }  
+
+  @Test
+  public void testIssueGetRequestWithHttpUnauthorized() throws Exception {
+    HttpClient client = new SharePointAdaptor.HttpClientImpl() {
+      @Override
+      public HttpURLConnection getHttpURLConnection(URL url) {
+        return new MockHttpURLConnection(url,
+            HttpURLConnection.HTTP_UNAUTHORIZED,
+            "http://localshost:8080/default.aspx?q={Some Value}", null);
+      }
+    };
+    thrown.expect(IOException.class);
+    client.issueGetRequest(new URL("http://localshost:8080/default.aspx"),
+        new ArrayList<String>(), "", 10, true);
   }
-  
+
   @Test
   public void testIssueGetRequestWithSameAsMaxRedirect() throws Exception {
     HttpClient client = new SharePointAdaptor.HttpClientImpl(){
@@ -5048,7 +5063,8 @@ public class SharePointAdaptorTest {
 
     @Override
     public InputStream getErrorStream() {
-      if (responseCodeToReturn < HttpURLConnection.HTTP_BAD_REQUEST) {
+      if (responseCodeToReturn < HttpURLConnection.HTTP_BAD_REQUEST
+          || content == null) {
         return null;
       }
       return new ByteArrayInputStream("".getBytes());
