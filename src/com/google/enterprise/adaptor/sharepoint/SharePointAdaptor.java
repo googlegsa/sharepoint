@@ -612,7 +612,7 @@ public class SharePointAdaptor extends AbstractAdaptor
     }
     
     log.log(Level.CONFIG, "SharePoint Url: {0}", configuredSharePointUrl);
-    log.log(Level.CONFIG, "Username: {0}", username);
+    log.log(Level.CONFIG, "Username: {0}", getAdaptorUser(username));
     log.log(Level.CONFIG, "Password: {0}", password);
     log.log(Level.CONFIG, "Default Namespace: {0}", defaultNamespace);
     log.log(Level.CONFIG, "STS Endpoint: {0}", stsendpoint);
@@ -845,20 +845,13 @@ public class SharePointAdaptor extends AbstractAdaptor
         // Note: even this exception should not be treated as a "Permanent
         // configuration error" -- it can be caused by transient network down
         // or DNS down.
-      } else if (username.equals("")) {
-        warning = String.format("Cannot connect to server \"%s\" as the "
-            + "current user.  Please make sure the server is specified "
+      } else {
+        warning = String.format("Cannot connect to server \"%s\" as user "
+            + "\"%s\". Please make sure the server is specified "
             + "correctly, and that the user has sufficient permission to "
             + "access the SharePoint server.  If the SharePoint server is "
             + "currently down, please try again later.",
-            configuredSharePointUrl.getSharePointUrl());
-      } else {
-        warning = String.format("Cannot connect to server \"%s\" as user "
-            + "\"%s\" with the specified password.  Please make sure they are "
-            + "specified correctly, and that the user has sufficient "
-            + "permission to access the SharePoint server.  If the SharePoint "
-            + "server is currently down, please try again later.",
-            configuredSharePointUrl.getSharePointUrl(), username);
+            configuredSharePointUrl.getSharePointUrl(), getAdaptorUser(username));
       }
       throw new IOException(warning, ex);
     } catch (Exception e) {
