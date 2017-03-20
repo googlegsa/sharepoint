@@ -23,6 +23,10 @@
     value="com.google.enterprise.adaptor.sharepoint.SharePointAdaptor"/>
   <property name="adaptor2.class"
     value="com.google.enterprise.adaptor.sharepoint.SharePointUserProfileAdaptor"/>
+  <property name="adaptor.title"
+    value="Google Search Appliance Connector for SharePoint"/>
+  <property name="adaptor2.title"
+    value="Google Search Appliance Connector for SharePoint User Profiles"/>
   <property name="adaptor.args" value=""/>
   <property name="cobertura.dir" value="${basedir}/../cobertura/"/>
   <!-- Adaptor suffix for distribution files. Useful for placing version numbers
@@ -258,11 +262,9 @@ lib/plexi submodule or add the the command line argument
         <attribute name="Main-Class" value="${adaptor.class}"/>
         <attribute name="Class-Path" value="${tmp.adaptor.classpath}"/>
         <section name="com/google/enterprise/adaptor/sharepoint/">
-          <attribute name="Implementation-Title"
-            value="Google Adaptor for SharePoint"/>
+          <attribute name="Implementation-Title" value="${adaptor.title}"/>
           <attribute name="Implementation-Vendor" value="Google Inc."/>
-          <attribute name="Implementation-Version"
-            value="${adaptor.version}"/>
+          <attribute name="Implementation-Version" value="${adaptor.version}"/>
         </section>
       </manifest>
     </jar>
@@ -298,6 +300,9 @@ lib/plexi submodule or add the the command line argument
         src="${dist.staging.dir}/adaptor-sharepoint${adaptor.suffix}.jar"/>
       <manifest>
         <attribute name="Main-Class" value="${adaptor2.class}"/>
+        <section name="com/google/enterprise/adaptor/sharepoint/">
+          <attribute name="Implementation-Title" value="${adaptor2.title}"/>
+        </section>
       </manifest>
     </jar>
 
@@ -308,6 +313,9 @@ lib/plexi submodule or add the the command line argument
         src="${dist.staging.dir}/adaptor-sharepoint${adaptor.suffix}-withlib.jar"/>
       <manifest>
         <attribute name="Main-Class" value="${adaptor2.class}"/>
+        <section name="com/google/enterprise/adaptor/sharepoint/">
+          <attribute name="Implementation-Title" value="${adaptor2.title}"/>
+        </section>
       </manifest>
     </jar>
 
