@@ -37,6 +37,12 @@
   <!-- If adaptor.version isn't set, simply use the current date. -->
   <property name="adaptor.suffix" value="-${DSTAMP}"/>
 
+  <!-- Load build environment specific properties. -->
+  <property file="build.properties"/>
+  <property name="compile.java.source" value="6"/>
+  <property name="compile.java.target" value="7"/>
+  <property name="compile.java.bootclasspath" value="${build.bootclasspath}"/>
+
   <path id="adaptor.build.classpath">
     <pathelement location="${adaptor.jar}"/>
     <fileset dir="${lib.dir}">
@@ -198,7 +204,9 @@ lib/plexi submodule or add the the command line argument
     <mkdir dir="${build-src.dir}"/>
 
     <javac srcdir="${src.dir}" destdir="${build-src.dir}" debug="true"
-      includeantruntime="false" encoding="utf-8">
+      includeantruntime="false" encoding="utf-8"
+      source="${compile.java.source}" target="${compile.java.target}">
+      <bootclasspath path="${compile.java.bootclasspath}"/>
       <compilerarg value="-Xlint:unchecked"/>
       <classpath refid="adaptor.build.classpath"/>
       <classpath location="${build-generate.dir}"/>
@@ -207,7 +215,9 @@ lib/plexi submodule or add the the command line argument
     <mkdir dir="${build-test.dir}"/>
     <!-- Compile JUnit helper -->
     <javac srcdir="${lib.dir}" destdir="${build-test.dir}" debug="true"
-      includeantruntime="true" encoding="utf-8">
+      includeantruntime="true" encoding="utf-8"
+      source="${compile.java.source}" target="${compile.java.target}">
+      <bootclasspath path="${compile.java.bootclasspath}"/>
       <compilerarg value="-Xlint:unchecked"/>
       <classpath location="${junit.jar}"/>
       <include name="JUnitLogFixFormatter.java"/>
@@ -215,7 +225,9 @@ lib/plexi submodule or add the the command line argument
 
     <!-- Compile tests, excluding example tests. -->
     <javac srcdir="${test.dir}" destdir="${build-test.dir}" debug="true"
-      includeantruntime="false" encoding="utf-8">
+      includeantruntime="false" encoding="utf-8"
+      source="${compile.java.source}" target="${compile.java.target}">
+      <bootclasspath path="${compile.java.bootclasspath}"/>
       <compilerarg value="-Xlint:unchecked"/>
       <classpath refid="adaptor.build.classpath"/>
       <classpath location="${build-src.dir}"/>
