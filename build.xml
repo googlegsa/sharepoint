@@ -29,14 +29,6 @@
     value="Google Search Appliance Connector for SharePoint User Profiles"/>
   <property name="adaptor.args" value=""/>
   <property name="cobertura.dir" value="${basedir}/../cobertura/"/>
-  <!-- Adaptor suffix for distribution files. Useful for placing version numbers
-       on our jars. -->
-  <condition property="adaptor.suffix" value="-${adaptor.version}">
-    <isset property="adaptor.version"/>
-  </condition>
-  <!-- If adaptor.version isn't set, simply use the current date. -->
-  <property name="adaptor.suffix" value="-${DSTAMP}"/>
-
   <!-- Load build environment specific properties. -->
   <property file="build.properties"/>
   <property name="compile.java.source" value="6"/>
@@ -243,7 +235,7 @@ lib/plexi submodule or add the the command line argument
       <arg value="--always"/>
     </exec>
     <!-- Set version if git describe failed. -->
-    <property name="adaptor.version" value="unknown"/>
+    <property name="adaptor.version" value="unknown-${DSTAMP}"/>
   </target>
 
   <target name="dist" description="Generate distribution binaries"
@@ -259,6 +251,15 @@ lib/plexi submodule or add the the command line argument
     <mkdir dir="${build.dir}/dist"/>
     <mkdir dir="${build.dir}/dist/staging"/>
     <mkdir dir="${dist.dir}"/>
+
+    <!-- Set the file name suffix from the version. Add a leading dash,
+         and strip a leading "v" prefix if it is followed by a digit. -->
+    <loadresource property="adaptor.suffix">
+      <propertyresource name="adaptor.version"/>
+      <filterchain>
+          <replaceregex pattern="^(v(?=\d))?" replace="-"/>
+      </filterchain>
+    </loadresource>
 
     <!-- adaptor-sharepoint.jar -->
     <!-- Concatenate dependent JARs together into a comma-delimited list. -->
