@@ -18,7 +18,6 @@
   <property name="dist.dir" location="dist"/>
   <property name="resource.dir" location="resources"/>
   <property name="lib.dir" location="lib"/>
-  <property name="junit.jar" location="${lib.dir}/junit-4.8.2.jar"/>
   <property name="adaptor.class"
     value="com.google.enterprise.adaptor.sharepoint.SharePointAdaptor"/>
   <property name="adaptor2.class"
@@ -44,6 +43,13 @@
 
   <path id="adaptor.run.classpath">
     <path refid="adaptor.build.classpath"/>
+  </path>
+
+  <path id="junit.classpath">
+    <fileset dir="${lib.dir}">
+      <include name="junit-4.11.jar"/>
+      <include name="hamcrest-core-1.3.jar"/>
+    </fileset>
   </path>
 
   <path id="cobertura.classpath">
@@ -211,7 +217,7 @@ lib/plexi submodule or add the the command line argument
       source="${compile.java.source}" target="${compile.java.target}">
       <bootclasspath path="${compile.java.bootclasspath}"/>
       <compilerarg value="-Xlint:unchecked"/>
-      <classpath location="${junit.jar}"/>
+      <classpath refid="junit.classpath"/>
       <include name="JUnitLogFixFormatter.java"/>
     </javac>
 
@@ -224,7 +230,7 @@ lib/plexi submodule or add the the command line argument
       <classpath refid="adaptor.build.classpath"/>
       <classpath location="${build-src.dir}"/>
       <classpath location="${build-generate.dir}"/>
-      <classpath location="${junit.jar}"/>
+      <classpath refid="junit.classpath"/>
     </javac>
   </target>
 
@@ -386,7 +392,7 @@ lib/plexi submodule or add the the command line argument
         file="${build-instrument.dir}/cobertura.ser"/>
       <classpath refid="adaptor.run.classpath"/>
       <classpath refid="cobertura.classpath"/>
-      <classpath location="${junit.jar}"/>
+      <classpath refid="junit.classpath"/>
       <classpath location="${build-instrument.dir}"/>
       <classpath location="${build-src.dir}"/>
       <classpath location="${build-generate.dir}"/>
