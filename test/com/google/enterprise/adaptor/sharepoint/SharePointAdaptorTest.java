@@ -1679,6 +1679,239 @@ public class SharePointAdaptorTest {
   }
 
   @Test
+  public void testGetDocContentSubSiteUniquePermissionsInvalidUser()
+      throws Exception {
+    String subSiteUrl = "http://localhost:1/sites/SiteCollection/SubSite";
+
+    MockUserGroupSoapException mockUserGroupSoapException =
+        new MockUserGroupSoapException();
+    SoapFactory siteDataFactory = MockSoapFactory.blank()
+        .endpoint(VS_ENDPOINT, MockSiteData.blank()
+            .register(VS_CONTENT_EXCHANGE)
+            .register(CD_CONTENT_EXCHANGE)
+            .register(SITES_SITECOLLECTION_SAW_EXCHANGE)
+            .register(new SiteAndWebExchange(subSiteUrl, 0,
+                "http://localhost:1/sites/SiteCollection", subSiteUrl)))
+        .endpoint(SITES_SITECOLLECTION_ENDPOINT, MockSiteData.blank()
+            .register(SITES_SITECOLLECTION_URLSEG_EXCHANGE)
+            .register(SITES_SITECOLLECTION_S_CONTENT_EXCHANGE)
+            .register(SITES_SITECOLLECTION_SC_CONTENT_EXCHANGE))
+        .endpoint(subSiteUrl + "/_vti_bin/SiteData.asmx", MockSiteData.blank()
+                .register(new URLSegmentsExchange(
+                    subSiteUrl, true, "WebId", null, null, null))
+                .register(SITES_SITECOLLECTION_S_CONTENT_EXCHANGE
+                    .replaceInContent("/SiteCollection",
+                        "/SiteCollection/SubSite")
+                    .replaceInContent(
+                        "ScopeID=\"{01abac8c-66c8-4fed-829c-8dd02bbf40dd}\"",
+                        "ScopeID=\"{O7ac581ea-fdd1-4b0d-a5de-fc1b69e57a8d}\"")
+                    .replaceInContent(
+                        "<permission memberid='4' mask='756052856929' />",
+                        "<permission memberid='4' mask='0' />")
+                    .replaceInContent("</permissions>",
+                        "<permission memberid='500' mask='756052856929' />"
+                        + "<permission memberid='300' mask='756052856929' />"
+                        + "</permissions>"))
+                .register(SITES_SITECOLLECTION_SC_CONTENT_EXCHANGE))
+        .endpoint("http://localhost:1/sites/SiteCollection/"
+            + "_vti_bin/UserGroup.asmx", mockUserGroupSoapException);
+
+    adaptor = new SharePointAdaptor(siteDataFactory,
+        new UnsupportedHttpClient(), executorFactory,
+        new MockAuthenticationClientFactoryForms(),
+        new UnsupportedActiveDirectoryClientFactory());
+    adaptor.init(new MockAdaptorContext(config, pusher));
+    ByteArrayOutputStream baos = new ByteArrayOutputStream();
+    GetContentsRequest request = new GetContentsRequest(
+        new DocId("http://localhost:1/sites/SiteCollection/SubSite"));
+    GetContentsResponse response = new GetContentsResponse(baos);
+    adaptor.getDocContent(request, response);
+
+    assertEquals(new Acl.Builder()
+        .setEverythingCaseInsensitive()
+        .setInheritFrom(new DocId("http://localhost:1/sites/SiteCollection"),
+          "admin")
+        .setInheritanceType(Acl.InheritanceType.PARENT_OVERRIDES)
+        .setPermitGroups(Arrays.asList(
+            SITES_SITECOLLECTION_MEMBERS,
+            SITES_SITECOLLECTION_OWNERS))
+        .setPermitUsers(Arrays.asList(GDC_PSL_SPUSER1)).build(),
+        response.getAcl());
+    assertEquals(2,
+        mockUserGroupSoapException.atomicNumberGetSiteUserMappingCalls.get());
+  }
+
+  @Test
+  public void testGetDocContentSCInvalidUserWithOutOfDateMemberCache()
+      throws Exception {
+    final Map<GroupPrincipal, Collection<Principal>> goldenGroups;
+    {
+      Map<GroupPrincipal, Collection<Principal>> tmp
+          = new TreeMap<GroupPrincipal, Collection<Principal>>();
+      tmp.put(SITES_SITECOLLECTION_OWNERS, Arrays.<Principal>asList(
+          GDC_PSL_ADMINISTRATOR));
+      tmp.put(SITES_SITECOLLECTION_MEMBERS, Arrays.asList(
+            new UserPrincipal("GDC-PSL\\spuser100", DEFAULT_NAMESPACE),
+            new GroupPrincipal("BUILTIN\\users", DEFAULT_NAMESPACE),
+            new UserPrincipal("GDC-PSL\\spuser4", DEFAULT_NAMESPACE)));
+      tmp.put(SITES_SITECOLLECTION_VISITORS, Arrays.<Principal>asList());
+      goldenGroups = Collections.unmodifiableMap(tmp);
+    }
+
+    ReferenceSiteData siteData = new ReferenceSiteData();
+    MockUserGroupSoapException mockUserGroupSoapException
+        = new MockUserGroupSoapException();
+    SoapFactory siteDataFactory = MockSoapFactory.blank()
+        .endpoint(VS_ENDPOINT, MockSiteData.blank()
+            .register(VS_CONTENT_EXCHANGE)
+            .register(CD_CONTENT_EXCHANGE)
+            .register(SITES_SITECOLLECTION_SAW_EXCHANGE))
+        .endpoint(SITES_SITECOLLECTION_ENDPOINT, siteData)
+        .endpoint("http://localhost:1/sites/SiteCollection/"
+            + "_vti_bin/UserGroup.asmx", mockUserGroupSoapException);
+    SiteDataSoap siteDataState1 = MockSiteData.blank()
+            .register(SITES_SITECOLLECTION_URLSEG_EXCHANGE)
+            .register(SITES_SITECOLLECTION_S_CONTENT_EXCHANGE)
+            .register(SITES_SITECOLLECTION_SC_CONTENT_EXCHANGE);
+    SiteDataSoap siteDataState2 = MockSiteData.blank()
+            .register(SITES_SITECOLLECTION_URLSEG_EXCHANGE)
+            .register(SITES_SITECOLLECTION_S_CONTENT_EXCHANGE
+              .replaceInContent(" memberid='2'", " memberid='100'"))
+            .register(SITES_SITECOLLECTION_SC_CONTENT_EXCHANGE
+              // Purposefully leave ID=2 alone. The 6 and spuser2 here is simply
+              // an otherwise-unused entry.
+              .replaceInContent("<User ID=\"6\"", "<User ID=\"100\"")
+              .replaceInContent("spuser2", "spuser100"));
+
+    adaptor = new SharePointAdaptor(siteDataFactory,
+        new UnsupportedHttpClient(), executorFactory,
+        new MockAuthenticationClientFactoryForms(),
+        new UnsupportedActiveDirectoryClientFactory());
+    AccumulatingDocIdPusher pusher = new AccumulatingDocIdPusher();
+    adaptor.init(new MockAdaptorContext(config, pusher));
+
+    // This populates the cache, but otherwise doesn't test anything new.
+    siteData.setSiteDataSoap(siteDataState1);
+    ByteArrayOutputStream baos = new ByteArrayOutputStream();
+    GetContentsRequest request = new GetContentsRequest(
+        new DocId("http://localhost:1/sites/SiteCollection"));
+    GetContentsResponse response = new GetContentsResponse(baos);
+    adaptor.getDocContent(request, response);
+    assertEquals(new Acl.Builder()
+        .setEverythingCaseInsensitive()
+        .setInheritFrom(new DocId("http://localhost:1/sites/SiteCollection"),
+          "admin")
+        .setInheritanceType(Acl.InheritanceType.PARENT_OVERRIDES)
+        .setPermitGroups(Arrays.asList(SITES_SITECOLLECTION_MEMBERS,
+            SITES_SITECOLLECTION_OWNERS, SITES_SITECOLLECTION_VISITORS))
+        .setPermitUsers(Arrays.asList(GDC_PSL_SPUSER1)).build(),
+        response.getAcl());
+
+    // Were we able to pick up the new user in the ACLs?
+    siteData.setSiteDataSoap(siteDataState2);
+    response = new GetContentsResponse(new ByteArrayOutputStream());
+    adaptor.getDocContent(request, response);
+    assertEquals(new Acl.Builder()
+        .setEverythingCaseInsensitive()
+        .setInheritFrom(new DocId("http://localhost:1/sites/SiteCollection"),
+          "admin")
+        .setInheritanceType(Acl.InheritanceType.PARENT_OVERRIDES)
+        .setPermitGroups(Arrays.asList(SITES_SITECOLLECTION_MEMBERS,
+            SITES_SITECOLLECTION_OWNERS, SITES_SITECOLLECTION_VISITORS))
+        .setPermitUsers(Arrays.asList(
+            new UserPrincipal("GDC-PSL\\spuser100", DEFAULT_NAMESPACE)))
+        .build(),
+        response.getAcl());
+    assertEquals(goldenGroups, pusher.getGroups());
+    assertEquals(1,
+        mockUserGroupSoapException.atomicNumberGetSiteUserMappingCalls.get());
+  }
+
+  @Test
+  public void testGetDocContentSiteCollectionWithOutOfDateMemberCache()
+      throws Exception {
+    final Map<GroupPrincipal, Collection<Principal>> goldenGroups;
+    {
+      Map<GroupPrincipal, Collection<Principal>> tmp
+          = new TreeMap<GroupPrincipal, Collection<Principal>>();
+      tmp.put(SITES_SITECOLLECTION_OWNERS, Arrays.<Principal>asList(
+          GDC_PSL_ADMINISTRATOR));
+      tmp.put(SITES_SITECOLLECTION_MEMBERS, Arrays.asList(
+            new UserPrincipal("GDC-PSL\\spuser100", DEFAULT_NAMESPACE),
+            new GroupPrincipal("BUILTIN\\users", DEFAULT_NAMESPACE),
+            new UserPrincipal("GDC-PSL\\spuser4", DEFAULT_NAMESPACE)));
+      tmp.put(SITES_SITECOLLECTION_VISITORS, Arrays.<Principal>asList());
+      goldenGroups = Collections.unmodifiableMap(tmp);
+    }
+
+    ReferenceSiteData siteData = new ReferenceSiteData();
+    Users users = new Users();
+    MockUserGroupSoap mockUserGroupSoap = new MockUserGroupSoap(users);
+    SoapFactory siteDataFactory = MockSoapFactory.blank()
+        .endpoint(VS_ENDPOINT, MockSiteData.blank()
+            .register(VS_CONTENT_EXCHANGE)
+            .register(CD_CONTENT_EXCHANGE)
+            .register(SITES_SITECOLLECTION_SAW_EXCHANGE))
+        .endpoint(SITES_SITECOLLECTION_ENDPOINT, siteData)
+        .endpoint("http://localhost:1/sites/SiteCollection/"
+            + "_vti_bin/UserGroup.asmx", mockUserGroupSoap);
+    SiteDataSoap siteDataState1 = MockSiteData.blank()
+            .register(SITES_SITECOLLECTION_URLSEG_EXCHANGE)
+            .register(SITES_SITECOLLECTION_S_CONTENT_EXCHANGE)
+            .register(SITES_SITECOLLECTION_SC_CONTENT_EXCHANGE);
+    SiteDataSoap siteDataState2 = MockSiteData.blank()
+            .register(SITES_SITECOLLECTION_URLSEG_EXCHANGE)
+            .register(SITES_SITECOLLECTION_S_CONTENT_EXCHANGE
+              .replaceInContent(" memberid='2'", " memberid='100'"))
+            .register(SITES_SITECOLLECTION_SC_CONTENT_EXCHANGE
+              // Purposefully leave ID=2 alone. The 6 and spuser2 here is simply
+              // an otherwise-unused entry.
+              .replaceInContent("<User ID=\"6\"", "<User ID=\"100\"")
+              .replaceInContent("spuser2", "spuser100"));
+
+    adaptor = new SharePointAdaptor(siteDataFactory,
+        new UnsupportedHttpClient(), executorFactory,
+        new MockAuthenticationClientFactoryForms(),
+        new UnsupportedActiveDirectoryClientFactory());
+    AccumulatingDocIdPusher pusher = new AccumulatingDocIdPusher();
+    adaptor.init(new MockAdaptorContext(config, pusher));
+
+    // This populates the cache, but otherwise doesn't test anything new.
+    siteData.setSiteDataSoap(siteDataState1);
+    ByteArrayOutputStream baos = new ByteArrayOutputStream();
+    GetContentsRequest request = new GetContentsRequest(
+        new DocId("http://localhost:1/sites/SiteCollection"));
+    GetContentsResponse response = new GetContentsResponse(baos);
+    adaptor.getDocContent(request, response);
+    assertEquals(new Acl.Builder()
+        .setEverythingCaseInsensitive()
+        .setInheritFrom(new DocId("http://localhost:1/sites/SiteCollection"),
+          "admin")
+        .setInheritanceType(Acl.InheritanceType.PARENT_OVERRIDES)
+        .setPermitGroups(Arrays.asList(SITES_SITECOLLECTION_MEMBERS,
+            SITES_SITECOLLECTION_OWNERS, SITES_SITECOLLECTION_VISITORS))
+        .setPermitUsers(Arrays.asList(GDC_PSL_SPUSER1)).build(),
+        response.getAcl());
+
+    // Were we able to pick up the new user in the ACLs?
+    siteData.setSiteDataSoap(siteDataState2);
+    response = new GetContentsResponse(new ByteArrayOutputStream());
+    adaptor.getDocContent(request, response);
+    assertEquals(new Acl.Builder()
+        .setEverythingCaseInsensitive()
+        .setInheritFrom(new DocId("http://localhost:1/sites/SiteCollection"),
+          "admin")
+        .setInheritanceType(Acl.InheritanceType.PARENT_OVERRIDES)
+        .setPermitGroups(Arrays.asList(SITES_SITECOLLECTION_MEMBERS,
+            SITES_SITECOLLECTION_OWNERS, SITES_SITECOLLECTION_VISITORS))
+        .setPermitUsers(Arrays.asList(
+            new UserPrincipal("GDC-PSL\\spuser100", DEFAULT_NAMESPACE)))
+        .build(),
+        response.getAcl());
+    assertEquals(goldenGroups, pusher.getGroups());
+  }
+
+  @Test
   public void testGetDocContentSiteCollectionWithAdGroup() throws Exception {
     final Map<GroupPrincipal, Collection<Principal>> goldenGroups;
     {
@@ -1876,90 +2109,6 @@ public class SharePointAdaptorTest {
             NT_AUTHORITY_AUTHENTICATED_USERS,
             new GroupPrincipal("roleprovider:super", DEFAULT_NAMESPACE)))
         .build(),response.getAcl());
-    assertEquals(goldenGroups, pusher.getGroups());
-  }
-
-  @Test
-  public void testGetDocContentSiteCollectionWithOutOfDateMemberCache()
-      throws Exception {
-    final Map<GroupPrincipal, Collection<Principal>> goldenGroups;
-    {
-      Map<GroupPrincipal, Collection<Principal>> tmp
-          = new TreeMap<GroupPrincipal, Collection<Principal>>();
-      tmp.put(SITES_SITECOLLECTION_OWNERS, Arrays.<Principal>asList(
-          GDC_PSL_ADMINISTRATOR));
-      tmp.put(SITES_SITECOLLECTION_MEMBERS, Arrays.asList(
-            new UserPrincipal("GDC-PSL\\spuser100", DEFAULT_NAMESPACE),
-            new GroupPrincipal("BUILTIN\\users", DEFAULT_NAMESPACE),
-            new UserPrincipal("GDC-PSL\\spuser4", DEFAULT_NAMESPACE)));
-      tmp.put(SITES_SITECOLLECTION_VISITORS, Arrays.<Principal>asList());
-      goldenGroups = Collections.unmodifiableMap(tmp);
-    }
-
-    ReferenceSiteData siteData = new ReferenceSiteData();
-    Users users = new Users();
-    MockUserGroupSoap mockUserGroupSoap = new MockUserGroupSoap(users);
-    SoapFactory siteDataFactory = MockSoapFactory.blank()
-        .endpoint(VS_ENDPOINT, MockSiteData.blank()
-            .register(VS_CONTENT_EXCHANGE)
-            .register(CD_CONTENT_EXCHANGE)
-            .register(SITES_SITECOLLECTION_SAW_EXCHANGE))
-        .endpoint(SITES_SITECOLLECTION_ENDPOINT, siteData)
-        .endpoint("http://localhost:1/sites/SiteCollection/"
-            + "_vti_bin/UserGroup.asmx", mockUserGroupSoap);
-    SiteDataSoap siteDataState1 = MockSiteData.blank()
-            .register(SITES_SITECOLLECTION_URLSEG_EXCHANGE)
-            .register(SITES_SITECOLLECTION_S_CONTENT_EXCHANGE)
-            .register(SITES_SITECOLLECTION_SC_CONTENT_EXCHANGE);
-    SiteDataSoap siteDataState2 = MockSiteData.blank()
-            .register(SITES_SITECOLLECTION_URLSEG_EXCHANGE)
-            .register(SITES_SITECOLLECTION_S_CONTENT_EXCHANGE
-              .replaceInContent(" memberid='2'", " memberid='100'"))
-            .register(SITES_SITECOLLECTION_SC_CONTENT_EXCHANGE
-              // Purposefully leave ID=2 alone. The 6 and spuser2 here is simply
-              // an otherwise-unused entry.
-              .replaceInContent("<User ID=\"6\"", "<User ID=\"100\"")
-              .replaceInContent("spuser2", "spuser100"));
-
-    adaptor = new SharePointAdaptor(siteDataFactory,
-        new UnsupportedHttpClient(), executorFactory,
-        new MockAuthenticationClientFactoryForms(),
-        new UnsupportedActiveDirectoryClientFactory());
-    AccumulatingDocIdPusher pusher = new AccumulatingDocIdPusher();
-    adaptor.init(new MockAdaptorContext(config, pusher));
-
-    // This populates the cache, but otherwise doesn't test anything new.
-    siteData.setSiteDataSoap(siteDataState1);
-    ByteArrayOutputStream baos = new ByteArrayOutputStream();
-    GetContentsRequest request = new GetContentsRequest(
-        new DocId("http://localhost:1/sites/SiteCollection"));
-    GetContentsResponse response = new GetContentsResponse(baos);
-    adaptor.getDocContent(request, response);
-    assertEquals(new Acl.Builder()
-        .setEverythingCaseInsensitive()
-        .setInheritFrom(new DocId("http://localhost:1/sites/SiteCollection"),
-          "admin")
-        .setInheritanceType(Acl.InheritanceType.PARENT_OVERRIDES)
-        .setPermitGroups(Arrays.asList(SITES_SITECOLLECTION_MEMBERS,
-            SITES_SITECOLLECTION_OWNERS, SITES_SITECOLLECTION_VISITORS))
-        .setPermitUsers(Arrays.asList(GDC_PSL_SPUSER1)).build(),
-        response.getAcl());
-
-    // Were we able to pick up the new user in the ACLs?
-    siteData.setSiteDataSoap(siteDataState2);
-    response = new GetContentsResponse(new ByteArrayOutputStream());
-    adaptor.getDocContent(request, response);
-    assertEquals(new Acl.Builder()
-        .setEverythingCaseInsensitive()
-        .setInheritFrom(new DocId("http://localhost:1/sites/SiteCollection"),
-          "admin")
-        .setInheritanceType(Acl.InheritanceType.PARENT_OVERRIDES)
-        .setPermitGroups(Arrays.asList(SITES_SITECOLLECTION_MEMBERS,
-            SITES_SITECOLLECTION_OWNERS, SITES_SITECOLLECTION_VISITORS))
-        .setPermitUsers(Arrays.asList(
-            new UserPrincipal("GDC-PSL\\spuser100", DEFAULT_NAMESPACE)))
-        .build(),
-        response.getAcl());
     assertEquals(goldenGroups, pusher.getGroups());
   }
 
@@ -4085,6 +4234,25 @@ public class SharePointAdaptorTest {
     public Map<String, Object> getRequestContext() {
       return requestContext;
     }   
+  }
+  
+  private static class MockUserGroupSoapException
+      extends UnsupportedUserGroupSoap {
+    private Map<String, Object> requestContext = new HashMap<String, Object>();
+    // counter for site user mapping call
+    private AtomicLong atomicNumberGetSiteUserMappingCalls = new AtomicLong(0);
+
+    @Override
+    public GetUserCollectionFromSiteResponse.GetUserCollectionFromSiteResult
+        getUserCollectionFromSite() {
+          atomicNumberGetSiteUserMappingCalls.incrementAndGet();
+          throw new WebServiceException("Mock SOAP error");
+    }
+
+    @Override
+    public Map<String, Object> getRequestContext() {
+      return requestContext;
+    }
   }
 
   private static class UnsupportedUserGroupSoap

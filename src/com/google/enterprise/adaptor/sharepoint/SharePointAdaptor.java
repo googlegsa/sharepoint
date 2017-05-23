@@ -2571,10 +2571,7 @@ public class SharePointAdaptor extends AbstractAdaptor
     private Acl.Builder generateAcl(List<Permission> permissions,
         final long necessaryPermissionMask) throws IOException {
       List<Principal> permits = new LinkedList<Principal>();
-      MemberIdMapping mapping = getMemberIdMapping();
-      boolean memberIdMappingRefreshed = false;
-      MemberIdMapping siteUserMapping = null;
-      boolean siteUserMappingRefreshed = false;
+      IdMappings idMapping = new IdMappings();
       for (Permission permission : permissions) {
         // Although it is named "mask", this is really a bit-field of
         // permissions.
@@ -2583,29 +2580,7 @@ public class SharePointAdaptor extends AbstractAdaptor
           continue;
         }
         Integer id = permission.getMemberid();
-        Principal principal = mapping.getPrincipal(id);
-        if (principal == null) {
-          log.log(Level.FINE, "Member id {0} is not available in memberid"
-              + " mapping for Web [{1}] under Site Collection [{2}].",
-              new Object[] {id, webUrl, siteUrl});
-          if (siteUserMapping == null) {
-            siteUserMapping = getSiteUserMapping();
-          }          
-          principal = siteUserMapping.getPrincipal(id);
-        }
-        if (principal == null && !memberIdMappingRefreshed) {
-          // Try to refresh member id mapping and check again.
-          mapping = refreshMemberIdMapping(mapping);
-          memberIdMappingRefreshed = true;
-          principal = mapping.getPrincipal(id);
-        }        
-        if (principal == null && !siteUserMappingRefreshed) {
-          // Try to refresh site user mapping and check again.
-          siteUserMapping = refreshSiteUserMapping(siteUserMapping);
-          siteUserMappingRefreshed = true;
-          principal = siteUserMapping.getPrincipal(id);
-        }
-
+        Principal principal = idMapping.resolvePrincipal(id);
         if (principal == null) {
           log.log(Level.WARNING, "Could not resolve member id {0} for Web "
               + "[{1}] under Site Collection [{2}].", 
@@ -2623,15 +2598,8 @@ public class SharePointAdaptor extends AbstractAdaptor
       if (userId == -1) {
         return;
       }
-      Principal principal = getMemberIdMapping().getPrincipal(userId);
-      // MemberIdMapping will have information about users with explicit
-      // permissions on SharePoint or users which are direct members of
-      // SharePoint groups. MemberIdMapping might not have information
-      // about all valid SharePoint Users. To get all valid SharePoint users
-      // under SiteCollection, use SiteUserMapping.
-      if (principal == null) {
-        principal = getSiteUserMapping().getPrincipal(userId);
-      }
+      IdMappings idMapping = new IdMappings();
+      Principal principal = idMapping.resolvePrincipal(userId);
       if (principal == null) {
         log.log(Level.WARNING, "Could not resolve user id {0}", userId);
         return;
@@ -3410,6 +3378,66 @@ public class SharePointAdaptor extends AbstractAdaptor
 
     public SiteDataClient getSiteDataClient() {
       return siteDataClient;
+    }
+      
+    /** 
+     * MemberIdMapping will have information about users with explicit
+     * permissions on SharePoint or users which are direct members of
+     * SharePoint groups. MemberIdMapping might not have information
+     * about all valid SharePoint Users. To get all valid SharePoint users
+     * under SiteCollection, use SiteUserMapping. 
+     */
+    private class IdMappings {
+      private MemberIdMapping memberIdMapping;
+      private MemberIdMapping siteUserMapping;
+      private boolean memberIdMappingRefreshed = false;
+      private boolean siteUserMappingRefreshed = false;
+      private boolean siteUserMappingInitialized = false;
+
+      private IdMappings() throws IOException {
+        this.memberIdMapping = getMemberIdMapping();
+      }
+
+      private Principal resolvePrincipal(Integer id) throws IOException {
+        Principal principal = memberIdMapping.getPrincipal(id);
+        if (principal == null) {
+          log.log(Level.FINE, "Member id {0} is not available in memberid"
+              + " mapping for Web [{1}] under Site Collection [{2}].",
+              new Object[] {id, webUrl, siteUrl});
+          if (siteUserMapping == null && !siteUserMappingInitialized) {
+            try {
+              siteUserMapping = getSiteUserMapping();
+            } catch (IOException ex) {
+              log.log(Level.WARNING, "Could not resolve site user mapping for "
+                  + id, ex);
+            } finally {
+              siteUserMappingInitialized = true;
+            }
+          }
+          if (siteUserMapping != null) {
+            principal = siteUserMapping.getPrincipal(id);
+          }
+        }
+        if (principal == null && !memberIdMappingRefreshed) {
+          // Try to refresh member id mapping and check again.
+          memberIdMapping = refreshMemberIdMapping(memberIdMapping);
+          memberIdMappingRefreshed = true;
+          principal = memberIdMapping.getPrincipal(id);
+        }
+        if (principal == null && !siteUserMappingRefreshed) {
+          // Try to refresh site user mapping and check again.
+          try {
+            siteUserMapping = refreshSiteUserMapping(siteUserMapping);
+            principal = siteUserMapping.getPrincipal(id);
+          } catch (IOException ex) {
+            log.log(Level.FINE, "Could not resolve refresh site user mapping "
+                + "for" + id, ex);
+          } finally {
+            siteUserMappingRefreshed = true;
+          }
+        }
+        return principal;
+      }
     }
   }
 
