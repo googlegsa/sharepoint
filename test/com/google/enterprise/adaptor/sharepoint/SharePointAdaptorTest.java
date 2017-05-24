@@ -1736,6 +1736,7 @@ public class SharePointAdaptorTest {
         .endpoint(VS_ENDPOINT, MockSiteData.blank()
             .register(VS_CONTENT_EXCHANGE)
             .register(CD_CONTENT_EXCHANGE)
+            .register(ROOT_SITE_SAW_EXCHANGE)
             .register(SITES_SITECOLLECTION_SAW_EXCHANGE)
             .register(new SiteAndWebExchange(subSiteUrl, 0,
                 "http://localhost:1/sites/SiteCollection", subSiteUrl)))
@@ -1812,6 +1813,7 @@ public class SharePointAdaptorTest {
         .endpoint(VS_ENDPOINT, MockSiteData.blank()
             .register(VS_CONTENT_EXCHANGE)
             .register(CD_CONTENT_EXCHANGE)
+            .register(ROOT_SITE_SAW_EXCHANGE)
             .register(SITES_SITECOLLECTION_SAW_EXCHANGE))
         .endpoint(SITES_SITECOLLECTION_ENDPOINT, siteData)
         .endpoint("http://localhost:1/sites/SiteCollection/"
@@ -1898,6 +1900,7 @@ public class SharePointAdaptorTest {
         .endpoint(VS_ENDPOINT, MockSiteData.blank()
             .register(VS_CONTENT_EXCHANGE)
             .register(CD_CONTENT_EXCHANGE)
+            .register(ROOT_SITE_SAW_EXCHANGE)
             .register(SITES_SITECOLLECTION_SAW_EXCHANGE))
         .endpoint(SITES_SITECOLLECTION_ENDPOINT, siteData)
         .endpoint("http://localhost:1/sites/SiteCollection/"
