@@ -758,6 +758,20 @@ public class SharePointAdaptor extends AbstractAdaptor
               sidLookupPassword,sidLookupMethod);     
       }
       
+      // Web Application which does not have root site is not supported 
+      // by SharePoint. Adaptor returns Error: Document not found (404) 
+      Holder<String> rootSite = new Holder<String>();
+      Holder<String> rootWeb = new Holder<String>();
+      long result = sharePointSiteDataClient.getSiteAndWeb(
+          configuredSharePointUrl.getVirtualServerUrl(), rootSite, rootWeb);
+      if (result != 0) {
+        throw new StartupException(String.format(
+            "Please verify web application has root site created at %s."
+            + " Any web application which does not have a site collection"
+            + " and web provisioned at the root (/) is not supported by"
+            + " SharePoint.", configuredSharePointUrl.getVirtualServerUrl()));
+      }
+
       if (!configuredSharePointUrl.isSiteCollectionUrl()) {
         sharePointUrl = configuredSharePointUrl;
       } else {

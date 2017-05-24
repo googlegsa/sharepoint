@@ -36,6 +36,7 @@ import com.google.enterprise.adaptor.IOHelper;
 import com.google.enterprise.adaptor.InvalidConfigurationException;
 import com.google.enterprise.adaptor.Metadata;
 import com.google.enterprise.adaptor.Principal;
+import com.google.enterprise.adaptor.StartupException;
 import com.google.enterprise.adaptor.UserPrincipal;
 import com.google.enterprise.adaptor.sharepoint.ActiveDirectoryClient.ADServer;
 import com.google.enterprise.adaptor.sharepoint.SamlAuthenticationHandler.SamlHandshakeManager;
@@ -155,6 +156,9 @@ public class SharePointAdaptorTest {
       = new SiteAndWebExchange("http://localhost:1/sites/SiteCollection", 0,
           "http://localhost:1/sites/SiteCollection",
           "http://localhost:1/sites/SiteCollection");
+  private static final SiteAndWebExchange ROOT_SITE_SAW_EXCHANGE
+      = new SiteAndWebExchange("http://localhost:1", 0, "http://localhost:1",
+          "http://localhost:1");
   private static final URLSegmentsExchange SITES_SITECOLLECTION_URLSEG_EXCHANGE
       = new URLSegmentsExchange("http://localhost:1/sites/SiteCollection",
           true, null, null, null, null);
@@ -260,7 +264,8 @@ public class SharePointAdaptorTest {
       = MockSoapFactory.blank()
       .endpoint(VS_ENDPOINT, MockSiteData.blank()
           .register(VS_CONTENT_EXCHANGE)
-          .register(CD_CONTENT_EXCHANGE));
+          .register(CD_CONTENT_EXCHANGE)
+          .register(ROOT_SITE_SAW_EXCHANGE));
 
   @Rule
   public ExpectedException thrown = ExpectedException.none();
@@ -362,6 +367,22 @@ public class SharePointAdaptorTest {
   }
   
   @Test
+  public void testInitFailedForMissingRootCollection() throws Exception {
+    MockSoapFactory rootMissingSoapFactory = MockSoapFactory.blank()
+        .endpoint(VS_ENDPOINT, MockSiteData.blank()
+            .register(VS_CONTENT_EXCHANGE)
+            .register(CD_CONTENT_EXCHANGE)
+            .register(new SiteAndWebExchange(
+                "http://localhost:1", 10L, null, null)));
+    adaptor = new SharePointAdaptor(rootMissingSoapFactory,
+        new UnsupportedHttpClient(), executorFactory,
+        new MockAuthenticationClientFactoryForms(),
+        new UnsupportedActiveDirectoryClientFactory());
+    thrown.expect(StartupException.class);
+    adaptor.init(new MockAdaptorContext(config, pusher));
+  }
+  
+  @Test
   public void testAdaptorWithSocketTimeoutConfiguration() throws Exception {
     Map<String, Object> goldenRequestContext;
     Map<String, Object> goldenRequestContextAuth;
@@ -381,7 +402,9 @@ public class SharePointAdaptorTest {
     }
 
     MockSiteData siteDataSoap = new MockSiteData()
-        .register(VS_CONTENT_EXCHANGE).register(CD_CONTENT_EXCHANGE);
+        .register(VS_CONTENT_EXCHANGE)
+        .register(CD_CONTENT_EXCHANGE)
+        .register(ROOT_SITE_SAW_EXCHANGE);
     MockPeopleSoap peopleSoap = new MockPeopleSoap();
     MockUserGroupSoap userGroupSoap = new MockUserGroupSoap(null);
     final MockAuthenticationSoap authenticationSoap 
@@ -438,7 +461,9 @@ public class SharePointAdaptorTest {
     }
 
     MockSiteData siteDataSoap = new MockSiteData()
-        .register(VS_CONTENT_EXCHANGE).register(CD_CONTENT_EXCHANGE);
+        .register(VS_CONTENT_EXCHANGE)
+        .register(CD_CONTENT_EXCHANGE)
+        .register(ROOT_SITE_SAW_EXCHANGE);
     MockPeopleSoap peopleSoap = new MockPeopleSoap();
     MockUserGroupSoap userGroupSoap = new MockUserGroupSoap(null);
     final MockAuthenticationSoap authenticationSoap 
@@ -474,7 +499,8 @@ public class SharePointAdaptorTest {
     SoapFactory siteDataFactory = MockSoapFactory.blank()
         .endpoint(VS_ENDPOINT, MockSiteData.blank()
             .register(VS_CONTENT_EXCHANGE)
-            .register(CD_CONTENT_EXCHANGE))
+            .register(CD_CONTENT_EXCHANGE)
+            .register(ROOT_SITE_SAW_EXCHANGE))
         .endpoint("http://localhost:1/_vti_bin/People.asmx",
             new MockPeopleSoap())
         .endpoint("http://localhost:1/_vti_bin/UserGroup.asmx",
@@ -494,7 +520,9 @@ public class SharePointAdaptorTest {
   @Test
   public void testCheckFullReadPermissionForAdaptorUser() throws Exception {
     MockSiteData siteDataSoap = new MockSiteData()
-        .register(VS_CONTENT_EXCHANGE).register(CD_CONTENT_EXCHANGE);
+        .register(VS_CONTENT_EXCHANGE)
+        .register(CD_CONTENT_EXCHANGE)
+        .register(ROOT_SITE_SAW_EXCHANGE);
     VirtualServer vs = new SiteDataClient(siteDataSoap, true)
         .getContentVirtualServer();
 
@@ -523,7 +551,8 @@ public class SharePointAdaptorTest {
     SoapFactory siteDataFactory = MockSoapFactory.blank()
         .endpoint(VS_ENDPOINT, MockSiteData.blank()
             .register(VS_CONTENT_EXCHANGE)
-            .register(CD_CONTENT_EXCHANGE))
+            .register(CD_CONTENT_EXCHANGE)
+            .register(ROOT_SITE_SAW_EXCHANGE))
         .endpoint("http://localhost:1/_vti_bin/People.asmx",
             new MockPeopleSoap())
         .endpoint("http://localhost:1/_vti_bin/UserGroup.asmx",
@@ -587,7 +616,8 @@ public class SharePointAdaptorTest {
     SoapFactory siteDataFactory = MockSoapFactory.blank()
         .endpoint(VS_ENDPOINT, MockSiteData.blank()
             .register(VS_CONTENT_EXCHANGE)
-            .register(CD_CONTENT_EXCHANGE))
+            .register(CD_CONTENT_EXCHANGE)
+            .register(ROOT_SITE_SAW_EXCHANGE))
         .endpoint("http://localhost:1/_vti_bin/People.asmx",
             new MockPeopleSoap())
         .endpoint("http://localhost:1/_vti_bin/UserGroup.asmx",
@@ -608,7 +638,8 @@ public class SharePointAdaptorTest {
     SoapFactory siteDataFactory = MockSoapFactory.blank()
         .endpoint(VS_ENDPOINT, MockSiteData.blank()
             .register(VS_CONTENT_EXCHANGE)
-            .register(CD_CONTENT_EXCHANGE))
+            .register(CD_CONTENT_EXCHANGE)
+            .register(ROOT_SITE_SAW_EXCHANGE))
         .endpoint("http://localhost:1/_vti_bin/People.asmx",
             new MockPeopleSoap())
         .endpoint("http://localhost:1/_vti_bin/UserGroup.asmx",
@@ -629,7 +660,8 @@ public class SharePointAdaptorTest {
     SoapFactory siteDataFactory = MockSoapFactory.blank()
         .endpoint(VS_ENDPOINT, MockSiteData.blank()
             .register(VS_CONTENT_EXCHANGE)
-            .register(CD_CONTENT_EXCHANGE))
+            .register(CD_CONTENT_EXCHANGE)
+            .register(ROOT_SITE_SAW_EXCHANGE))
         .endpoint("http://localhost:1/_vti_bin/People.asmx",
             new MockPeopleSoap())
         .endpoint("http://localhost:1/_vti_bin/UserGroup.asmx",
@@ -654,7 +686,8 @@ public class SharePointAdaptorTest {
     SoapFactory siteDataFactory = MockSoapFactory.blank()
         .endpoint(VS_ENDPOINT, MockSiteData.blank()
             .register(VS_CONTENT_EXCHANGE)
-            .register(CD_CONTENT_EXCHANGE))
+            .register(CD_CONTENT_EXCHANGE)
+            .register(ROOT_SITE_SAW_EXCHANGE))
         .endpoint("http://localhost:1/_vti_bin/People.asmx",
             new MockPeopleSoap())
         .endpoint("http://localhost:1/_vti_bin/UserGroup.asmx",
@@ -682,7 +715,8 @@ public class SharePointAdaptorTest {
     SoapFactory siteDataFactory = MockSoapFactory.blank()
         .endpoint(VS_ENDPOINT, MockSiteData.blank()
             .register(VS_CONTENT_EXCHANGE)
-            .register(CD_CONTENT_EXCHANGE))
+            .register(CD_CONTENT_EXCHANGE)
+            .register(ROOT_SITE_SAW_EXCHANGE))
         .endpoint("http://localhost:1/_vti_bin/People.asmx",
             new MockPeopleSoap())
         .endpoint("http://localhost:1/_vti_bin/UserGroup.asmx",
@@ -709,7 +743,8 @@ public class SharePointAdaptorTest {
     SoapFactory siteDataFactory = MockSoapFactory.blank()
         .endpoint(VS_ENDPOINT, MockSiteData.blank()
             .register(VS_CONTENT_EXCHANGE)
-            .register(CD_CONTENT_EXCHANGE))
+            .register(CD_CONTENT_EXCHANGE)
+            .register(ROOT_SITE_SAW_EXCHANGE))
         .endpoint("http://localhost:1/_vti_bin/People.asmx",
             new MockPeopleSoap())
         .endpoint("http://localhost:1/_vti_bin/UserGroup.asmx",
@@ -851,6 +886,7 @@ public class SharePointAdaptorTest {
         .endpoint(VS_ENDPOINT, MockSiteData.blank()
             .register(VS_CONTENT_EXCHANGE)
             .register(CD_CONTENT_EXCHANGE)
+            .register(ROOT_SITE_SAW_EXCHANGE)
             .register(new SiteAndWebExchange(
                 "http://wronghost:1/", 1, null, null)));
 
@@ -874,6 +910,7 @@ public class SharePointAdaptorTest {
         .endpoint(VS_ENDPOINT, MockSiteData.blank()
             .register(VS_CONTENT_EXCHANGE)
             .register(CD_CONTENT_EXCHANGE)
+            .register(ROOT_SITE_SAW_EXCHANGE)
             .register(new SiteAndWebExchange(
                 wrongPage, 0, "http://localhost:1", "http://localhost:1"))
             .register(new URLSegmentsExchange(
@@ -905,6 +942,7 @@ public class SharePointAdaptorTest {
         .endpoint("http://localhost:1/sites/other/_vti_bin/SiteData.asmx",
             MockSiteData.blank())        
         .endpoint(SITES_SITECOLLECTION_ENDPOINT, MockSiteData.blank()
+            .register(ROOT_SITE_SAW_EXCHANGE)
             .register(SITES_SITECOLLECTION_URLSEG_EXCHANGE)
             .register(SITES_SITECOLLECTION_S_CONTENT_EXCHANGE)
             .register(SITES_SITECOLLECTION_SC_CONTENT_EXCHANGE)
@@ -952,7 +990,8 @@ public class SharePointAdaptorTest {
     SoapFactory siteDataFactory = MockSoapFactory.blank()
         .endpoint(VS_ENDPOINT, MockSiteData.blank()
             .register(VS_CONTENT_EXCHANGE)
-            .register(CD_CONTENT_EXCHANGE))
+            .register(CD_CONTENT_EXCHANGE)
+            .register(ROOT_SITE_SAW_EXCHANGE))
         .endpoint("http://localhost:1/_vti_bin/People.asmx", mockPeople);
 
     adaptor = new SharePointAdaptor(siteDataFactory,
@@ -999,7 +1038,8 @@ public class SharePointAdaptorTest {
             .register(VS_CONTENT_EXCHANGE)
             .register(CD_CONTENT_EXCHANGE.
                 replaceInContent("http://localhost:1/sites/SiteCollection",
-                    "http://localhost:1/sites/SiteCollection/")))
+                    "http://localhost:1/sites/SiteCollection/"))
+            .register(ROOT_SITE_SAW_EXCHANGE))
         .endpoint("http://localhost:1/_vti_bin/People.asmx", mockPeople);
 
     adaptor = new SharePointAdaptor(siteDataFactory,
@@ -1041,8 +1081,7 @@ public class SharePointAdaptorTest {
         SPPrincipalType.USER);
     SoapFactory siteDataFactory = MockSoapFactory.blank()
         .endpoint(VS_ENDPOINT, MockSiteData.blank()
-            .register(SITES_SITECOLLECTION_SAW_EXCHANGE))
-        .endpoint(VS_ENDPOINT, MockSiteData.blank()
+            .register(SITES_SITECOLLECTION_SAW_EXCHANGE)
             .register(new SiteAndWebExchange(
                 "http://localhost:1/sites/SiteCollection/web", 0,
                 "http://localhost:1/sites/SiteCollection",
@@ -1052,7 +1091,8 @@ public class SharePointAdaptorTest {
                 .replaceInContent("</Sites>", "<Site "
                     + "URL=\"http://localhost:1/sites/SiteCollectionOneMore\" "
                     + "ID=\"{5cbcd3b1-fca9-48b2-92db-OneMore}\" />"
-                    + "</Sites>")))
+                    + "</Sites>"))
+            .register(ROOT_SITE_SAW_EXCHANGE))
         .endpoint("http://localhost:1/_vti_bin/People.asmx", mockPeople);
     
     adaptor = new SharePointAdaptor(siteDataFactory,
@@ -1109,7 +1149,8 @@ public class SharePointAdaptorTest {
                 .replaceInContent("</Sites>", "<Site "
                     + "URL=\"http://localhost:1/sites/SiteCollectionOneMore\" "
                     + "ID=\"{5cbcd3b1-fca9-48b2-92db-OneMore}\" />"
-                    + "</Sites>")))
+                    + "</Sites>"))
+            .register(ROOT_SITE_SAW_EXCHANGE))
         .endpoint("http://localhost:1/_vti_bin/People.asmx", mockPeople);
 
     adaptor = new SharePointAdaptor(siteDataFactory,
@@ -1135,14 +1176,14 @@ public class SharePointAdaptorTest {
         SPPrincipalType.USER);
     SoapFactory siteDataFactory = MockSoapFactory.blank()
         .endpoint(VS_ENDPOINT, MockSiteData.blank()
-            .register(SITES_SITECOLLECTION_SAW_EXCHANGE))
-        .endpoint(VS_ENDPOINT, MockSiteData.blank()
+            .register(SITES_SITECOLLECTION_SAW_EXCHANGE)
             .register(VS_CONTENT_EXCHANGE)
             .register(CD_CONTENT_EXCHANGE
                 .replaceInContent("</Sites>", "<Site "
                     + "URL=\"http://localhost:1/sites/SiteCollectionOneMore\" "
                     + "ID=\"{5cbcd3b1-fca9-48b2-92db-OneMore}\" />"
-                    + "</Sites>")))
+                    + "</Sites>"))
+            .register(ROOT_SITE_SAW_EXCHANGE))
         .endpoint("http://localhost:1/_vti_bin/People.asmx", mockPeople);
 
     adaptor = new SharePointAdaptor(siteDataFactory,
@@ -1167,8 +1208,7 @@ public class SharePointAdaptorTest {
         SPPrincipalType.USER);
     SoapFactory siteDataFactory = MockSoapFactory.blank()
         .endpoint(VS_ENDPOINT, MockSiteData.blank()
-            .register(SITES_SITECOLLECTION_SAW_EXCHANGE))
-        .endpoint(VS_ENDPOINT, MockSiteData.blank()
+            .register(SITES_SITECOLLECTION_SAW_EXCHANGE)
             .register(new SiteAndWebExchange(
                 "http://localhost:1/web", 0,
                 "http://localhost:1",
@@ -1178,7 +1218,8 @@ public class SharePointAdaptorTest {
                 .replaceInContent("</Sites>", "<Site "
                     + "URL=\"http://localhost:1/sites/SiteCollectionOneMore\" "
                     + "ID=\"{5cbcd3b1-fca9-48b2-92db-OneMore}\" />"
-                    + "</Sites>")))
+                    + "</Sites>"))
+            .register(ROOT_SITE_SAW_EXCHANGE))
         .endpoint("http://localhost:1/_vti_bin/People.asmx", mockPeople);
 
     adaptor = new SharePointAdaptor(siteDataFactory,
@@ -1217,7 +1258,8 @@ public class SharePointAdaptorTest {
             .register(CD_CONTENT_EXCHANGE)
             .register(new ContentExchange(ObjectType.CONTENT_DATABASE,
                 "{error content db}", null, null, true, false, null, "error",
-                new WebServiceException("Content database not available"))))
+                new WebServiceException("Content database not available")))
+            .register(ROOT_SITE_SAW_EXCHANGE))
         .endpoint("http://localhost:1/_vti_bin/People.asmx", mockPeople);
 
     adaptor = new SharePointAdaptor(siteDataFactory,
@@ -1315,7 +1357,8 @@ public class SharePointAdaptorTest {
         .endpoint(VS_ENDPOINT, MockSiteData.blank()
             .register(VS_CONTENT_EXCHANGE
               .replaceInContent("</Policies>", claimsPolicyUsers))
-            .register(CD_CONTENT_EXCHANGE))
+            .register(CD_CONTENT_EXCHANGE)
+            .register(ROOT_SITE_SAW_EXCHANGE))
         .endpoint("http://localhost:1/_vti_bin/People.asmx", mockPeople);
 
     adaptor = new SharePointAdaptor(siteDataFactory,
@@ -1367,6 +1410,7 @@ public class SharePointAdaptorTest {
         .endpoint(VS_ENDPOINT, MockSiteData.blank()
             .register(VS_CONTENT_EXCHANGE)
             .register(CD_CONTENT_EXCHANGE)
+            .register(ROOT_SITE_SAW_EXCHANGE)
             .register(SITES_SITECOLLECTION_SAW_EXCHANGE))
         .endpoint(SITES_SITECOLLECTION_ENDPOINT, MockSiteData.blank()
             .register(SITES_SITECOLLECTION_URLSEG_EXCHANGE)
@@ -1449,6 +1493,7 @@ public class SharePointAdaptorTest {
         .endpoint(VS_ENDPOINT, MockSiteData.blank()
             .register(VS_CONTENT_EXCHANGE)
             .register(CD_CONTENT_EXCHANGE)
+            .register(ROOT_SITE_SAW_EXCHANGE)
             .register(SITES_SITECOLLECTION_SAW_EXCHANGE))
         .endpoint(SITES_SITECOLLECTION_ENDPOINT, MockSiteData.blank()
             .register(SITES_SITECOLLECTION_URLSEG_EXCHANGE)
@@ -1533,6 +1578,7 @@ public class SharePointAdaptorTest {
         .endpoint(VS_ENDPOINT, MockSiteData.blank()
             .register(SITES_SITECOLLECTION_SAW_EXCHANGE))
         .endpoint(SITES_SITECOLLECTION_ENDPOINT, MockSiteData.blank()
+            .register(ROOT_SITE_SAW_EXCHANGE)
             .register(SITES_SITECOLLECTION_URLSEG_EXCHANGE)
             .register(SITES_SITECOLLECTION_S_CONTENT_EXCHANGE)
             .register(SITES_SITECOLLECTION_SC_CONTENT_EXCHANGE)
@@ -1626,6 +1672,7 @@ public class SharePointAdaptorTest {
         .endpoint(VS_ENDPOINT, MockSiteData.blank()
             .register(VS_CONTENT_EXCHANGE)
             .register(CD_CONTENT_EXCHANGE)
+            .register(ROOT_SITE_SAW_EXCHANGE)
             .register(SITES_SITECOLLECTION_SAW_EXCHANGE)
             .register(new SiteAndWebExchange(subSiteUrl, 0,
                 "http://localhost:1/sites/SiteCollection", subSiteUrl)))
@@ -1931,6 +1978,7 @@ public class SharePointAdaptorTest {
         .endpoint(VS_ENDPOINT, MockSiteData.blank()
             .register(VS_CONTENT_EXCHANGE)
             .register(CD_CONTENT_EXCHANGE)
+            .register(ROOT_SITE_SAW_EXCHANGE)
             .register(SITES_SITECOLLECTION_SAW_EXCHANGE))
         .endpoint(SITES_SITECOLLECTION_ENDPOINT, MockSiteData.blank()
             .register(SITES_SITECOLLECTION_URLSEG_EXCHANGE)
@@ -1994,6 +2042,7 @@ public class SharePointAdaptorTest {
         .endpoint(VS_ENDPOINT, MockSiteData.blank()
             .register(VS_CONTENT_EXCHANGE)
             .register(CD_CONTENT_EXCHANGE)
+            .register(ROOT_SITE_SAW_EXCHANGE)
             .register(SITES_SITECOLLECTION_SAW_EXCHANGE))
         .endpoint(SITES_SITECOLLECTION_ENDPOINT, MockSiteData.blank()
             .register(SITES_SITECOLLECTION_URLSEG_EXCHANGE)
@@ -2062,6 +2111,7 @@ public class SharePointAdaptorTest {
         .endpoint(VS_ENDPOINT, MockSiteData.blank()
             .register(VS_CONTENT_EXCHANGE)
             .register(CD_CONTENT_EXCHANGE)
+            .register(ROOT_SITE_SAW_EXCHANGE)
             .register(SITES_SITECOLLECTION_SAW_EXCHANGE))
             .endpoint(SITES_SITECOLLECTION_ENDPOINT, MockSiteData.blank()
                 .register(SITES_SITECOLLECTION_URLSEG_EXCHANGE)
@@ -2115,7 +2165,8 @@ public class SharePointAdaptorTest {
   public void testGetDocContentSiteCollectionNoIndex() throws Exception {
     SoapFactory siteDataFactory = MockSoapFactory.blank()
         .endpoint(VS_ENDPOINT, MockSiteData.blank()
-            .register(SITES_SITECOLLECTION_SAW_EXCHANGE))
+            .register(SITES_SITECOLLECTION_SAW_EXCHANGE)
+            .register(ROOT_SITE_SAW_EXCHANGE))
         .endpoint(SITES_SITECOLLECTION_ENDPOINT, MockSiteData.blank()
             .register(SITES_SITECOLLECTION_URLSEG_EXCHANGE)
             .register(SITES_SITECOLLECTION_S_CONTENT_EXCHANGE
@@ -3295,6 +3346,7 @@ public class SharePointAdaptorTest {
           .register(CD_CONTENT_EXCHANGE
             .replaceInContent("<Site URL=\"http://localhost:1\"\n"
               + " ID=\"{bb3bb2dd-6ea7-471b-a361-6fb67988755c}\" />", ""))
+          .register(ROOT_SITE_SAW_EXCHANGE)
           .register(SITES_SITECOLLECTION_SAW_EXCHANGE))
         .endpoint(SITES_SITECOLLECTION_ENDPOINT, MockSiteData.blank()
           .register(SITES_SITECOLLECTION_SC_CONTENT_EXCHANGE)),
@@ -3337,7 +3389,8 @@ public class SharePointAdaptorTest {
                     "http://localhost:1/sites/sitecollection"));
     SoapFactory siteDataFactory = MockSoapFactory.blank()        
         .endpoint(SITES_SITECOLLECTION_ENDPOINT.replace("SiteCollection",
-            "sitecollection"), MockSiteData.blank()            
+            "sitecollection"), MockSiteData.blank()
+            .register(ROOT_SITE_SAW_EXCHANGE)            
             .register(getContentSiteCollection)
             .register(new ChangesExchange(ObjectType.SITE_COLLECTION,
                     "{bb3bb2dd-6ea7-471b-a361-6fb67988755c}",
@@ -3394,7 +3447,8 @@ public class SharePointAdaptorTest {
     final ReferenceSiteData siteData = new ReferenceSiteData();
     SiteDataSoap state0 = MockSiteData.blank()
         .register(VS_CONTENT_EXCHANGE)
-        .register(CD_CONTENT_EXCHANGE);
+        .register(CD_CONTENT_EXCHANGE)
+        .register(ROOT_SITE_SAW_EXCHANGE);
     SiteDataSoap state1 = new UnsupportedSiteData() {
       @Override
       public void getContent(ObjectType objectType, String objectId,
@@ -3505,6 +3559,7 @@ public class SharePointAdaptorTest {
     final SiteDataSoap siteData = MockSiteData.blank()
         .register(vsContentExchange)
         .register(CD_CONTENT_EXCHANGE)
+        .register(ROOT_SITE_SAW_EXCHANGE)
         .register(new ContentExchange(ObjectType.CONTENT_DATABASE,
               "{4fb7dea1-2912-4927-9eda-1ea2f0977cf8}", null, null, false,
               false, null, getContentContentDatabase4fb))
@@ -3583,6 +3638,7 @@ public class SharePointAdaptorTest {
         .endpoint(VS_ENDPOINT, MockSiteData.blank()
             .register(SITES_SITECOLLECTION_SAW_EXCHANGE))
         .endpoint(SITES_SITECOLLECTION_ENDPOINT, MockSiteData.blank()
+            .register(ROOT_SITE_SAW_EXCHANGE)
             .register(SITES_SITECOLLECTION_URLSEG_EXCHANGE)
             .register(SITES_SITECOLLECTION_S_CONTENT_EXCHANGE)
             .register(SITES_SITECOLLECTION_SC_CONTENT_EXCHANGE)
