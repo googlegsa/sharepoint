@@ -2679,7 +2679,162 @@ public class SharePointAdaptorTest {
         response.getDisplayUrl());
     assertEquals(new Date(1336166672000L), response.getLastModified());
   }
-  
+
+  @Test
+  public void testGetDocContentListItemMessage() throws Exception {
+    SiteDataSoap siteData = MockSiteData.blank()
+        .register(SITES_SITECOLLECTION_S_CONTENT_EXCHANGE)
+        .register(SITES_SITECOLLECTION_LISTS_CUSTOMLIST_1_URLSEG_EXCHANGE)
+        .register(SITES_SITECOLLECTION_LISTS_CUSTOMLIST_2_URLSEG_EXCHANGE)
+        .register(SITES_SITECOLLECTION_LISTS_CUSTOMLIST_L_CONTENT_EXCHANGE)
+        .register(SITES_SITECOLLECTION_LISTS_CUSTOMLIST_1_LI_CONTENT_EXCHANGE)
+        .register(SITES_SITECOLLECTION_LISTS_CUSTOMLIST_2_LI_CONTENT_EXCHANGE
+            .replaceInContent("ows_Title='Inside Folder'",
+                "ows_DiscussionTitle='Discussion Subject'")
+            .replaceInContent("ows_ContentType='Item'",
+                "ows_ContentType='Message'")
+            .replaceInContent("ows_Attachments='1'",
+                "ows_Attachments='0'"))
+        .register(SITES_SITECOLLECTION_LISTS_CUSTOMLIST_2_A_CONTENT_EXCHANGE);
+
+    adaptor = new SharePointAdaptor(initableSoapFactory,
+        new UnsupportedHttpClient(), executorFactory,
+        new MockAuthenticationClientFactoryForms(),
+        new UnsupportedActiveDirectoryClientFactory());
+    adaptor.init(new MockAdaptorContext(config, pusher));
+    ByteArrayOutputStream baos = new ByteArrayOutputStream();
+    GetContentsRequest request = new GetContentsRequest(
+        new DocId("http://localhost:1/sites/SiteCollection/Lists/Custom List/"
+          + "Test Folder/2_.000"), new Date(1336166662000L));
+    GetContentsResponse response = new GetContentsResponse(baos);
+    adaptor.new SiteAdaptor("http://localhost:1/sites/SiteCollection",
+          "http://localhost:1/sites/SiteCollection", siteData,
+          new UnsupportedUserGroupSoap(), new UnsupportedPeopleSoap(),
+          Callables.returning(SITES_SITECOLLECTION_MEMBER_MAPPING),
+          new UnsupportedCallable<MemberIdMapping>())
+        .getDocContent(request, response);
+    String responseString = new String(baos.toByteArray(), charset);
+    final String golden
+        = "<!DOCTYPE html>\n"
+        + "<html><head><title>Discussion Subject</title></head>"
+        + "<body><h1><!--googleoff: index-->List Item<!--googleon: index-->"
+        +   " Discussion Subject</h1>"
+        + "<!--googleoff: index--><table style='border: none'>"
+        + "<tr><td>Attachments</td><td>0</td></tr>"
+        + "<tr><td>Author</td><td>System Account</td></tr>"
+        + "<tr><td>BaseName</td><td>2_</td></tr>"
+        + "<tr><td>ContentType</td><td>Message</td></tr>"
+        + "<tr><td>ContentTypeId</td>"
+        +   "<td>0x0100442459C9B5E59C4F9CFDC789A220FC92</td></tr>"
+        + "<tr><td>Created</td><td>2012-05-01T22:14:06Z</td></tr>"
+        + "<tr><td>Created Date</td><td>2012-05-01T22:14:06Z</td></tr>"
+        + "<tr><td>DiscussionTitle</td><td>Discussion Subject</td></tr>"
+        + "<tr><td>Editor</td><td>System Account</td></tr>"
+        + "<tr><td>EncodedAbsUrl</td>"
+        +   "<td>http://localhost:1/sites/SiteCollection/Lists/Custom%20List/"
+        +   "Test%20Folder/2_.000</td></tr>"
+        + "<tr><td>FSObjType</td><td>0</td></tr>"
+        + "<tr><td>FileDirRef</td>"
+        +   "<td>sites/SiteCollection/Lists/Custom List/Test Folder</td></tr>"
+        + "<tr><td>FileLeafRef</td><td>2_.000</td></tr>"
+        + "<tr><td>FileRef</td>"
+        +   "<td>sites/SiteCollection/Lists/Custom List/Test Folder/2_.000</td>"
+        +   "</tr>"
+        + "<tr><td>GUID</td>"
+        +   "<td>{2C5BEF60-18FA-42CA-B472-7B5E1EC405A5}</td></tr>"
+        + "<tr><td>ID</td><td>2</td></tr>"
+        + "<tr><td>Last Modified</td><td>2012-05-01T22:14:06Z</td></tr>"
+        + "<tr><td>LinkFilename</td><td>2_.000</td></tr>"
+        + "<tr><td>LinkFilenameNoMenu</td><td>2_.000</td></tr>"
+        + "<tr><td>LinkTitle</td><td>Inside Folder</td></tr>"
+        + "<tr><td>LinkTitleNoMenu</td><td>Inside Folder</td></tr>"
+        + "<tr><td>Modified</td><td>2012-05-04T21:24:32Z</td></tr>"
+        + "<tr><td>Order</td><td>200.000000000000</td></tr>"
+        + "<tr><td>PermMask</td><td>0x7fffffffffffffff</td></tr>"
+        + "<tr><td>ScopeId</td>"
+        +   "<td>{2E29615C-59E7-493B-B08A-3642949CC069}</td></tr>"
+        + "<tr><td>SelectTitle</td><td>2</td></tr>"
+        + "<tr><td>ServerRedirected</td><td>0</td></tr>"
+        + "<tr><td>ServerUrl</td>"
+        +   "<td>/sites/SiteCollection/Lists/Custom List/Test Folder/2_.000"
+        +   "</td></tr>"
+        + "<tr><td>UniqueId</td>"
+        +   "<td>{E7156244-AC2F-4402-AA74-7A365726CD02}</td></tr>"
+        + "<tr><td>WorkflowVersion</td><td>1</td></tr>"
+        + "<tr><td>_EditMenuTableEnd</td><td>2</td></tr>"
+        + "<tr><td>_EditMenuTableStart</td><td>2_.000</td></tr>"
+        + "<tr><td>_IsCurrentVersion</td><td>1</td></tr>"
+        + "<tr><td>_Level</td><td>1</td></tr>"
+        + "<tr><td>_ModerationStatus</td><td>0</td></tr>"
+        + "<tr><td>_UIVersion</td><td>512</td></tr>"
+        + "<tr><td>_UIVersionString</td><td>1.0</td></tr>"
+        + "<tr><td>owshiddenversion</td><td>4</td></tr>"
+        + "</table><!--googleon: index-->"
+        + "</body></html>";
+    final Metadata goldenMetadata;
+    {
+      Metadata meta = new Metadata();
+      meta.add("Attachments", "0");
+      meta.add("Author", "System Account");
+      meta.add("BaseName", "2_");
+      meta.add("ContentType", "Message");
+      meta.add("ContentTypeId", "0x0100442459C9B5E59C4F9CFDC789A220FC92");
+      meta.add("DiscussionTitle", "Discussion Subject");
+      meta.add("Created", "2012-05-01T22:14:06Z");
+      meta.add("Created Date", "2012-05-01T22:14:06Z");
+      meta.add("Editor", "System Account");
+      meta.add("EncodedAbsUrl", "http://localhost:1/sites/SiteCollection/Lists/"
+          + "Custom%20List/Test%20Folder/2_.000");
+      meta.add("FSObjType", "0");
+      meta.add("FileDirRef",
+          "sites/SiteCollection/Lists/Custom List/Test Folder");
+      meta.add("FileLeafRef", "2_.000");
+      meta.add("FileRef",
+          "sites/SiteCollection/Lists/Custom List/Test Folder/2_.000");
+      meta.add("GUID", "{2C5BEF60-18FA-42CA-B472-7B5E1EC405A5}");
+      meta.add("ID", "2");
+      meta.add("Last Modified", "2012-05-01T22:14:06Z");
+      meta.add("LinkFilename", "2_.000");
+      meta.add("LinkFilenameNoMenu", "2_.000");
+      meta.add("LinkTitle", "Inside Folder");
+      meta.add("LinkTitleNoMenu", "Inside Folder");
+      meta.add("Modified", "2012-05-04T21:24:32Z");
+      meta.add("Order", "200.000000000000");
+      meta.add("PermMask", "0x7fffffffffffffff");
+      meta.add("ScopeId", "{2E29615C-59E7-493B-B08A-3642949CC069}");
+      meta.add("SelectTitle", "2");
+      meta.add("ServerRedirected", "0");
+      meta.add("ServerUrl",
+          "/sites/SiteCollection/Lists/Custom List/Test Folder/2_.000");
+      meta.add("UniqueId", "{E7156244-AC2F-4402-AA74-7A365726CD02}");
+      meta.add("WorkflowVersion", "1");
+      meta.add("_EditMenuTableEnd", "2");
+      meta.add("_EditMenuTableStart", "2_.000");
+      meta.add("_IsCurrentVersion", "1");
+      meta.add("_Level", "1");
+      meta.add("_ModerationStatus", "0");
+      meta.add("_UIVersion", "512");
+      meta.add("_UIVersionString", "1.0");
+      meta.add("owshiddenversion", "4");
+      meta.add("sharepoint:parentwebtitle", "chinese1");
+      meta.add("sharepoint:listguid", "{6F33949A-B3FF-4B0C-BA99-93CB518AC2C0}");
+      meta.add("google:objecttype", "ListItem");
+      goldenMetadata = meta.unmodifiableView();
+    }
+    assertEquals(golden, responseString);
+    assertEquals(goldenMetadata, response.getMetadata());
+    assertEquals(new Acl.Builder()
+        .setInheritFrom(new DocId("http://localhost:1/sites/SiteCollection/"
+            + "Lists/Custom List/Test Folder"))
+        .setInheritanceType(Acl.InheritanceType.PARENT_OVERRIDES).build(),
+        response.getAcl());
+    assertEquals(URI.create("http://localhost:1/sites/SiteCollection/Lists/"
+          + "Custom%20List/DispForm.aspx?ID=2&Source=/sites/"
+        + "SiteCollection/Lists/Custom%20List/Test%20Folder"),
+        response.getDisplayUrl());
+    assertEquals(new Date(1336166672000L), response.getLastModified());
+  }
+
   @Test
   public void testGetDocContentListItemWithNoContent() throws Exception {
     SiteDataSoap siteData = MockSiteData.blank()

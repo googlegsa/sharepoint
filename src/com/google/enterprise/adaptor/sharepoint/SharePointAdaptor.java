@@ -197,6 +197,12 @@ public class SharePointAdaptor extends AbstractAdaptor
    */
   private static final String OWS_CONTENTTYPEID_ATTRIBUTE = "ows_ContentTypeId";
   /**
+   * Row attribute that contains default content type of the list.
+   * See https://msdn.microsoft.com/en-us/library/ms478023(v=office.14).aspx
+   * for more information abount content types.
+   */
+  private static final String OWS_CONTENTTYPE_ATTRIBUTE = "ows_ContentType";
+  /**
    * Row attribute guaranteed to be in ListItem responses. See
    * http://msdn.microsoft.com/en-us/library/dd929205.aspx . Provides scope id
    * used for permissions. Note that the casing is different than documented;
@@ -3036,6 +3042,21 @@ public class SharePointAdaptor extends AbstractAdaptor
         }
         metadataLength += addMetadata(
             response, METADATA_OBJECT_TYPE, ObjectType.LIST_ITEM.value());
+        String contentType = row.getAttribute(OWS_CONTENTTYPE_ATTRIBUTE);
+        if ("Message".equals(contentType)) {
+          // There is no title field for discussion replies,
+          // use DiscussionTitle.
+          title = row.getAttribute("ows_DiscussionTitle");
+          String sourceUrl = row.getAttribute(OWS_FILEDIRREF_ATTRIBUTE)
+              .split(";#",2)[1];
+          try {
+            response.setDisplayUrl(new URI(displayPage.getScheme(),
+                displayPage.getAuthority(), displayPage.getPath(),
+                "ID=" + itemId + "&Source=/" + sourceUrl , null));
+          } catch (URISyntaxException ex) {
+            throw new IOException(ex);
+          }
+        }
         if (canRespondWithNoContent) {
           log.log(Level.FINER, "ListItem: Responding with 204 as Last-Modified"
               + " is {0} and last access time is {1}",
