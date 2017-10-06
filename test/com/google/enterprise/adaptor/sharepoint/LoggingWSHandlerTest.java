@@ -136,7 +136,7 @@ public class LoggingWSHandlerTest {
   }
 
   @Test
-  @SuppressWarnings("unchecked")
+  @SuppressWarnings({"rawtypes", "unchecked"})
   public void testWrongObject() {
     Class noGenericsInterface = WebServiceInterface.class;
     Object o = LoggingWSHandler.create(noGenericsInterface, new Object());
