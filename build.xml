@@ -30,15 +30,21 @@
   <property name="cobertura.dir" value="${basedir}/../cobertura/"/>
   <!-- Load build environment specific properties. -->
   <property file="build.properties"/>
-  <property name="compile.java.source" value="6"/>
-  <property name="compile.java.target" value="7"/>
+  <property name="compile.java.version" value="7"/>
   <property name="compile.java.bootclasspath" value="${build.bootclasspath}"/>
   <!-- The build.bootclasspath property, if set, must match the Java version
-       set in compile.java.source. To detect errors in build.bootclasspath,
+       set in compile.java.version. To detect errors in build.bootclasspath,
        set compile.java.newerClassname to a class that was added in
        the immediately following release of Java. For example, for
-       "6", pick a class added in Java 7. -->
-  <property name="compile.java.newerClassname" value="java.lang.AutoCloseable"/>
+       "7", pick a class added in Java 8. -->
+  <property name="compile.java.newerClassname"
+    value="java.lang.FunctionalInterface"/>
+
+  <!-- Use add-modules with Java 9 and higher. -->
+  <condition property="java.modules"
+      value="" else="--add-modules java.xml.ws">
+    <matches string="${ant.java.version}" pattern="^1\.[678]$"/>
+  </condition>
 
   <path id="adaptor.build.classpath">
     <pathelement location="${adaptor.jar}"/>
@@ -210,7 +216,7 @@ lib/plexi submodule or add the the command line argument
       classname="${compile.java.newerClassname}"
       classpath="${compile.java.bootclasspath}" ignoresystemclasses="true"/>
     <fail if="compile.java.isNewer">
-      Error: build.bootclasspath is newer than JDK ${compile.java.source}.
+      Error: build.bootclasspath is newer than JDK ${compile.java.version}.
     </fail>
   </target>
 
@@ -219,7 +225,7 @@ lib/plexi submodule or add the the command line argument
 
     <javac srcdir="${src.dir}" destdir="${build-src.dir}" debug="true"
       includeantruntime="false" encoding="utf-8"
-      source="${compile.java.source}" target="${compile.java.target}">
+      source="${compile.java.version}" target="${compile.java.version}">
       <bootclasspath path="${compile.java.bootclasspath}"/>
       <compilerarg line="-Xlint -Xlint:-serial"/>
       <classpath refid="adaptor.build.classpath"/>
@@ -230,7 +236,7 @@ lib/plexi submodule or add the the command line argument
     <!-- Compile JUnit helper -->
     <javac srcdir="${lib.dir}" destdir="${build-test.dir}" debug="true"
       includeantruntime="true" encoding="utf-8"
-      source="${compile.java.source}" target="${compile.java.target}">
+      source="${compile.java.version}" target="${compile.java.version}">
       <bootclasspath path="${compile.java.bootclasspath}"/>
       <compilerarg value="-Xlint"/>
       <classpath refid="junit.classpath"/>
@@ -240,7 +246,7 @@ lib/plexi submodule or add the the command line argument
     <!-- Compile tests, excluding example tests. -->
     <javac srcdir="${test.dir}" destdir="${build-test.dir}" debug="true"
       includeantruntime="false" encoding="utf-8"
-      source="${compile.java.source}" target="${compile.java.target}">
+      source="${compile.java.version}" target="${compile.java.version}">
       <bootclasspath path="${compile.java.bootclasspath}"/>
       <compilerarg line="-Xlint -Xlint:-serial"/>
       <classpath refid="adaptor.build.classpath"/>
@@ -368,6 +374,7 @@ lib/plexi submodule or add the the command line argument
 
   <target name="run" depends="build" description="Run default adaptor">
     <java classpath="${build-src.dir}" fork="true" classname="${adaptor.class}">
+      <jvmarg line="${java.modules}"/>
       <classpath refid="adaptor.run.classpath"/>
       <classpath location="${build-generate.dir}"/>
       <sysproperty key="java.util.logging.config.file"
@@ -384,6 +391,7 @@ lib/plexi submodule or add the the command line argument
 
   <target name="run-profile" depends="build" description="Run profile adaptor">
     <java classpath="${build-src.dir}" fork="true" classname="${adaptor2.class}">
+      <jvmarg line="${java.modules}"/>
       <classpath refid="adaptor.run.classpath"/>
       <classpath location="${build-generate.dir}"/>
       <sysproperty key="java.util.logging.config.file"
@@ -404,6 +412,7 @@ lib/plexi submodule or add the the command line argument
   <target name="test" depends="build" description="Run JUnit tests">
     <junit printsummary="yes" haltonfailure="yes" forkmode="once" fork="true"
       dir="${basedir}" maxmemory="512m">
+      <jvmarg line="${java.modules}"/>
       <sysproperty key="net.sourceforge.cobertura.datafile"
         file="${build-instrument.dir}/cobertura.ser"/>
       <classpath refid="adaptor.run.classpath"/>

@@ -2,11 +2,10 @@
 # These properties are specific to the individual's development environment.
 #
 
-# Default JDK 6 installation location for Mac OS X.
-# However Macs haven't shipped with Java 6 for years.
-jdk6.home = /System/Library/Java/JavaVirtualMachines/1.6.0.jdk/Contents/Home
+# Default JDK 7 installation location for Mac OS X.
+jdk7.home = /Library/Java/JavaVirtualMachines/jdk1.7.0_76.jdk/Contents/Home
 
-# JDK 6 bootclasspath.
-build.bootclasspath = ${jdk6.home}/jre/lib/classes.jar\
-    :${jdk6.home}/jre/lib/jsse.jar\
-    :${jdk6.home}/jre/lib/jce.jar
+# JDK 7 bootclasspath.
+build.bootclasspath = ${jdk7.home}/jre/lib/rt.jar\
+    :${jdk7.home}/jre/lib/jsse.jar\
+    :${jdk7.home}/jre/lib/jce.jar
