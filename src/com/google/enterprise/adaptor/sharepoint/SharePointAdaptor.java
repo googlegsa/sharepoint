@@ -14,6 +14,9 @@
 
 package com.google.enterprise.adaptor.sharepoint;
 
+import static com.google.enterprise.adaptor.DocIdPusher.EVERYTHING_CASE_INSENSITIVE;
+import static com.google.enterprise.adaptor.DocIdPusher.FeedType.REPLACE;
+
 import com.google.common.annotations.VisibleForTesting;
 import com.google.common.base.Preconditions;
 import com.google.common.base.Splitter;
@@ -1043,7 +1046,8 @@ public class SharePointAdaptor extends AbstractAdaptor
     Map<GroupPrincipal, Collection<Principal>> groupDefs 
         = new HashMap<GroupPrincipal, Collection<Principal>>();
     groupDefs.putAll(scAdaptor.computeMembersForGroups(site.getGroups()));
-    pusher.pushGroupDefinitions(groupDefs, false);
+    String siteId = site.getMetadata().getID();
+    sitePushGroupDefinitions(siteId, pusher, groupDefs);
     log.exiting("SharePointAdaptor", "getDocIdsSiteCollectionOnly");
   }
   
@@ -1055,8 +1059,6 @@ public class SharePointAdaptor extends AbstractAdaptor
     SiteDataClient vsClient = vsAdaptor.getSiteDataClient();
     pusher.pushDocIds(Arrays.asList(virtualServerDocId));
     VirtualServer vs = vsClient.getContentVirtualServer();
-    Map<GroupPrincipal, Collection<Principal>> defs
-        = new HashMap<GroupPrincipal, Collection<Principal>>();
     for (ContentDatabases.ContentDatabase cdcd
         : vs.getContentDatabases().getContentDatabase()) {
       ContentDatabase cd;
@@ -1091,23 +1093,24 @@ public class SharePointAdaptor extends AbstractAdaptor
         }
         Map<GroupPrincipal, Collection<Principal>> siteDefs
             = siteAdaptor.computeMembersForGroups(site.getGroups());
-        for (Map.Entry<GroupPrincipal, Collection<Principal>> me
-            : siteDefs.entrySet()) {
-          defs.put(me.getKey(), me.getValue());
-          if (defs.size() >= feedMaxUrls) {
-            pusher.pushGroupDefinitions(defs, false);
-            defs.clear();
-          }
-        }
+        String siteId = site.getMetadata().getID();
+        sitePushGroupDefinitions(siteId, pusher, siteDefs);
       }
       if (excluded.size() > 0) {
         log.log(Level.INFO,
             "List of site collections excluded from index in "
                 + "getDocIds: {0}", excluded);
       }
-    }
-    pusher.pushGroupDefinitions(defs, false);
+    }    
     log.exiting("SharePointAdaptor", "getDocIdsVirtualServer");
+  }
+  
+  private void sitePushGroupDefinitions(String siteId, DocIdPusher pusher,
+      Map<GroupPrincipal, Collection<Principal>> groupDefs)
+      throws InterruptedException {
+    String sourceId = "SITEID-" + siteId.replaceAll("[{}]", "");
+    pusher.pushGroupDefinitions(groupDefs, EVERYTHING_CASE_INSENSITIVE,
+        REPLACE, sourceId, null);
   }
 
   @Override
@@ -1250,8 +1253,6 @@ public class SharePointAdaptor extends AbstractAdaptor
       if (updatedSiteSecurity.isEmpty()) {
         return;
       }
-      Map<GroupPrincipal, Collection<Principal>> groupDefs
-          = new HashMap<GroupPrincipal, Collection<Principal>>();
       for (String siteUrl : updatedSiteSecurity) {
         Site site;
         try {
@@ -1262,9 +1263,11 @@ public class SharePointAdaptor extends AbstractAdaptor
               + siteUrl, ex);
           continue;
         }
-        groupDefs.putAll(siteAdaptor.computeMembersForGroups(site.getGroups()));
-      }
-      pusher.pushGroupDefinitions(groupDefs, false);
+        Map<GroupPrincipal, Collection<Principal>> groupDefs
+            = siteAdaptor.computeMembersForGroups(site.getGroups());
+        String siteId = site.getMetadata().getID();
+        sitePushGroupDefinitions(siteId, pusher, groupDefs);
+      }      
     }
 
   @VisibleForTesting
@@ -2261,9 +2264,10 @@ public class SharePointAdaptor extends AbstractAdaptor
               + "since adaptor is configured for site collection only mode.");
         }
         response.putNamedResource(SITE_COLLECTION_ADMIN_FRAGMENT, acl.build());
-        final GroupMembership groups =
-            siteDataClient.getContentSite().getGroups();        
+        Site site = siteDataClient.getContentSite();
+        final GroupMembership groups = site.getGroups();
         final String siteUrl = request.getDocId().getUniqueId();
+        final String siteId = site.getMetadata().getID();
         executor.execute(new Runnable() {
           @Override
           public void run() {
@@ -2271,7 +2275,8 @@ public class SharePointAdaptor extends AbstractAdaptor
               final Map<GroupPrincipal, Collection<Principal>> groupDefs =
                   new HashMap<GroupPrincipal, Collection<Principal>>();
               groupDefs.putAll(computeMembersForGroups(groups));
-              context.getDocIdPusher().pushGroupDefinitions(groupDefs, false);
+              sitePushGroupDefinitions(siteId, context.getDocIdPusher(),
+                  groupDefs);
             } catch (InterruptedException e) {
               log.log(Level.WARNING,
                   "interrupted during group push for site " + siteUrl, e);

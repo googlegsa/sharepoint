@@ -16,6 +16,7 @@ package com.google.enterprise.adaptor.sharepoint;
 
 import com.google.enterprise.adaptor.Acl;
 import com.google.enterprise.adaptor.Metadata;
+import com.google.enterprise.adaptor.MetadataTransform.TransmissionDecision;
 import com.google.enterprise.adaptor.Response;
 
 import java.io.IOException;
@@ -196,5 +197,10 @@ class GetContentsResponse implements Response {
   public boolean isNoContent() {
     return noContent;
   }
- 
+  
+  public void setParam(String key, String value) {}
+  
+  public void setForcedTransmissionDecision(
+      TransmissionDecision transmissionDecision) {}
+  
 }

@@ -19,6 +19,8 @@ import static org.junit.Assert.assertEquals;
 import com.google.enterprise.adaptor.Config;
 import com.google.enterprise.adaptor.DocId;
 import com.google.enterprise.adaptor.DocIdPusher;
+import com.google.enterprise.adaptor.testing.RecordingDocIdPusher;
+import com.google.enterprise.adaptor.testing.UnsupportedDocIdPusher;
 
 import com.microsoft.schemas.sharepoint.soap.ObjectType;
 
@@ -122,7 +124,7 @@ public class HtmlResponseWriterTest {
         + "</body></html>";
     final List<DocIdPusher.Record> goldenRecords = Arrays.asList(
         new DocIdPusher.Record.Builder(new DocId("s/l")).build());
-    AccumulatingDocIdPusher docIdPusher = new AccumulatingDocIdPusher();
+    RecordingDocIdPusher docIdPusher = new RecordingDocIdPusher();
     writer = new HtmlResponseWriter(baos, charset,
         context.getDocIdEncoder(), Locale.ENGLISH, 1, docIdPusher,
         executor);
