@@ -23,6 +23,7 @@ import static org.junit.Assert.assertTrue;
 import com.google.enterprise.adaptor.Acl;
 import com.google.enterprise.adaptor.Config;
 import com.google.enterprise.adaptor.DocId;
+import com.google.enterprise.adaptor.DocRequest;
 import com.google.enterprise.adaptor.GroupPrincipal;
 import com.google.enterprise.adaptor.InvalidConfigurationException;
 
@@ -31,6 +32,8 @@ import com.google.enterprise.adaptor.sharepoint.SharePointUserProfileAdaptor.Use
 import com.google.enterprise.adaptor.sharepoint.SharePointUserProfileAdaptor.UserProfileServiceFactory;
 import com.google.enterprise.adaptor.sharepoint.SharePointUserProfileAdaptor.UserProfileServiceWS;
 import com.google.enterprise.adaptor.testing.RecordingDocIdPusher;
+import com.google.enterprise.adaptor.testing.RecordingResponse;
+import com.google.enterprise.adaptor.testing.RecordingResponse.State;
 import com.microsoft.schemas.sharepoint.soap.authentication.AuthenticationMode;
 import com.microsoft.schemas.sharepoint.soap.authentication.AuthenticationSoap;
 import com.microsoft.schemas.sharepoint.soap.authentication.LoginResult;
@@ -352,10 +355,10 @@ public class SharePointUserProfileAdaptorTest {
     adaptor.init(new MockAdaptorContext(config, pusher));
 
     ByteArrayOutputStream baos = new ByteArrayOutputStream();
-    GetContentsRequest request = new GetContentsRequest(
+    DocRequest request = new DocRequest(
         new DocId(SharePointUserProfileAdaptor.SOCIAL_ID_PREFIX 
           + "domain\\user1"));
-    GetContentsResponse response = new GetContentsResponse(baos);
+    RecordingResponse response = new RecordingResponse(baos);
     adaptor.getDocContent(request, response);
     
     String responseString = new String(baos.toByteArray(), charset);
@@ -363,7 +366,7 @@ public class SharePointUserProfileAdaptorTest {
         + "</title></head><body><h1>First &amp; Last</h1></body></html>";
     assertEquals(golden, responseString);
 
-    assertFalse(response.isNotFound());
+    assertFalse(response.getState().equals(State.NOT_FOUND));
     assertEquals("domain\\user1", response.getMetadata().getOneValue(
         "google_social_user_accountname"));
     assertEquals("Value1", response.getMetadata().getOneValue(
@@ -429,13 +432,12 @@ public class SharePointUserProfileAdaptorTest {
 
     RecordingDocIdPusher pusher = new RecordingDocIdPusher();
     adaptor.init(new MockAdaptorContext(config, pusher));
-
-    ByteArrayOutputStream baos = new ByteArrayOutputStream();
-    GetContentsRequest request = new GetContentsRequest(
+    
+    DocRequest request = new DocRequest(
         new DocId(SharePointUserProfileAdaptor.SOCIAL_ID_PREFIX + "user1"));
-    GetContentsResponse response = new GetContentsResponse(baos);
+    RecordingResponse response = new RecordingResponse();
     adaptor.getDocContent(request, response);
-    assertTrue(response.isNotFound());
+    assertEquals(State.NOT_FOUND, response.getState());
   }
 
   @Test
@@ -453,12 +455,11 @@ public class SharePointUserProfileAdaptorTest {
     RecordingDocIdPusher pusher = new RecordingDocIdPusher();
     adaptor.init(new MockAdaptorContext(config, pusher));
 
-    ByteArrayOutputStream baos = new ByteArrayOutputStream();
-    GetContentsRequest request = new GetContentsRequest(
+    DocRequest request = new DocRequest(
         new DocId("user1"));
-    GetContentsResponse response = new GetContentsResponse(baos);
+    RecordingResponse response = new RecordingResponse();
     adaptor.getDocContent(request, response);
-    assertTrue(response.isNotFound());
+    assertEquals(State.NOT_FOUND, response.getState());
   }
 
   @Test
