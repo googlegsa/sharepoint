@@ -14,18 +14,15 @@
 
 package com.google.enterprise.adaptor.sharepoint;
 
-import static com.google.enterprise.adaptor.sharepoint.SharePointAdaptor.FileInfo;
-import static com.google.enterprise.adaptor.sharepoint.SharePointAdaptor.HttpClient;
-import static com.google.enterprise.adaptor.sharepoint.SharePointAdaptor.SoapFactory;
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertNotNull;
 import static org.junit.Assert.assertNull;
 import static org.junit.Assert.assertTrue;
 import static org.junit.Assert.fail;
+import static com.google.common.base.Preconditions.checkNotNull;
 
 import com.google.common.base.Objects;
-import com.google.common.collect.ImmutableList;
 import com.google.common.util.concurrent.Callables;
 import com.google.enterprise.adaptor.Acl;
 import com.google.enterprise.adaptor.Config;
@@ -42,6 +39,7 @@ import com.google.enterprise.adaptor.UserPrincipal;
 import com.google.enterprise.adaptor.sharepoint.ActiveDirectoryClient.ADServer;
 import com.google.enterprise.adaptor.sharepoint.SamlAuthenticationHandler.SamlHandshakeManager;
 import com.google.enterprise.adaptor.sharepoint.SharePointAdaptor.FileInfo;
+import com.google.enterprise.adaptor.sharepoint.SharePointAdaptor.HttpClient;
 import com.google.enterprise.adaptor.sharepoint.SharePointAdaptor.SharePointUrl;
 import com.google.enterprise.adaptor.sharepoint.SharePointAdaptor.SiteUserIdMappingCallable;
 import com.google.enterprise.adaptor.sharepoint.SharePointAdaptor.SoapFactory;
@@ -111,7 +109,6 @@ import java.io.ByteArrayInputStream;
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;
 import java.io.InputStream;
-import java.io.OutputStream;
 import java.math.BigInteger;
 import java.net.HttpURLConnection;
 import java.net.URI;
@@ -150,12 +147,18 @@ public class SharePointAdaptorTest {
   private static final String VS_ENDPOINT
       = "http://localhost:1/_vti_bin/SiteData.asmx";
   private static final ContentExchange VS_CONTENT_EXCHANGE
-      = new ContentExchange(ObjectType.VIRTUAL_SERVER, null, null, null,
-          true, false, null, loadTestString("vs.xml"));
+      = new ContentExchange.Builder(ObjectType.VIRTUAL_SERVER)
+          .setRetrieveChildItems(true)
+          .setSecurityOnly(false)
+          .setResult(loadTestString("vs.xml"))
+          .build();
   private static final ContentExchange CD_CONTENT_EXCHANGE
-      = new ContentExchange(ObjectType.CONTENT_DATABASE,
-          "{4fb7dea1-2912-4927-9eda-1ea2f0977cf8}", null, null, true, false,
-          null, loadTestString("cd.xml"));
+      = new ContentExchange.Builder(ObjectType.CONTENT_DATABASE)
+          .setObjectId("{4fb7dea1-2912-4927-9eda-1ea2f0977cf8}")
+          .setRetrieveChildItems(true)
+          .setSecurityOnly(false)
+          .setResult(loadTestString("cd.xml"))
+          .build();
   private static final String SITES_SITECOLLECTION_ENDPOINT
       = "http://localhost:1/sites/SiteCollection/_vti_bin/SiteData.asmx";
   private static final SiteAndWebExchange SITES_SITECOLLECTION_SAW_EXCHANGE
@@ -166,66 +169,110 @@ public class SharePointAdaptorTest {
       = new SiteAndWebExchange("http://localhost:1", 0, "http://localhost:1",
           "http://localhost:1");
   private static final URLSegmentsExchange SITES_SITECOLLECTION_URLSEG_EXCHANGE
-      = new URLSegmentsExchange("http://localhost:1/sites/SiteCollection",
-          true, null, null, null, null);
+      = new URLSegmentsExchange
+          .Builder("http://localhost:1/sites/SiteCollection")
+          .setResult(true)
+          .build();
   private static final ContentExchange SITES_SITECOLLECTION_S_CONTENT_EXCHANGE
-      = new ContentExchange(ObjectType.SITE, null, null, null, true, false,
-          null, loadTestString("sites-SiteCollection-s.xml"));
+      = new ContentExchange.Builder(ObjectType.SITE)
+          .setRetrieveChildItems(true)
+          .setSecurityOnly(false)
+          .setResult(loadTestString("sites-SiteCollection-s.xml"))
+          .build();
   private static final ContentExchange SITES_SITECOLLECTION_SC_CONTENT_EXCHANGE
-      = new ContentExchange(ObjectType.SITE_COLLECTION, null, null, null,
-          true, false, null, loadTestString("sites-SiteCollection-sc.xml"));
+      = new ContentExchange.Builder(ObjectType.SITE_COLLECTION)
+          .setRetrieveChildItems(true)
+          .setSecurityOnly(false)
+          .setResult(loadTestString("sites-SiteCollection-sc.xml"))
+          .build();
   private static final URLSegmentsExchange
       SITES_SITECOLLECTION_LISTS_CUSTOMLIST_URLSEG_EXCHANGE
-      = new URLSegmentsExchange(
-          "http://localhost:1/sites/SiteCollection/Lists/Custom List"
-            + "/AllItems.aspx",
-          true, null, null, "{6F33949A-B3FF-4B0C-BA99-93CB518AC2C0}", null);
+      = new URLSegmentsExchange
+          .Builder("http://localhost:1/sites/SiteCollection/Lists/Custom List"
+              + "/AllItems.aspx")          
+          .setResult(true)
+          .setListId("{6F33949A-B3FF-4B0C-BA99-93CB518AC2C0}")
+          .build();
   private static final ContentExchange
       SITES_SITECOLLECTION_LISTS_CUSTOMLIST_L_CONTENT_EXCHANGE
-      = new ContentExchange(ObjectType.LIST,
-          "{6F33949A-B3FF-4B0C-BA99-93CB518AC2C0}", null, null, false, false,
-          null, loadTestString("sites-SiteCollection-Lists-CustomList-l.xml"));
+      = new ContentExchange.Builder(ObjectType.LIST)
+          .setObjectId("{6F33949A-B3FF-4B0C-BA99-93CB518AC2C0}")
+          .setRetrieveChildItems(false)
+          .setSecurityOnly(false)
+          .setResult(
+              loadTestString("sites-SiteCollection-Lists-CustomList-l.xml"))
+          .build();
   private static final ContentExchange
       SITES_SITECOLLECTION_LISTS_CUSTOMLIST_F_CONTENT_EXCHANGE
-      = new ContentExchange(ObjectType.FOLDER,
-          "{6F33949A-B3FF-4B0C-BA99-93CB518AC2C0}", "", null, true, false,
-          null, loadTestString("sites-SiteCollection-Lists-CustomList-f.xml"));
+      = new ContentExchange.Builder(ObjectType.FOLDER)
+          .setObjectId("{6F33949A-B3FF-4B0C-BA99-93CB518AC2C0}")
+          .setFolderUrl("")
+          .setRetrieveChildItems(true)
+          .setSecurityOnly(false)
+          .setResult(
+              loadTestString("sites-SiteCollection-Lists-CustomList-f.xml"))
+          .build();
   private static final URLSegmentsExchange
       SITES_SITECOLLECTION_LISTS_CUSTOMLIST_1_URLSEG_EXCHANGE
-      = new URLSegmentsExchange(
-          "http://localhost:1/sites/SiteCollection/Lists/Custom List"
-            + "/Test Folder",
-          true, null, null, "{6F33949A-B3FF-4B0C-BA99-93CB518AC2C0}", "1");
+      = new URLSegmentsExchange
+          .Builder("http://localhost:1/sites/SiteCollection/Lists/Custom List"
+              + "/Test Folder")
+          .setResult(true)
+          .setListId("{6F33949A-B3FF-4B0C-BA99-93CB518AC2C0}")
+          .setItemId("1")
+          .build();
   private static final URLSegmentsExchange
       SITES_SITECOLLECTION_LISTS_CUSTOMLIST_2_URLSEG_EXCHANGE
-      = new URLSegmentsExchange(
-          "http://localhost:1/sites/SiteCollection/Lists/Custom List"
-            + "/Test Folder/2_.000",
-          true, null, null, "{6F33949A-B3FF-4B0C-BA99-93CB518AC2C0}", "2");
+      = new URLSegmentsExchange
+          .Builder("http://localhost:1/sites/SiteCollection/Lists/Custom List"
+              + "/Test Folder/2_.000")
+          .setResult(true)
+          .setListId("{6F33949A-B3FF-4B0C-BA99-93CB518AC2C0}")
+          .setItemId("2")
+          .build();
   private static final ContentExchange
       SITES_SITECOLLECTION_LISTS_CUSTOMLIST_1_LI_CONTENT_EXCHANGE
-      = new ContentExchange(ObjectType.LIST_ITEM,
-          "{6F33949A-B3FF-4B0C-BA99-93CB518AC2C0}", "", "1", false, false,
-          null,
-          loadTestString("sites-SiteCollection-Lists-CustomList-1-li.xml"));
+      = new ContentExchange.Builder(ObjectType.LIST_ITEM)
+          .setObjectId("{6F33949A-B3FF-4B0C-BA99-93CB518AC2C0}")
+          .setFolderUrl("")
+          .setItemId("1")
+          .setRetrieveChildItems(false)
+          .setSecurityOnly(false)
+          .setResult(
+              loadTestString("sites-SiteCollection-Lists-CustomList-1-li.xml"))
+          .build();
   private static final ContentExchange
       SITES_SITECOLLECTION_LISTS_CUSTOMLIST_1_F_CONTENT_EXCHANGE
-      = new ContentExchange(ObjectType.FOLDER,
-          "{6F33949A-B3FF-4B0C-BA99-93CB518AC2C0}", "Test Folder", null,
-          true, false, null,
-          loadTestString("sites-SiteCollection-Lists-CustomList-1-f.xml"));
+      = new ContentExchange.Builder(ObjectType.FOLDER)
+          .setObjectId("{6F33949A-B3FF-4B0C-BA99-93CB518AC2C0}")
+          .setFolderUrl("Test Folder")
+          .setRetrieveChildItems(true)
+          .setSecurityOnly(false)
+          .setResult(
+              loadTestString("sites-SiteCollection-Lists-CustomList-1-f.xml"))
+          .build();
   private static final ContentExchange
       SITES_SITECOLLECTION_LISTS_CUSTOMLIST_2_LI_CONTENT_EXCHANGE
-      = new ContentExchange(ObjectType.LIST_ITEM,
-          "{6F33949A-B3FF-4B0C-BA99-93CB518AC2C0}", "", "2", false, false,
-          null,
-          loadTestString("sites-SiteCollection-Lists-CustomList-2-li.xml"));
+      = new ContentExchange.Builder(ObjectType.LIST_ITEM)
+          .setObjectId("{6F33949A-B3FF-4B0C-BA99-93CB518AC2C0}")
+          .setFolderUrl("")
+          .setItemId("2")
+          .setRetrieveChildItems(false)
+          .setSecurityOnly(false)
+          .setResult(
+              loadTestString("sites-SiteCollection-Lists-CustomList-2-li.xml"))
+          .build();
   private static final ContentExchange
       SITES_SITECOLLECTION_LISTS_CUSTOMLIST_2_A_CONTENT_EXCHANGE
-      = new ContentExchange(ObjectType.LIST_ITEM_ATTACHMENTS,
-          "{6F33949A-B3FF-4B0C-BA99-93CB518AC2C0}", "", "2", true, false,
-          null,
-          loadTestString("sites-SiteCollection-Lists-CustomList-2-a.xml"));
+      = new ContentExchange.Builder(ObjectType.LIST_ITEM_ATTACHMENTS)
+          .setObjectId("{6F33949A-B3FF-4B0C-BA99-93CB518AC2C0}")
+          .setFolderUrl("")
+          .setItemId("2")
+          .setRetrieveChildItems(true)
+          .setSecurityOnly(false)
+          .setResult(
+              loadTestString("sites-SiteCollection-Lists-CustomList-2-a.xml"))
+          .build();
   private static final String DEFAULT_NAMESPACE = "Default";
   private static final String SITES_SITECOLLECTION_NAMESPACE
       = "Default_http://localhost:1/sites/SiteCollection";
@@ -922,8 +969,9 @@ public class SharePointAdaptorTest {
             .register(ROOT_SITE_SAW_EXCHANGE)
             .register(new SiteAndWebExchange(
                 wrongPage, 0, "http://localhost:1", "http://localhost:1"))
-            .register(new URLSegmentsExchange(
-                wrongPage, false, null, null, null, null)));
+            .register(new URLSegmentsExchange.Builder(wrongPage)
+                .setResult(false)
+                .build()));
 
     adaptor = new SharePointAdaptor(siteDataFactory,
         new UnsupportedHttpClient(), executorFactory,
@@ -1261,10 +1309,15 @@ public class SharePointAdaptorTest {
                     "<ContentDatabase ID=\"{error content db}\" />"
                     + "</ContentDatabases>"))
             .register(CD_CONTENT_EXCHANGE)
-            .register(new ContentExchange(
-                ObjectType.CONTENT_DATABASE, "{error content db}", null, null,
-                true, false, null, "error", false,
-                new WebServiceException("Content database not available")))
+            .register(new ContentExchange.Builder(ObjectType.CONTENT_DATABASE)
+                .setObjectId("{error content db}")
+                .setRetrieveChildItems(true)
+                .setSecurityOnly(false)
+                .setResult("error")
+                .setUseOnce(false)
+                .setExceptionToThrow(new WebServiceException(
+                    "Content database not available"))
+                .build())
             .register(ROOT_SITE_SAW_EXCHANGE))
         .endpoint("http://localhost:1/_vti_bin/People.asmx", mockPeople);
 
@@ -1509,12 +1562,20 @@ public class SharePointAdaptorTest {
       goldenGroups2 = Collections.unmodifiableMap(tmp);
     }
 
-    ContentExchange scContentExchange1 = new ContentExchange(
-        ObjectType.SITE_COLLECTION, null, null, null, true, false, null,
-        loadTestString("sites-SiteCollection-sc-useonce.xml"), true);
-    ContentExchange scContentExchange2 = new ContentExchange(
-        ObjectType.SITE_COLLECTION, null, null, null, true, false, null,
-        loadTestString("sites-SiteCollection-sc.xml"), false);
+    ContentExchange scContentExchange1 = new ContentExchange
+        .Builder(ObjectType.SITE_COLLECTION)
+        .setRetrieveChildItems(true)
+        .setSecurityOnly(false)
+        .setResult(loadTestString("sites-SiteCollection-sc-useonce.xml"))
+        .setUseOnce(true)
+        .build();
+    ContentExchange scContentExchange2 = new ContentExchange
+        .Builder(ObjectType.SITE_COLLECTION)
+        .setRetrieveChildItems(true)
+        .setSecurityOnly(false)
+        .setResult(loadTestString("sites-SiteCollection-sc.xml"))
+        .setUseOnce(false)
+        .build();
 
     SoapFactory siteDataFactory = MockSoapFactory.blank()
         .endpoint(VS_ENDPOINT, MockSiteData.blank()
@@ -1756,8 +1817,10 @@ public class SharePointAdaptorTest {
             .register(SITES_SITECOLLECTION_S_CONTENT_EXCHANGE)
             .register(SITES_SITECOLLECTION_SC_CONTENT_EXCHANGE))
         .endpoint(subSiteUrl + "/_vti_bin/SiteData.asmx", MockSiteData.blank()
-                .register(new URLSegmentsExchange(
-                    subSiteUrl, true, "WebId", null, null, null))
+                .register(new URLSegmentsExchange.Builder(subSiteUrl)
+                    .setResult(true)
+                    .setWebId("WebId")
+                    .build())
                 .register(SITES_SITECOLLECTION_S_CONTENT_EXCHANGE
                     .replaceInContent("/SiteCollection",
                         "/SiteCollection/SubSite")
@@ -1819,8 +1882,10 @@ public class SharePointAdaptorTest {
             .register(SITES_SITECOLLECTION_S_CONTENT_EXCHANGE)
             .register(SITES_SITECOLLECTION_SC_CONTENT_EXCHANGE))
         .endpoint(subSiteUrl + "/_vti_bin/SiteData.asmx", MockSiteData.blank()
-                .register(new URLSegmentsExchange(
-                    subSiteUrl, true, "WebId", null, null, null))
+                .register(new URLSegmentsExchange.Builder(subSiteUrl)
+                    .setResult(true)
+                    .setWebId("WebId")
+                    .build())
                 .register(SITES_SITECOLLECTION_S_CONTENT_EXCHANGE
                     .replaceInContent("/SiteCollection",
                         "/SiteCollection/SubSite")
@@ -2229,7 +2294,7 @@ public class SharePointAdaptorTest {
             new GroupPrincipal("Everyone", DEFAULT_NAMESPACE),
             NT_AUTHORITY_AUTHENTICATED_USERS,
             new GroupPrincipal("roleprovider:super", DEFAULT_NAMESPACE)))
-        .build(),response.getAcl());
+        .build(), response.getAcl());
     assertEquals(goldenGroups, pusher.getGroupDefinitions());
   }
 
@@ -2345,9 +2410,11 @@ public class SharePointAdaptorTest {
   public void testGetDocContentListNonDefaultView() throws Exception {
     SiteDataSoap siteData = MockSiteData.blank()
         .register(SITES_SITECOLLECTION_S_CONTENT_EXCHANGE)       
-        .register(new URLSegmentsExchange(
-          "http://localhost:1/sites/SiteCollection/Lists/Custom List"
-          + "/NonDefault.aspx", false, null, null, null, null))
+        .register(new URLSegmentsExchange
+            .Builder("http://localhost:1/sites/SiteCollection/Lists/"
+                + "Custom List/NonDefault.aspx")
+            .setResult(false)
+            .build())
         .register(SITES_SITECOLLECTION_LISTS_CUSTOMLIST_L_CONTENT_EXCHANGE);
     adaptor = new SharePointAdaptor(initableSoapFactory,
         new UnsupportedHttpClient(), executorFactory,
@@ -2376,10 +2443,12 @@ public class SharePointAdaptorTest {
             + "Custom List/AllItems.aspx\"", "DefaultViewUrl=\"/\""))        
         .register(SITES_SITECOLLECTION_LISTS_CUSTOMLIST_F_CONTENT_EXCHANGE)
         .register(SITES_SITECOLLECTION_S_CONTENT_EXCHANGE)
-        .register(new URLSegmentsExchange(
-              "http://localhost:1/sites/SiteCollection/Lists/Custom List",
-               true, null, null, "{6F33949A-B3FF-4B0C-BA99-93CB518AC2C0}",
-               null));
+        .register(new URLSegmentsExchange
+            .Builder("http://localhost:1/sites/SiteCollection/"
+                + "Lists/Custom List")
+            .setResult(true)
+            .setListId("{6F33949A-B3FF-4B0C-BA99-93CB518AC2C0}")
+            .build());
     adaptor = new SharePointAdaptor(initableSoapFactory,
         new UnsupportedHttpClient(), executorFactory,
         new MockAuthenticationClientFactoryForms(),
@@ -2486,9 +2555,11 @@ public class SharePointAdaptorTest {
         .register(SITES_SITECOLLECTION_LISTS_CUSTOMLIST_L_CONTENT_EXCHANGE)
         .register(SITES_SITECOLLECTION_LISTS_CUSTOMLIST_2_LI_CONTENT_EXCHANGE
             .replaceInContent("data ItemCount=\"1\"", "data ItemCount=\"0\""))
-        .register(new URLSegmentsExchange(
-            "http://localhost:1/sites/SiteCollection/Lists/Custom List"
-                + "/Attachments/2/1046000.pdf", false, null, null, null, null));
+        .register(new URLSegmentsExchange
+            .Builder("http://localhost:1/sites/SiteCollection/Lists/Custom List"
+                + "/Attachments/2/1046000.pdf")
+            .setResult(false)
+            .build());
 
     final String site = "http://localhost:1/sites/SiteCollection";
     final String attachmentId = site 
@@ -3010,9 +3081,13 @@ public class SharePointAdaptorTest {
             .replaceInContent(
               "ows_ScopeId='2;#{2E29615C-59E7-493B-B08A-3642949CC069}'",
               "ows_ScopeId='2;#{f9cb02b3-7f29-4cac-804f-ba6e14f1eb39}'"))
-        .register(new URLSegmentsExchange(
-            "http://localhost:1/sites/SiteCollection/Lists/Custom List/2_.000",
-          true, null, null, "{6F33949A-B3FF-4B0C-BA99-93CB518AC2C0}", "2"));
+        .register(new URLSegmentsExchange
+            .Builder("http://localhost:1/sites/SiteCollection/Lists/"
+                + "Custom List/2_.000")
+            .setResult(true)
+            .setListId("{6F33949A-B3FF-4B0C-BA99-93CB518AC2C0}")
+            .setItemId("2")
+            .build());
     adaptor = new SharePointAdaptor(initableSoapFactory,
         new UnsupportedHttpClient(), executorFactory,
         new MockAuthenticationClientFactoryForms(),
@@ -3055,9 +3130,13 @@ public class SharePointAdaptorTest {
             .replaceInContent(
               "ows_ScopeId='2;#{2E29615C-59E7-493B-B08A-3642949CC069}'",
               "ows_ScopeId='2;#{f9cb02b3-7f29-4cac-804f-ba6e14f1eb39}'"))
-        .register(new URLSegmentsExchange("http://localhost:1/sites/"
-            + "SiteCollection/Lists/Custom List/outlookFile.msg",
-          true, null, null, "{6F33949A-B3FF-4B0C-BA99-93CB518AC2C0}", "2"));
+        .register(new URLSegmentsExchange
+            .Builder("http://localhost:1/sites/"
+                + "SiteCollection/Lists/Custom List/outlookFile.msg")
+            .setResult(true)
+            .setListId("{6F33949A-B3FF-4B0C-BA99-93CB518AC2C0}")
+            .setItemId("2")
+            .build());
     final String goldenContents = "msg contents";
     final String goldenContentType = "application/octet-stream";
     adaptor = new SharePointAdaptor(initableSoapFactory,
@@ -3128,9 +3207,13 @@ public class SharePointAdaptorTest {
             .replaceInContent(
               "ows_ScopeId='2;#{2E29615C-59E7-493B-B08A-3642949CC069}'",
               "ows_ScopeId='2;#{f9cb02b3-7f29-4cac-804f-ba6e14f1eb39}'"))
-        .register(new URLSegmentsExchange("http://localhost:1/sites/"
-            + "SiteCollection/Lists/Custom List/cs.pdf",
-          true, null, null, "{6F33949A-B3FF-4B0C-BA99-93CB518AC2C0}", "2"));
+        .register(new URLSegmentsExchange
+            .Builder("http://localhost:1/sites/"
+                + "SiteCollection/Lists/Custom List/cs.pdf")
+            .setResult(true)
+            .setListId("{6F33949A-B3FF-4B0C-BA99-93CB518AC2C0}")
+            .setItemId("2")
+            .build());
     final String goldenContents = "pdf contents";
     final String goldenContentType = "application/pdf";
     adaptor = new SharePointAdaptor(initableSoapFactory,
@@ -3536,7 +3619,7 @@ public class SharePointAdaptorTest {
         .getDocContent(request, response);    
     assertEquals(URI.create("http://localhost:1/sites/SiteCollection/Lists/"
           + "Custom%20List?RootFolder=/sites/SiteCollection/"
-          + "Lists/Custom%20List/Test%20Folder"),response.getDisplayUrl());
+          + "Lists/Custom%20List/Test%20Folder"), response.getDisplayUrl());
   }
   
   @Test
@@ -3601,10 +3684,13 @@ public class SharePointAdaptorTest {
     final String getChangesSiteCollection726 =
         loadTestString("testModifiedGetDocIdsClient.changes-sc.xml");
     final ContentExchange getContentSiteCollection  =
-        new ContentExchange(ObjectType.SITE_COLLECTION, null, null, null,
-            true, false, null, loadTestString("sites-SiteCollection-sc.xml")
+        new ContentExchange.Builder(ObjectType.SITE_COLLECTION)
+            .setRetrieveChildItems(true)
+            .setSecurityOnly(false)
+            .setResult(loadTestString("sites-SiteCollection-sc.xml")
                 .replace("http://localhost:1/sites/SiteCollection",
-                    "http://localhost:1/sites/sitecollection"));
+                    "http://localhost:1/sites/sitecollection"))
+            .build();
     SoapFactory siteDataFactory = MockSoapFactory.blank()        
         .endpoint(SITES_SITECOLLECTION_ENDPOINT.replace("SiteCollection",
             "sitecollection"), MockSiteData.blank()
@@ -3682,12 +3768,18 @@ public class SharePointAdaptorTest {
           "<ContentDatabase ID=\"{4fb7dea1-2912-4927-9eda-1ea2f0977cf8}\" />"
            + "<ContentDatabase ID=\"{3ac1e3b3-2326-7341-4afe-16751eafbc51}\" />"
           ))
-        .register(new ContentExchange(ObjectType.CONTENT_DATABASE,
-              "{4fb7dea1-2912-4927-9eda-1ea2f0977cf8}", null, null, false,
-              false, null, getContentContentDatabase4fb))
-        .register(new ContentExchange(ObjectType.CONTENT_DATABASE,
-              "{3ac1e3b3-2326-7341-4afe-16751eafbc51}", null, null, false,
-              false, null, getContentContentDatabase3ac));
+        .register(new ContentExchange.Builder(ObjectType.CONTENT_DATABASE)
+            .setObjectId("{4fb7dea1-2912-4927-9eda-1ea2f0977cf8}")
+            .setRetrieveChildItems(false)
+            .setSecurityOnly(false)
+            .setResult(getContentContentDatabase4fb)
+            .build())
+        .register(new ContentExchange.Builder(ObjectType.CONTENT_DATABASE)
+            .setObjectId("{3ac1e3b3-2326-7341-4afe-16751eafbc51}")
+            .setRetrieveChildItems(false)
+            .setSecurityOnly(false)
+            .setResult(getContentContentDatabase3ac)
+            .build());
     SiteDataSoap state3 = MockSiteData.blank()
         .register(VS_CONTENT_EXCHANGE)
         .register(new ChangesExchange(ObjectType.CONTENT_DATABASE,
@@ -3778,9 +3870,12 @@ public class SharePointAdaptorTest {
         .register(vsContentExchange)
         .register(CD_CONTENT_EXCHANGE)
         .register(ROOT_SITE_SAW_EXCHANGE)
-        .register(new ContentExchange(ObjectType.CONTENT_DATABASE,
-              "{4fb7dea1-2912-4927-9eda-1ea2f0977cf8}", null, null, false,
-              false, null, getContentContentDatabase4fb))
+        .register(new ContentExchange.Builder(ObjectType.CONTENT_DATABASE)
+            .setObjectId("{4fb7dea1-2912-4927-9eda-1ea2f0977cf8}")
+            .setRetrieveChildItems(false)
+            .setSecurityOnly(false)
+            .setResult(getContentContentDatabase4fb)
+            .build())
         // The timeout in SP 2010 is not a timeout and should always be at least
         // 60 to get a result.
         .register(new ChangesExchange(ObjectType.CONTENT_DATABASE,
@@ -5230,15 +5325,55 @@ public class SharePointAdaptorTest {
     public final String strListID;
     public final String strItemID;
 
-    public URLSegmentsExchange(String strURL, boolean getURLSegmentsResult,
-        String strWebID, String strBucketID, String strListID,
-        String strItemID) {
-      this.strURL = strURL;
-      this.getURLSegmentsResult = getURLSegmentsResult;
-      this.strWebID = strWebID;
-      this.strBucketID = strBucketID;
-      this.strListID = strListID;
-      this.strItemID = strItemID;
+    public URLSegmentsExchange(Builder builder) {
+      this.strURL = builder.url;
+      this.getURLSegmentsResult = builder.getUrlSegmentsResult;
+      this.strWebID = builder.webId;
+      this.strBucketID = builder.bucketId;
+      this.strListID = builder.listId;
+      this.strItemID = builder.itemId;     
+    }
+
+    private static class Builder {
+      private String url;
+      private boolean getUrlSegmentsResult;
+      private String webId;
+      private String bucketId;
+      private String listId;
+      private String itemId;
+      
+      Builder(String url) {
+        this.url = checkNotNull(url);
+      }
+
+      Builder setResult(boolean getUrlSegmentsResult) {
+        this.getUrlSegmentsResult = getUrlSegmentsResult;
+        return this;
+      }
+
+      Builder setWebId(String webId) {
+        this.webId = webId;
+        return this;
+      }
+
+      Builder setBucketId(String bucketId) {
+        this.bucketId = bucketId;
+        return this;
+      }
+
+      Builder setListId(String listId) {
+        this.listId = listId;
+        return this;
+      }
+
+      Builder setItemId(String itemId) {
+        this.itemId = itemId;
+        return this;
+      }
+
+      URLSegmentsExchange build() {
+        return new URLSegmentsExchange(this);
+      }
     }
   }
 
@@ -5260,37 +5395,17 @@ public class SharePointAdaptorTest {
     public final boolean useOnce;
     final AtomicBoolean responseUsed = new AtomicBoolean(false);
 
-    public ContentExchange(ObjectType objectType, String objectId,
-        String folderUrl, String itemId, boolean retrieveChildItems,
-        boolean securityOnly, String lastItemIdOnPage,
-        String getContentResult) {
-      this(objectType, objectId, folderUrl, itemId, retrieveChildItems,
-          securityOnly, lastItemIdOnPage, getContentResult, false);
-    }
-    
-    public ContentExchange(ObjectType objectType, String objectId,
-        String folderUrl, String itemId, boolean retrieveChildItems,
-        boolean securityOnly, String lastItemIdOnPage,
-        String getContentResult, boolean useOnce) {
-      this(objectType, objectId, folderUrl, itemId, retrieveChildItems,
-          securityOnly, lastItemIdOnPage, getContentResult, useOnce, null);
-    }
-
-    public ContentExchange(ObjectType objectType, String objectId,
-        String folderUrl, String itemId, boolean retrieveChildItems,
-        boolean securityOnly, String lastItemIdOnPage,
-        String getContentResult, boolean useOnce,
-        WebServiceException exceptionToThrow) {
-      this.objectType = objectType;
-      this.objectId = objectId;
-      this.folderUrl = folderUrl;
-      this.itemId = itemId;
-      this.retrieveChildItems = retrieveChildItems;
-      this.securityOnly = securityOnly;
-      this.lastItemIdOnPage = lastItemIdOnPage;
-      this.getContentResult = getContentResult;
-      this.exceptionToThrow = exceptionToThrow;
-      this.useOnce = useOnce;
+    public ContentExchange(Builder builder) {
+      this.objectType = builder.objectType;
+      this.objectId = builder.objectId;
+      this.folderUrl = builder.folderUrl;
+      this.itemId = builder.itemId;
+      this.retrieveChildItems = builder.retrieveChildItems;
+      this.securityOnly = builder.securityOnly;
+      this.lastItemIdOnPage = builder.lastItemIdOnPage;
+      this.getContentResult = builder.getContentResult;
+      this.exceptionToThrow = builder.exceptionToThrow;
+      this.useOnce = builder.useOnce;
     }
 
     public ContentExchange replaceInContent(String match, String replacement) {
@@ -5298,11 +5413,91 @@ public class SharePointAdaptorTest {
       if (getContentResult.equals(result)) {
         fail("Replacement had not effect");
       }
-      return new ContentExchange(objectType, objectId, folderUrl, itemId,
-          retrieveChildItems, securityOnly, lastItemIdOnPage, result);
+      return ContentExchange.Builder.fromContentExchange(this)
+          .setResult(result)
+          .build();
     }
+
+    private static class Builder {
+      private ObjectType objectType;
+      private String objectId;
+      private String folderUrl;
+      private String itemId;
+      private boolean retrieveChildItems;
+      private boolean securityOnly;
+      private String lastItemIdOnPage;
+      private String getContentResult;
+      private WebServiceException exceptionToThrow;
+      private boolean useOnce;
+      
+      Builder(ObjectType objectType) {
+        this.objectType = objectType;
+      }      
+
+      static Builder fromContentExchange(ContentExchange base) {
+        return new Builder(base.objectType)
+            .setObjectId(base.objectId)
+            .setFolderUrl(base.folderUrl).setItemId(base.itemId)
+            .setRetrieveChildItems(base.retrieveChildItems)
+            .setSecurityOnly(base.securityOnly)
+            .setLastItemIdOnPage(base.lastItemIdOnPage)
+            .setResult(base.getContentResult)
+            .setExceptionToThrow(base.exceptionToThrow)
+            .setUseOnce(base.useOnce);
+      }
+
+      Builder setObjectId(String objectId) {
+        this.objectId = objectId;
+        return this;
+      }
+
+      Builder setFolderUrl(String folderUrl) {
+        this.folderUrl = folderUrl;
+        return this;
+      }
+
+      Builder setItemId(String itemId) {
+        this.itemId = itemId;
+        return this;
+      }
+
+      Builder setRetrieveChildItems(boolean retrieveChildItems) {
+        this.retrieveChildItems = retrieveChildItems;
+        return this;
+      }
+
+      Builder setSecurityOnly(boolean securityOnly) {
+        this.securityOnly = securityOnly;
+        return this;
+      }
+
+      Builder setLastItemIdOnPage(String lastItemIdOnPage) {
+        this.lastItemIdOnPage = lastItemIdOnPage;
+        return this;
+      }
+
+      Builder setResult(String getContentResult) {
+        this.getContentResult = getContentResult;
+        return this;
+      }
+
+      Builder setExceptionToThrow(WebServiceException exceptionToThrow) {
+        this.exceptionToThrow = exceptionToThrow;
+        return this;
+      }
+
+      Builder setUseOnce(boolean useOnce) {
+        this.useOnce = useOnce;
+        return this;
+      }
+
+      ContentExchange build() {
+        return new ContentExchange(this);
+      }
+    }    
   }
 
+  // TODO(lchandramouli): Refractor ChangesExchange constructor.
   private static class ChangesExchange {
     public final ObjectType objectType;
     public final String contentDatabaseId;
@@ -5330,6 +5525,7 @@ public class SharePointAdaptorTest {
     }
   }
 
+  // TODO(lchandramouli): Refractor SiteAndWebExchange constructor.
   private static class SiteAndWebExchange {
     public final String strUrl;
     public final long getSiteAndWebResult;
